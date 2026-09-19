@@ -245,3 +245,10 @@ Camera presents Auto Optimize as primary CTA; runs show live status; applies are
 ## Addendum — Voice input
 
 Scene dictate beside Auto Optimize / Ask: **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.
+
+
+---
+
+## Addendum — Direction arrows
+
+Agent may emit pan/point cues during Optimize (left/right/up/down). UI: soft edge chevrons — **[`design-handoff-phones-v1.md`](./design-handoff-phones-v1.md)** §3. Clear when Verify passes.

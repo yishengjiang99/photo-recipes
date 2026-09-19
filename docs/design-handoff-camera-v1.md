@@ -272,3 +272,10 @@ North star loop (sense → reason/tools → apply → verify → capture) and UI
 ## Addendum — Voice input
 
 Dictate scene for agent hints: see **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.
+
+
+---
+
+## Addendum — Direction arrows & multi-phone
+
+Pan/point chevrons on viewfinder + regular Android layouts: **[`design-handoff-phones-v1.md`](./design-handoff-phones-v1.md)** §3–4.
