@@ -34,3 +34,8 @@ server-dist
 # Entitlement / quota store (runtime)
 server/data/*
 !server/data/.gitkeep
+
+# iOS local overrides
+ios/Config/Debug.xcconfig
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
