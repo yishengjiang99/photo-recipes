@@ -114,3 +114,28 @@ body {
     animation: none;
   }
 }
+
+/* Landing dial proof — before→after (not color-only) */
+.diff-before {
+  color: var(--color-ink-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--color-ink-tertiary) 55%, transparent);
+}
+.diff-after {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.landing-hero-glow {
+  background:
+    radial-gradient(ellipse 70% 55% at 70% 20%, rgba(244, 63, 94, 0.07), transparent 60%),
+    var(--color-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dial-animate,
+  .preset-card {
+    animation: none;
+    transition: none;
+  }
+}

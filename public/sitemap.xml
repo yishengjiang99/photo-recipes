@@ -11,12 +11,12 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://photorecipes.app/#how-it-works</loc>
+    <loc>https://photorecipes.app/#how</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://photorecipes.app/#features</loc>
+    <loc>https://photorecipes.app/#recipes</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -24,6 +24,11 @@
     <loc>https://photorecipes.app/#pricing</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://photorecipes.app/#notes</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://photorecipes.app/#faq</loc>

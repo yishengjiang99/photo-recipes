@@ -7,8 +7,12 @@ export const TESTFLIGHT_URL = '#testflight'
 
 export const OG_IMAGE_PATH = '/phones-duo-iphone-android-camera.png'
 
+/** Locked meta from docs/design-handoff-landing-v2.md §1 */
 export const DEFAULT_TITLE =
-  'Photo Recipes — Camera settings app & photography recipes for the field'
+  'Photo Recipes — Auto Optimize shutter, ISO & focus'
 
 export const DEFAULT_DESCRIPTION =
-  'Camera settings app with photography recipes: Auto Optimize dials for landscape, panning, HDR, and depth of field. Field photography checklist · Free Peek · Pro trial.'
+  'Point your phone at the shot — Auto Optimize writes shutter, ISO, EV, WB, and focus for live capture. Field recipes · Free Peek · Pro trial.'
+
+export const OG_IMAGE_ALT =
+  'Photo Recipes on iPhone and Android — before→after shutter and ISO dials (never aperture write).'
