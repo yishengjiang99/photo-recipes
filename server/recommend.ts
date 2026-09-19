@@ -649,7 +649,7 @@ function parseMaxPhotoDimensions(
   return { width: Math.round(w), height: Math.round(h) }
 }
 
-function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
+export function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'phoneTargets must be an object' }
   }
@@ -680,7 +680,8 @@ function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
   if (whiteBalance && typeof whiteBalance === 'object' && 'error' in whiteBalance) {
     return whiteBalance
   }
-  if (whiteBalance !== undefined && !('error' in (whiteBalance as object))) {
+  // String presets (e.g. "auto") are valid; only objects use the 'error' discriminant.
+  if (whiteBalance !== undefined) {
     out.whiteBalance = whiteBalance as WhiteBalanceTarget
   }
 
