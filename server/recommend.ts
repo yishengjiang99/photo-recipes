@@ -12,7 +12,9 @@ const FALLBACK_MODEL = 'grok-3-mini'
  */
 const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
 /** Hard cap on tool rounds. If select_preset never succeeds, fail clearly. */
-const MAX_ROUNDS = 5
+const MAX_ROUNDS = 4
+/** Vision token cost vs quality — low is much faster for Auto Optimize. */
+const VISION_IMAGE_DETAIL: 'auto' | 'low' | 'high' = 'low'
 
 export interface RecommendRequest {
   message: string
@@ -563,23 +565,26 @@ const tools = [
   },
 ]
 
+function truncate(s: string | undefined, n: number): string | undefined {
+  if (!s) return undefined
+  const t = s.trim()
+  if (t.length <= n) return t
+  return t.slice(0, n - 1).trimEnd() + '…'
+}
+
+/** Slim catalog row for list_presets — keep tokens low; details via get_preset_details. */
 function summarizePreset(p: RecipePreset) {
   return {
     id: p.id,
     title: p.title,
-    page: p.page,
     tags: p.tags,
-    description: p.blurb,
-    whenToUse: p.whenToUse,
+    blurb: truncate(p.blurb, 120),
     keySettings: {
       mode: p.dials.mode,
       aperture: p.dials.aperture,
       shutter: p.dials.shutter,
       iso: p.dials.iso,
-      evBracket: p.dials.evBracket,
-      notes: p.dials.notes,
     },
-    gear: p.gear,
   }
 }
 
@@ -1091,7 +1096,7 @@ async function callXai(
   apiKey: string,
   model: string,
   messages: ChatMessage[],
-  toolChoice: 'auto' | 'required' = 'auto',
+  toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } } = 'auto',
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; body: string }> {
   const res = await fetch(`${XAI_BASE}/chat/completions`, {
     method: 'POST',
@@ -1137,7 +1142,7 @@ Tone: darkroom field notes — quiet, concrete, instructor-at-your-shoulder. Nev
 
 LOOP (strict):
 1. SENSE — ${senseLine}
-2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id (keep the current recipe if it already fits, or switch to a better catalog match).
+2. REASON — Call list_presets once (slim catalog). Only get_preset_details if two candidates are close. Then select_preset promptly — do not re-list.
 3. ACT / FINALIZE — Call select_preset with structured phoneTargets + coachOnly (+ panCue when motion/panning fits).
 4. VERIFY (mental check before select_preset) — Targets match the recipe technique and any control ask in the note; exposure/ISO/EV/zoom/lens/torch ranges are phone-plausible; aperture/ND/tripod stay in coachOnly (simulatedAperture only if OS-gated); previewLUT is preview-only; creativeLook bakes preview+still when intensity>0 (default omit look; intensity defaults 0.55); panCue only for panning/motion recipes.
 
@@ -1184,7 +1189,7 @@ function buildUserContent(req: RecommendRequest): string | ContentPart[] {
     { type: 'text', text },
     {
       type: 'image_url',
-      image_url: { url: req.imageDataUrl, detail: 'high' },
+      image_url: { url: req.imageDataUrl, detail: VISION_IMAGE_DETAIL },
     },
   ]
 }
@@ -1223,9 +1228,21 @@ export async function recommendWithGrok(
   for (let round = 0; round < MAX_ROUNDS; round++) {
     // Early rounds: require a tool call so the model cannot skip the catalog.
     // After list/details, allow auto so it can choose select_preset vs more details.
-    const toolChoice: 'auto' | 'required' =
-      !selection && !sawListOrDetails && round < 2 ? 'required' : 'auto'
+    // Round 0: force list_presets (named) to skip free-chat + wasted rounds.
+    // Round 1: require any tool if we still have not listed.
+    // Later: auto so the model can select_preset.
+    type ToolChoice =
+      | 'auto'
+      | 'required'
+      | { type: 'function'; function: { name: string } }
+    const toolChoice: ToolChoice =
+      !selection && round === 0 && !sawListOrDetails
+        ? { type: 'function', function: { name: 'list_presets' } }
+        : !selection && !sawListOrDetails && round < 2
+          ? 'required'
+          : 'auto'
 
+    const started = Date.now()
     let response = await callXai(apiKey, model, messages, toolChoice)
 
     while (
@@ -1239,13 +1256,15 @@ export async function recommendWithGrok(
       response = await callXai(apiKey, model, messages, toolChoice)
     }
 
-    // Some models reject tool_choice:"required" — retry once with auto.
+    // Some models reject tool_choice required / named function — retry once with auto.
     if (
       !response.ok &&
-      toolChoice === 'required' &&
+      toolChoice !== 'auto' &&
       (response.status === 400 || response.status === 422)
     ) {
-      console.warn('[recommend] tool_choice=required rejected; retrying with auto')
+      console.warn(
+        `[recommend] tool_choice=${typeof toolChoice === 'string' ? toolChoice : toolChoice.function.name} rejected; retrying with auto`,
+      )
       response = await callXai(apiKey, model, messages, 'auto')
     }
 
@@ -1265,6 +1284,8 @@ export async function recommendWithGrok(
     const choices = response.data.choices as
       | Array<{ message?: ChatMessage; finish_reason?: string }>
       | undefined
+    console.info(`[recommend] round=${round} model=${model} tool_choice=${typeof toolChoice === 'string' ? toolChoice : toolChoice.function.name} ${Date.now() - started}ms`)
+
     const assistant = choices?.[0]?.message
     if (!assistant) {
       throw Object.assign(new Error('Empty response from Grok'), { status: 502 })
@@ -1341,4 +1362,4 @@ export async function recommendWithGrok(
   )
 }
 
-export { VISION_MODELS, PRIMARY_MODEL, FALLBACK_MODEL, MAX_ROUNDS, tools }
+export { VISION_MODELS, PRIMARY_MODEL, FALLBACK_MODEL, MAX_ROUNDS, VISION_IMAGE_DETAIL, tools }

@@ -255,3 +255,15 @@ Example (subset):
 ---
 
 *Agentic Expert · prompt v2 · AVFoundation phoneTargets + creativeLook bake contract*
+
+## Latency knobs (server)
+
+Auto Optimize vision can take tens of seconds with multi-round tools + high-detail images. Current defaults:
+
+| Knob | Value | Why |
+|------|-------|-----|
+| `VISION_IMAGE_DETAIL` | `low` | Fewer vision tokens; still enough for technique |
+| Round 0 `tool_choice` | force `list_presets` | Skip free-chat round |
+| `list_presets` payload | slim (id/title/tags/blurb/keySettings) | Details via `get_preset_details` |
+| `MAX_ROUNDS` | 4 | Bound wall-clock |
+
