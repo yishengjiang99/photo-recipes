@@ -4,6 +4,7 @@ import AVFoundation
 struct CameraView: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
     @EnvironmentObject private var router: CameraRouter
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @StateObject private var session = CameraSession()
     @StateObject private var optimizer = AutoOptimizeController()
@@ -102,6 +103,8 @@ struct CameraView: View {
 
     private var viewfinder: some View {
         GeometryReader { geo in
+            let compact = isCompactChrome(width: geo.size.width, height: geo.size.height)
+            let chromeBottom = compact ? 168.0 : 200.0
             ZStack {
                 CameraPreviewView(session: session.session)
                     .ignoresSafeArea()
@@ -127,28 +130,56 @@ struct CameraView: View {
                         .allowsHitTesting(false)
                 }
 
+                if let cue = activePanCue {
+                    ViewfinderPanCuesView(
+                        cue: cue,
+                        bottomInset: chromeBottom,
+                        topInset: compact ? 56 : 72
+                    )
+                }
+
                 VStack(spacing: 0) {
-                    topBar
-                    Spacer()
-                    agentColumn
-                    bottomBar
+                    topBar(compact: compact)
+                    Spacer(minLength: 0)
+                    agentColumn(compact: compact, width: geo.size.width)
+                    bottomBar(compact: compact)
                 }
             }
         }
     }
 
-    private var topBar: some View {
-        HStack(spacing: 12) {
+    /// SE / small phones (~320–375pt wide, ~667pt tall) need tighter chrome.
+    /// Prefer size thresholds over size class alone — all iPhones report `.compact`.
+    private func isCompactChrome(width: CGFloat, height: CGFloat) -> Bool {
+        if horizontalSizeClass == .regular { return false }
+        let narrow = width <= 375
+        let short = height < 700
+        // 390×844 (14/15) stays comfortable; SE / mini / short heights tighten.
+        return narrow || short
+    }
+
+    private var activePanCue: ViewfinderPanCue? {
+        ViewfinderPanCueResolver.resolve(
+            recipeId: session.appliedRecipeId ?? optimizer.chosenRecipeId,
+            agentPhase: optimizer.phase,
+            agentStatus: optimizer.phase.statusCopy.isEmpty ? nil : optimizer.phase.statusCopy
+        )
+    }
+
+    private func topBar(compact: Bool) -> some View {
+        HStack(spacing: compact ? 8 : 12) {
             iconBtn(session.flash.icon) { session.flash = session.flash.next }
             iconBtn(session.showGrid ? "grid" : "grid") { session.showGrid.toggle() }
-            Spacer()
+            Spacer(minLength: 4)
             if session.focusLocked || session.exposureLocked {
                 Text("AE/AF LOCK")
                     .font(AppTheme.overline())
                     .foregroundStyle(AppTheme.aeLock)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, compact ? 8 : 10)
+                    .padding(.vertical, compact ? 4 : 6)
                     .background(Capsule().fill(AppTheme.agentStatusBg))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
             if horizon.isAvailable {
                 Circle()
@@ -158,26 +189,34 @@ struct CameraView: View {
             }
             iconBtn("arrow.triangle.2.circlepath.camera") { session.flipCamera() }
         }
-        .padding(.horizontal, AppTheme.space4)
-        .padding(.vertical, 8)
+        .padding(.horizontal, compact ? AppTheme.space3 : AppTheme.space4)
+        .padding(.vertical, compact ? 6 : 8)
         .background(
             LinearGradient(colors: [AppTheme.cameraScrim, .clear], startPoint: .top, endPoint: .bottom)
         )
     }
 
-    private var agentColumn: some View {
-        VStack(spacing: 8) {
+    private func agentColumn(compact: Bool, width: CGFloat) -> some View {
+        let hPad: CGFloat = width <= 320 ? AppTheme.space2 : (compact ? AppTheme.space3 : AppTheme.space4)
+        let ctaHeight: CGFloat = compact ? 44 : 50
+        let stackSpacing: CGFloat = compact ? 6 : 8
+
+        return VStack(spacing: stackSpacing) {
             if let clamp = session.clampMessages.last {
                 Text(clamp)
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.ink)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(compact ? 2 : 3)
+                    .minimumScaleFactor(0.9)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, compact ? 6 : 8)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.radiusSm)
                             .fill(AppTheme.agentStatusBg)
                             .overlay(RoundedRectangle(cornerRadius: AppTheme.radiusSm).stroke(AppTheme.tip, lineWidth: 1))
                     )
+                    .padding(.horizontal, hPad)
             }
 
             BeforeAfterChip(
@@ -185,12 +224,14 @@ struct CameraView: View {
                 recipeTitle: optimizer.chosenRecipeTitle,
                 onTap: { showDials = true }
             )
+            .padding(.horizontal, hPad)
 
             AgentStatusPill(
                 phase: optimizer.phase,
                 verifyWarning: optimizer.verifyWarning,
                 onStop: { optimizer.clear() }
             )
+            .padding(.horizontal, hPad)
 
             if case .ready = optimizer.phase {
                 Button("Why this?") { showTeach = true }
@@ -199,6 +240,7 @@ struct CameraView: View {
             }
 
             recipeBadge
+                .padding(.horizontal, hPad)
 
             Button {
                 Task { await runOptimize() }
@@ -209,20 +251,20 @@ struct CameraView: View {
                         Text("Optimizing…")
                     } else {
                         Image(systemName: "bolt.fill")
-                        Text("Auto Optimize")
+                        Text(compact && width <= 320 ? "Optimize" : "Auto Optimize")
                     }
                 }
-                .font(AppTheme.bodyMedium())
+                .font(compact ? AppTheme.bodySmMedium() : AppTheme.bodyMedium())
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
+                .frame(height: ctaHeight)
                 .background(
                     RoundedRectangle(cornerRadius: AppTheme.radiusMd)
                         .fill(AppTheme.accent.opacity(canOptimize ? 1 : 0.4))
                 )
             }
             .disabled(!canOptimize || optimizer.phase.isRunning)
-            .padding(.horizontal, AppTheme.space4)
+            .padding(.horizontal, hPad)
 
             if !entitlements.isPro {
                 Text(optimizer.freeRemainingToday > 0
@@ -230,9 +272,11 @@ struct CameraView: View {
                      : "Free Peek limit reached")
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.inkTertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, compact ? 4 : 8)
     }
 
     private var canOptimize: Bool { optimizer.canRun(isPro: entitlements.isPro) }
@@ -271,48 +315,56 @@ struct CameraView: View {
         }
     }
 
-    private var bottomBar: some View {
-        VStack(spacing: 10) {
-            Text(session.readoutLine)
-                .font(AppTheme.monoSm())
-                .foregroundStyle(AppTheme.ink)
-                .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+    private func bottomBar(compact: Bool) -> some View {
+        let side: CGFloat = compact ? 48 : 56
+        let shutterOuter: CGFloat = compact ? 68 : 76
+        let shutterInner: CGFloat = compact ? 56 : 62
+        let hPad: CGFloat = compact ? AppTheme.space3 : AppTheme.space5
 
-            HStack {
+        return VStack(spacing: compact ? 6 : 10) {
+            Text(session.readoutLine)
+                .font(compact ? AppTheme.caption() : AppTheme.monoSm())
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+                .padding(.horizontal, hPad)
+
+            HStack(spacing: 0) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(AppTheme.surface)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 40, height: 40)
                     if let thumb = session.lastThumb {
                         Image(uiImage: thumb)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 44, height: 44)
+                            .frame(width: 40, height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     } else {
                         Image(systemName: "photo").foregroundStyle(AppTheme.inkTertiary)
                     }
                 }
-                .frame(width: 56)
+                .frame(width: side, height: side)
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Button {
                     Task { await takePhoto() }
                 } label: {
                     ZStack {
                         Circle()
-                            .stroke(AppTheme.shutterRing, lineWidth: 4)
-                            .frame(width: 76, height: 76)
+                            .stroke(AppTheme.shutterRing, lineWidth: compact ? 3 : 4)
+                            .frame(width: shutterOuter, height: shutterOuter)
                         Circle()
                             .fill(AppTheme.shutterCore.opacity(isCapturing ? 0.5 : 1))
-                            .frame(width: 62, height: 62)
+                            .frame(width: shutterInner, height: shutterInner)
                     }
                 }
                 .disabled(isCapturing)
                 .accessibilityLabel("Shutter")
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Button {
                     if entitlements.isPro {
@@ -322,23 +374,24 @@ struct CameraView: View {
                     }
                 } label: {
                     Image(systemName: "camera.aperture")
-                        .font(.title2)
+                        .font(compact ? .title3 : .title2)
                         .foregroundStyle(AppTheme.ink)
-                        .frame(width: 56, height: 56)
+                        .frame(width: side, height: side)
                 }
                 .accessibilityLabel("Manual dials")
             }
-            .padding(.horizontal, AppTheme.space5)
-            .padding(.bottom, 12)
+            .padding(.horizontal, hPad)
+            .padding(.bottom, compact ? 8 : 12)
 
             if let captureError {
                 Text(captureError)
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.danger)
+                    .padding(.horizontal, hPad)
                     .padding(.bottom, 4)
             }
         }
-        .padding(.top, 12)
+        .padding(.top, compact ? 8 : 12)
         .background(
             LinearGradient(colors: [.clear, AppTheme.cameraScrim], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .bottom)

@@ -37,6 +37,8 @@ enum AppTheme {
     static let shutterCore = accent
     static let recipeBadgeBg = Color(hex: 0xF43F5E).opacity(0.18)
     static let aeLock = tip
+    /// Viewfinder pan/point chevrons (quiet chrome)
+    static let panCue = ink.opacity(0.7)
 
     // MARK: - Agentic Auto Optimize (design-handoff-agentic-v1)
     static let agentStatusBg = Color.black.opacity(0.55)
