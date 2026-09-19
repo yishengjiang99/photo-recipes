@@ -1,7 +1,7 @@
 # Agentic Prompt v2 — Auto Optimize / Recommend
 
 **Extends:** [`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)  
-**Primary story:** Point the camera at the shot → Sense (viewfinder/image) → Auto Optimize → apply `phoneTargets` (shutter/ISO/EV/WB/focus[/zoom]).  
+**Primary story:** Point the camera at the shot → Sense (viewfinder/image) → Auto Optimize → apply `phoneTargets` (AVFoundation levers).  
 **Implements:** Sense → reason with tools → act (phone targets) → verify (mental check) → finalize  
 **Server:** `server/recommend.ts` (`POST /api/recommend`)  
 **Related:** `server/describeScene.ts` (viewfinder scene prefill), `server/stt.ts` (alternate input — transcripts feed the same recommend/apply path)
@@ -14,27 +14,24 @@ Keep this text in sync with `buildSystemPrompt()` in `server/recommend.ts`. Favo
 
 ```
 You are the Photo Recipes field assistant for Auto Optimize (Camera) and Ask / Photo Vision (web + iOS).
-Primary job: analyze the scene from the viewfinder (image + optional note) → select one catalog recipe → emit phoneTargets for Auto Optimize to apply.
+Primary job: analyze the scene from the viewfinder (image + optional note) → select one catalog recipe → emit phoneTargets for Auto Optimize to apply (AVFoundation levers).
 Tone: darkroom field notes — quiet, concrete, instructor-at-your-shoulder. Never chatty. Never invent recipes.
 
 LOOP (strict):
-1. SENSE — {vision: Inspect the attached image plus any scene note. Infer light (direction/quality/contrast), motion, subject, depth cues, and dynamic range. Status-ready — think like a viewfinder caption, not a chat reply. | text: Infer light, motion, subject, and depth from the photographer's scene note. Status-ready field notes only.}
-2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id (keep current recipe if it fits, or a better catalog match).
-3. ACT / FINALIZE — Call select_preset with structured phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY — Targets match the recipe technique and any control ask in the note; shutter/ISO/EV/zoom phone-plausible; aperture/ND/tripod in coachOnly; panCue only for panning/motion.
+1. SENSE — {vision | text}
+2. REASON — Call list_presets. Optionally get_preset_details. Pick exactly ONE catalog id.
+3. ACT / FINALIZE — Call select_preset with phoneTargets + coachOnly (+ panCue when motion/panning fits).
+4. VERIFY — Targets match technique + control asks; ranges phone-plausible; aperture/ND/tripod in coachOnly; previewLUT never a capture filter; panCue only for panning/motion.
 
-ALTERNATE INPUT (spoken / STT transcripts — secondary):
-- When the user message is a voice transcript, treat it as another way into the same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
-- Examples: "slower shutter for panning" → shutter + panCue; "lock focus on the rider" → focusMode (+ focusPoint); "go to 2x" → zoom; EV/WB similarly.
+ALTERNATE INPUT (spoken / STT — secondary):
+- Same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
 - Control adjustments: phoneTargets MUST include the relevant keys (not empty {}).
 
 CRITICAL RULES:
-- Catalog only: never invent preset ids, titles, or off-catalog recipes.
-- You MUST use tools. Do not free-form recommend without select_preset.
-- phoneTargets = phone-settable: shutter, iso, ev, whiteBalance, focusMode, zoom, focusPoint.
-- coachOnly = aperture, nd, tripod, notes — NOT applied on device.
+- Catalog only; MUST use tools; finish with select_preset promptly.
+- phoneTargets = AVFoundation levers only (all optional) — see §3. Never put hardware aperture in phoneTargets.
+- coachOnly = aperture, nd, tripod, notes.
 - teachWhy / tips / panCue / senseSummary — same as before.
-- Bounded loop: finish with select_preset promptly.
 [+ optional favorites line]
 ```
 
@@ -42,196 +39,178 @@ CRITICAL RULES:
 
 ## 2. Tool schemas
 
-### `list_presets`
+### `list_presets` / `get_preset_details`
 
-| | |
-|--|--|
-| **Args** | `{}` (no properties) |
-| **Returns** | `{ presets: [{ id, title, page, tags, description, whenToUse, keySettings, gear }] }` |
-| **When** | First reason step — always before inventing a pick |
-
-### `get_preset_details`
-
-| | |
-|--|--|
-| **Args** | `{ presetId: string }` (required) |
-| **Returns** | Full preset: dials, steps, tips, gear, phoneTip, advancedTip, subVariants… |
-| **Errors** | Unknown id → `Use an id from list_presets` |
-| **When** | Optional depth on 1–2 candidates before finalize |
+Unchanged from prior v2 (catalog list + full preset details).
 
 ### `select_preset` (finalize)
 
 | Field | Required | Notes |
 |-------|----------|--------|
 | `presetId` | ✓ | Exact catalog id |
-| `reason` | ✓ | Coach-style (Ask / depth); 1–3 short sentences |
-| `teachWhy` | ✓ | Teach mode one-liner; 1–2 sentences; no model jargon |
-| `tips` | | Array of strings; **max 3** |
-| `phoneTargets` | ✓ | Object; see §3 (may be empty `{}` if nothing phone-applicable) |
-| `coachOnly` | ✓ | Object; aperture / nd / tripod / notes |
-| `panCue` | | `{ direction: 'left'|'right'|'either', note? }` when panning fits |
-| `senseSummary` | | One-line status: light / motion / subject |
+| `reason` | ✓ | Coach-style; 1–3 short sentences |
+| `teachWhy` | ✓ | Teach mode one-liner; 1–2 sentences |
+| `tips` | | Max 3 short field tips |
+| `phoneTargets` | ✓ | Object; see §3 (may be `{}`) |
+| `coachOnly` | ✓ | aperture / nd / tripod / notes |
+| `panCue` | | `{ direction: left\|right\|either, note? }` |
+| `senseSummary` | | One-line status |
 
-**Validation (server):** unknown `presetId` rejected; empty `reason` / `teachWhy` rejected; `tips.length > 3` rejected; bad `panCue.direction` rejected. Failed select does **not** end the loop — model can retry with a valid id.
-
----
-
-## 3. Phone-settable vs coach-only
-
-| Setting | Bucket | Why / iOS contract |
-|---------|--------|--------------------|
-| Shutter speed | **phoneTargets.shutter** | AVFoundation exposure duration (`string`, e.g. `"1/30"`) |
-| ISO | **phoneTargets.iso** | Device ISO lock / bias (`string`) |
-| EV / exposure compensation | **phoneTargets.ev** | Common phone API (`string`, e.g. `"+0.7"`) |
-| White balance | **phoneTargets.whiteBalance** | Auto / daylight / cloudy / etc. (`string`) |
-| Focus mode | **phoneTargets.focusMode** | Continuous / locked / near / infinity (`string`) |
-| Focus point | **phoneTargets.focusPoint** | Optional `{ x, y }` floats **0–1** for tap-to-focus; omit if `focusMode` alone is enough |
-| Zoom | **phoneTargets.zoom** | Number = `AVCaptureDevice.videoZoomFactor` (1 = 1×, 2 = 2×). Clients may map discrete values to lens switch (0.5 UW, 1 wide, 2 tele). Server also accepts `"2x"` strings and normalizes to a number. |
-| Aperture (f-stop) | **coachOnly.aperture** | Most phones have fixed or non-API aperture; show as guidance |
-| ND filter | **coachOnly.nd** | Physical / accessory advice |
-| Tripod | **coachOnly.tripod** | Boolean recommendation |
-| Brace / flash / rear-curtain / etc. | **coachOnly.notes** | Free-form coach guidance |
-
-**Additive / optional:** every `phoneTargets` key is optional. Older iOS builds that do not know `zoom` / `focusPoint` must **ignore unknown keys** (JSON decode with unknown keys discarded). Do not require new keys for catalog-only Auto Optimize.
-
-iOS Auto Optimize applies `phoneTargets` to the live `AVCapture` session (default path: viewfinder → Auto Optimize button). Spoken follow-ups reuse that same apply helper. `coachOnly` stays UI-only.
+**Validation (server):** unknown `presetId` rejected; empty `reason` / `teachWhy` rejected; `tips.length > 3` rejected; bad ranges on new keys rejected. Failed select does **not** end the loop.
 
 ---
 
-## 4. Loop: sense → list/details → select → verify
+## 3. phoneTargets schema (iOS Expert contract names)
 
-```
-round ≤ MAX_ROUNDS (5)
-  ├─ tool_choice: "required" on early rounds until list/details seen
-  │    (falls back to "auto" if the model rejects "required")
-  ├─ no tool_calls → nudge user message: must call list_presets → select_preset
-  ├─ list_presets / get_preset_details → continue
-  ├─ select_preset ok → return RecommendResult (end)
-  ├─ select_preset error (unknown id, missing teachWhy, …) → tool error to model, continue
-  └─ after list + round≥2 without select → nudge: finalize now
-if exit without select → HTTP 502: "did not call select_preset within the tool-call limit"
-```
+All keys **additive optional**. Older iOS builds **ignore unknown keys**. Never put hardware aperture here.
 
-**tool_choice strategy (documented + implemented):**
+### P0 — apply when device capability allows
 
-| Condition | `tool_choice` |
-|-----------|----------------|
-| No successful list/details yet, round &lt; 2 | `"required"` (retry `"auto"` on 400/422) |
-| Otherwise | `"auto"` |
+| Key | Type | Gate / iOS apply notes |
+|-----|------|------------------------|
+| `shutter` | `string` | Recipe/UI string e.g. `"1/60"`. Keep alongside `exposureDurationSec`. |
+| `exposureDurationSec` | `number` | Seconds for `setExposureModeCustom` (e.g. `0.01667`). Pair with `iso`. Range server: `>0…30`. |
+| `iso` | `string \| number` | Lock / bias; `"auto"` or numeric. |
+| `ev` | `string \| number` | Exposure bias e.g. `"+0.7"` or `-1`. |
+| `whiteBalance` | `string \| { temperature?, tint? } \| { redGain?, greenGain?, blueGain? }` | Preset **or** locked temp/tint **or** device RGB gains (not mixed). Gains 0–8. |
+| `focusMode` | `string` | `continuous` / `locked` / `near` / `infinity` |
+| `focusPoint` | `{ x, y }` | Normalized **0–1**; omit if mode alone enough. |
+| `lensPosition` | `number` | Locked focus **0…1** (`setFocusModeLocked`). |
+| `zoom` | `number` | `videoZoomFactor` (1 = 1×). Prefer `cameraDevice` for optical switch. Server accepts `"2x"` → number. Range 0.5–16. |
+| `cameraDevice` | `ultraWide \| wide \| tele` | Optical lens switch vs digital zoom only. |
+| `torch` | `{ mode: off\|on\|auto, level?: 0…1 }` | Continuous light; level when `on`. |
+| `flash` | `off \| on \| auto` | Still flash when PhotoOutput allows. |
+| `lowLightBoost` | `boolean` | When device supports low-light boost. |
+| `videoHDR` | `boolean` | When active format supports video HDR. |
+| `frameRate` | `number` | Target fps (1–240); maps to min/max frame duration. |
+| `preferFormatHint` | `string` | Soft activeFormat hint e.g. `"4k60"`, `"1080p30"`. |
+| `bracket` | `{ stops: number[], count?: number }` | Multi-capture HDR / AE plan; stops −5…+5 EV; 1–9 entries. |
+| `monitorSubjectAreaChange` | `boolean` | When true, iOS enables monitoring and should **re-trigger Auto Optimize** on change. |
+| `maxPhotoDimensions` | `{ width, height }` | Preferred max photo pixels when PhotoOutput supports it. |
+
+### P1 — gated / preview
+
+| Key | Type | Notes |
+|-----|------|--------|
+| `previewLUT` | `string` | **Preview-only** LUT id. MUST NOT be sold as a capture magic filter. Capture settings remain primary. |
+| `simulatedAperture` | `number` | Only if OS supports; otherwise use **`coachOnly.aperture`**. Never fake hardware aperture. |
+
+### coachOnly (not applied)
+
+| Key | Notes |
+|-----|--------|
+| `aperture` | f-stop guidance / picture-style notes |
+| `nd` | Filter advice |
+| `tripod` | Boolean |
+| `notes` | Free-form coach guidance |
 
 ---
 
-## 5. Failure modes
+## 4. Capability gates (document for iOS)
 
-| Failure | Behavior |
-|---------|----------|
-| Empty message and no image | 400 — message or image required |
-| Unknown `presetId` in select | Tool error; loop continues |
-| Missing `reason` / `teachWhy` | Tool error; loop continues |
-| `tips` &gt; 3 | Tool error; loop continues |
-| Model free-chats (no tools) | Nudge; continue rounds |
-| Never calls `select_preset` by round 5 | 502 clear error string |
-| xAI model 404 | Fall back vision/text model queue |
-| `tool_choice: required` rejected | One retry with `auto` |
-| Missing `XAI_API_KEY` | 503 from index |
-| Free Peek quota exhausted | 402 from entitlements (unchanged) |
+| Lever | Typical gate |
+|-------|----------------|
+| Custom exposure pair | `isExposureModeSupported(.custom)` + device min/max duration & ISO |
+| `lensPosition` | `isLockingFocusWithCustomLensPositionSupported` |
+| Locked WB gains / temp-tint | `isWhiteBalanceModeSupported(.locked)` + device gain ranges |
+| `torch` / level | `hasTorch` / `isTorchAvailable`; clamp level |
+| `flash` | Photo output flash supported for current device |
+| `lowLightBoost` | `isLowLightBoostSupported` |
+| `videoHDR` | Format / device HDR flags |
+| `cameraDevice` | Discovery session has ultraWide / tele |
+| `frameRate` / format hint | Format supports duration; fall back silently |
+| `bracket` | Burst / bracket capture path available |
+| `maxPhotoDimensions` | PhotoOutput max photo dimensions API |
+| `previewLUT` | Preview pipeline only — never mutate captured file as “filter” |
+| `simulatedAperture` | OS cinematic / simulated aperture APIs; else coachOnly |
+
+iOS must **skip unsupported keys** without failing the whole apply.
 
 ---
 
-## 6. API response shape (additive)
+## 5. Loop / failure modes / API shape
 
-`POST /api/recommend` JSON (existing fields kept; new fields additive for iOS/web):
+Loop, `tool_choice`, and failure modes unchanged from prior v2 (`MAX_ROUNDS=5`, catalog-only, 502 if no `select_preset`).
+
+`POST /api/recommend` returns additive `phoneTargets` object (pass-through from `recommend.ts`). Older clients ignore unknown keys.
+
+Example (subset):
 
 ```json
 {
-  "presetId": "panning-sharp-subject",
-  "reason": "…",
-  "teachWhy": "Panning keeps the subject sharp while the background streaks.",
-  "tips": ["Start at 1/30", "Rotate from the hips", "Follow through after the shutter"],
-  "phoneTargets": { "shutter": "1/30", "iso": "auto", "ev": "0", "focusMode": "continuous", "zoom": 1, "focusPoint": { "x": 0.5, "y": 0.4 } },
-  "coachOnly": { "aperture": "auto", "tripod": false, "notes": "Brace elbows; pan with subject" },
-  "panCue": { "direction": "left", "note": "Match subject speed left→right" },
-  "senseSummary": "Cyclist moving left; soft side light",
-  "preset": { "...": "full RecipePreset" },
-  "model": "grok-4.6",
-  "vision": true
+  "phoneTargets": {
+    "shutter": "1/30",
+    "exposureDurationSec": 0.0333,
+    "iso": 100,
+    "ev": 0,
+    "focusMode": "locked",
+    "lensPosition": 0.45,
+    "focusPoint": { "x": 0.5, "y": 0.4 },
+    "cameraDevice": "wide",
+    "zoom": 1,
+    "bracket": { "stops": [-2, 0, 2] },
+    "monitorSubjectAreaChange": true
+  },
+  "coachOnly": { "aperture": "f/8", "tripod": false },
+  "teachWhy": "Panning keeps the subject sharp while the background streaks."
 }
 ```
 
-Older clients that ignore unknown keys (current iOS `RecommendResponse`, web FieldCoach) keep working.
-
 ---
 
-## 7. Compatibility — iOS Auto Optimize + web Ask/Vision
+## 6. Compatibility — primary vs secondary path
 
 | Client | Contract |
 |--------|----------|
-| **iOS Auto Optimize** | Default path: viewfinder frame (+ optional note) → recommend → apply `phoneTargets`. Uses `presetId` / `reason` / `preset` / `tips`; can adopt `teachWhy`, `phoneTargets`, `panCue`, `senseSummary` for Teach sheet + apply. |
-| **iOS Ask** | Same recommend endpoint; additive fields optional. |
-| **Web FieldCoach / Ask** | Reads `reason`, `tips`, `preset`; new fields ignored until UI wired. |
-| **describe-scene** | Status-ready scene note from the viewfinder → feeds Sense as text/note; not a recommend. |
-| **STT (secondary)** | Photo keyterms bias; transcript is an **alternate input** into the same Auto Optimize apply path (recommend → phoneTargets → AVCapture). |
-| **Quota** | Free Peek Ask/Vision/Auto Optimize pool unchanged (`checkAskGrokQuota`). |
+| **iOS Auto Optimize (primary)** | Viewfinder → recommend → `applyPhoneTargets` on live `AVCapture` session. |
+| **Voice / STT (secondary)** | Transcript → same recommend → **same** apply helper. |
+| **Web Ask** | May ignore new keys until wired. |
+| **Quota** | Free Peek Ask/Vision/Auto Optimize pool unchanged. |
 
 ---
 
-## 8. Alternate input — Voice → STT → same recommend/apply path
+## 7. Spoken-intent → phoneTargets (examples)
 
-Voice is **secondary**, not the product lead. Default UX is point-camera → Auto Optimize. Spoken input is another way into the **same** apply path:
-
-```
-Mic capture (optional)
-  → POST /api/stt (Grok STT, photo keyterms)
-  → transcript as recommend `message` (spoken control intent and/or scene note)
-  → POST /api/recommend (agent tools: list_presets → select_preset)
-  → response.phoneTargets (+ panCue if needed) applied to AVCapture session
-  → optional teachWhy / tips shown in Teach / coach UI
-```
-
-| Step | Owner | Contract |
-|------|-------|----------|
-| STT | Server `stt.ts` | `{ text }` transcript — field vocabulary bias |
-| Recommend | Server `recommend.ts` | Tools + `phoneTargets` / `panCue` / `teachWhy` |
-| Apply | **iOS** (Ios Expert) | Map `phoneTargets` → session (shutter/ISO/EV/WB/focus/zoom/focusPoint); show `panCue`; optional Teach sheet |
-| Web Ask | Web | May still treat transcript as Field Coach text until wired; ignore unknown keys |
-
-**Same apply path:** button Auto Optimize (primary) and spoken follow-ups (secondary) both end in applying `phoneTargets` to the capture session.
+| Spoken intent | Targets |
+|---------------|---------|
+| "slower shutter for panning" | `shutter` + `exposureDurationSec` + `panCue` + `teachWhy` |
+| "lock focus on the rider" | `focusMode: locked` + optional `focusPoint` / `lensPosition` |
+| "go to 2x" / "ultra-wide" | `zoom` and/or `cameraDevice` |
+| "torch on low" | `torch: { mode: "on", level: 0.2 }` |
+| "bracket for HDR" | `bracket: { stops: [-2,0,2] }` |
+| "re-optimize if subject moves" | `monitorSubjectAreaChange: true` |
+| "daylight WB" / locked Kelvin | `whiteBalance` string or `{ temperature, tint }` |
 
 ---
 
-## 9. Spoken-intent → phoneTargets mappings
+## 8. iOS Expert — apply contract
 
-| Spoken intent (example) | phoneTargets / extras |
-|-------------------------|------------------------|
-| "slower shutter for panning" | `shutter` (e.g. `"1/30"`) + **`panCue`** `{ direction, note? }` + `teachWhy` |
-| "lock focus on the rider" | `focusMode: "locked"` + optional **`focusPoint: { x, y }`** (0–1) if a region can be inferred |
-| "zoom in" / "go to 2x" | **`zoom`** number (`2` = 2× `videoZoomFactor`; lens-switch hint OK) |
-| "pull EV down a stop" | `ev: "-1"` |
-| "daylight white balance" | `whiteBalance: "daylight"` |
-| "keep ISO low" | `iso: "100"` (or scene-appropriate) |
-| Full scene Auto Optimize (no control tweak) | Full `phoneTargets` from recipe technique; may omit `zoom` / `focusPoint` |
-
-When the user asks for a **control adjustment**, `select_preset` must still run (catalog id may stay the current recipe or switch to a better match) and **`phoneTargets` must include the keys that match the ask** — do not finalize with `{}` for a shutter/focus/zoom request.
+1. Decode additively; ignore unknown keys.
+2. Apply P0 keys only when capability gates pass; skip otherwise.
+3. Shared apply helper for Auto Optimize button **and** spoken follow-ups.
+4. `monitorSubjectAreaChange: true` → enable monitoring → re-trigger optimize on change.
+5. `previewLUT` → preview pipeline only; never market as magic capture filter.
+6. `simulatedAperture` → OS-gated; else show `coachOnly.aperture`.
+7. Do **not** apply `coachOnly` to the session.
 
 ---
 
-## 10. iOS Expert — schema contracts to implement
+## 9. Server route notes
 
-Leave wiring to Ios Expert; server/doc contract:
-
-1. **Decode additively** — ignore unknown `phoneTargets` keys on older builds.
-2. **`zoom?: number`** — set `AVCaptureDevice.videoZoomFactor` (clamp to device min/max). Optionally map 0.5 / 1 / 2 to ultra-wide / wide / tele lens switch when available.
-3. **`focusPoint?: { x, y }`** — 0–1 normalized; drive tap-to-focus / focus-of-interest. If omitted, apply `focusMode` only.
-4. **Shared apply** — spoken recommend responses use the **same** apply helper as Auto Optimize (shutter, ISO, EV, WB, focus, zoom).
-5. **`panCue`** — overlay / coach cue only; not an AVCapture lock.
-6. **`teachWhy`** — Teach mode sheet; optional after apply.
+- `server/recommend.ts`: `PhoneTargets` type, `select_preset` JSON schema, `parsePhoneTargets` range validation, system prompt.
+- `server/index.ts`: passes `phoneTargets` through unchanged on `POST /api/recommend` (no per-key stripping).
+- Additive only — no AVFoundation implementation on server.
 
 ---
 
-## 11. Branch / base notes
+## 10. P0 vs future
 
-This branch merges latest `main` (including #11 voice→shared Auto Optimize apply wiring). Prompt/schema work stays additive: `zoom`, `focusPoint`, `panCue`, `teachWhy`, `coachOnly` remain optional.
+| Tier | Keys |
+|------|------|
+| **P0 (this PR)** | exposureDurationSec, iso/ev union, lensPosition, whiteBalance unions, torch, flash, lowLightBoost, videoHDR, cameraDevice, frameRate, preferFormatHint, bracket, monitorSubjectAreaChange, maxPhotoDimensions (+ existing shutter/focus/zoom/focusPoint) |
+| **P1 / gated** | previewLUT, simulatedAperture |
+| **Document only / future** | Broader cinematic tracking, richer picture styles — do not block P0 |
 
 ---
 
-*Agentic Expert · prompt v2*
+*Agentic Expert · prompt v2 · AVFoundation phoneTargets expansion*
