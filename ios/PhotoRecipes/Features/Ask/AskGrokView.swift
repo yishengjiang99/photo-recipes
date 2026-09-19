@@ -48,6 +48,8 @@ struct FieldCoachPanel: View {
 
     @State private var mode: FieldCoachMode = .describe
     @State private var message = ""
+    @StateObject private var voice = VoiceCaptureController()
+    @State private var showMicDenied = false
     @State private var pickerItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var isLoading = false
@@ -90,7 +92,21 @@ struct FieldCoachPanel: View {
             RoundedRectangle(cornerRadius: AppTheme.radiusLg, style: .continuous)
                 .stroke(AppTheme.border, lineWidth: 1)
         )
-        .navigationDestination(item: $navigateRecipe) { recipe in
+        .alert("Microphone is off", isPresented: $showMicDenied) {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                Button("Type instead", role: .cancel) {}
+            } message: {
+                Text("Enable the microphone to dictate scene notes for Field Coach.")
+            }
+            .onChange(of: voice.phase) { _, phase in
+                if case .error = phase, voice.permission == .denied { showMicDenied = true }
+            }
+            .onDisappear { voice.cancel() }
+            .navigationDestination(item: $navigateRecipe) { recipe in
             RecipeDetailView(recipe: recipe)
         }
         .onChange(of: pickerItem) { _, item in
@@ -181,20 +197,27 @@ struct FieldCoachPanel: View {
                 message = chip
             }
 
-            TextField("e.g. silky waterfall, keep rocks sharp…", text: $message, axis: .vertical)
-                .lineLimit(compact ? 2...4 : 3...5)
-                .font(AppTheme.body())
-                .foregroundStyle(AppTheme.ink)
-                .padding(AppTheme.space3)
-                .frame(minHeight: compact ? 72 : 88, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
-                        .fill(AppTheme.bgElevated)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
-                                .stroke(AppTheme.border, lineWidth: 1)
-                        )
-                )
+            HStack(alignment: .top, spacing: AppTheme.space2) {
+                TextField("e.g. silky waterfall, keep rocks sharp…", text: $message, axis: .vertical)
+                    .lineLimit(compact ? 2...4 : 3...5)
+                    .font(AppTheme.body())
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(AppTheme.space3)
+                    .frame(minHeight: compact ? 72 : 88, alignment: .topLeading)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                            .fill(AppTheme.bgElevated)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                                    .stroke(AppTheme.border, lineWidth: 1)
+                            )
+                    )
+                VoiceDictateButton(controller: voice, enabled: !isLoading) { text in
+                    appendVoice(text)
+                }
+            }
+            VoiceStatusCaption(controller: voice)
+
 
             submitButton(title: isLoading ? "Matching a recipe…" : "Recommend a recipe", enabled: canSubmitDescribe)
         }
@@ -246,24 +269,38 @@ struct FieldCoachPanel: View {
                 }
             }
 
-            TextField("Optional scene note…", text: $message, axis: .vertical)
-                .lineLimit(1...3)
-                .font(AppTheme.bodySm())
-                .padding(AppTheme.space3)
-                .background(
-                    RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
-                        .fill(AppTheme.bgElevated)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
-                                .stroke(AppTheme.border, lineWidth: 1)
-                        )
-                )
+            HStack(alignment: .center, spacing: AppTheme.space2) {
+                TextField("Optional scene note…", text: $message, axis: .vertical)
+                    .lineLimit(1...3)
+                    .font(AppTheme.bodySm())
+                    .padding(AppTheme.space3)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
+                            .fill(AppTheme.bgElevated)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
+                                    .stroke(AppTheme.border, lineWidth: 1)
+                            )
+                    )
+                VoiceDictateButton(controller: voice, enabled: !isLoading) { text in
+                    appendVoice(text)
+                }
+            }
+
 
             submitButton(
                 title: isLoading ? "Matching a recipe…" : "Recommend from photo",
                 enabled: selectedImage != nil && !isLoading
             )
         }
+    }
+
+    
+    private func appendVoice(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        let cur = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        message = cur.isEmpty ? t : cur + " " + t
     }
 
     private var canSubmitDescribe: Bool {

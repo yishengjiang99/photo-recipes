@@ -63,6 +63,19 @@ struct SettingsView: View {
                         LabeledContent("Monthly", value: IAPProductID.monthly)
                     }
 
+                    Section("Voice") {
+                        Toggle("Auto Optimize after voice", isOn: Binding(
+                            get: { VoiceSettings.autoOptimizeAfterVoice },
+                            set: { VoiceSettings.autoOptimizeAfterVoice = $0 }
+                        ))
+                        Text("Off by default. When on, finishing a Camera dictate can start Auto Optimize.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Voice becomes text for scene matching. We don't keep audio clips.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Section("About") {
                         LabeledContent("Bundle ID", value: "com.yishengjiang.photorecipes")
                         Text("Field technique assistant — recipes with dials + checklists. Not a filter / AI-magic camera app.")
@@ -90,7 +103,7 @@ struct SettingsView: View {
         defer { isChecking = false }
         do {
             let h = try await api.health()
-            healthText = "ok=\(h.ok) hasKey=\(h.hasKey ?? false) stripe=\(h.stripe ?? false) vision=\(h.vision ?? false)"
+            healthText = "ok=\(h.ok) hasKey=\(h.hasKey ?? false) stripe=\(h.stripe ?? false) vision=\(h.vision ?? false) stt=\(h.stt ?? false)"
             await entitlements.refresh()
         } catch {
             healthText = error.localizedDescription

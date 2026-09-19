@@ -167,6 +167,80 @@ final class APIClient: ObservableObject {
         return decoded ?? IAPVerifyResponse(ok: true, pro: true, status: "active", plan: plan.rawValue, error: nil)
     }
 
+
+    // MARK: - Speech-to-text (Grok via /api/stt)
+
+    struct STTResponse: Decodable {
+        var text: String?
+        var error: String?
+    }
+
+    /// Upload recorded audio; server holds XAI_API_KEY. Does not burn Ask/Optimize quota.
+    func transcribeAudio(data: Data, filename: String = "scene.m4a", mimeType: String = "audio/mp4") async throws -> String {
+        let boundary = "pr-\(UUID().uuidString)"
+        var req = URLRequest(url: try url("/api/stt"))
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func append(_ s: String) { body.append(Data(s.utf8)) }
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"audio\"; filename=\"\(filename)\"\r\n")
+        append("Content-Type: \(mimeType)\r\n\r\n")
+        body.append(data)
+        append("\r\n--\(boundary)--\r\n")
+        req.httpBody = body
+
+        let (respData, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        let decoded = try? decoder.decode(STTResponse.self, from: respData)
+        if http.statusCode == 503 {
+            throw APIError.missingKey(decoded?.error ?? "XAI_API_KEY is not set")
+        }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.http(http.statusCode, decoded?.error ?? String(data: respData, encoding: .utf8))
+        }
+        let text = decoded?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if text.isEmpty {
+            throw APIError.http(422, decoded?.error ?? "Didn't catch that — try again")
+        }
+        return text
+    }
+
+    // MARK: - Describe scene (lightweight vision caption)
+
+    struct DescribeSceneResponse: Decodable {
+        var text: String?
+        var error: String?
+    }
+
+    /// Viewfinder caption for scene prefill. Does NOT burn Ask/Auto Optimize quota.
+    func describeScene(imageJPEGData: Data) async throws -> String {
+        let payload = ["image": "data:image/jpeg;base64,\(imageJPEGData.base64EncodedString())"]
+        var req = URLRequest(url: try url("/api/describe-scene"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try encoder.encode(payload)
+
+        let (respData, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        let decoded = try? decoder.decode(DescribeSceneResponse.self, from: respData)
+        if http.statusCode == 503 {
+            throw APIError.missingKey(decoded?.error ?? "XAI_API_KEY is not set")
+        }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.http(http.statusCode, decoded?.error ?? String(data: respData, encoding: .utf8))
+        }
+        let text = decoded?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if text.isEmpty {
+            throw APIError.http(422, decoded?.error ?? "Couldn't describe scene")
+        }
+        return text
+    }
+
     // MARK: - Helpers
 
     private func get<T: Decodable>(_ req: URLRequest) async throws -> T {

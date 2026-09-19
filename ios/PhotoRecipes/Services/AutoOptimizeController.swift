@@ -110,7 +110,7 @@ final class AutoOptimizeController: ObservableObject {
         verifyWarning = nil; agentBaseline = nil; isDirtyOverride = false
     }
 
-    func run(session: CameraSession, entitlements: EntitlementsStore, preferStagedRecipeId: String?) async {
+    func run(session: CameraSession, entitlements: EntitlementsStore, preferStagedRecipeId: String?, sceneNote: String = "") async {
         guard !phase.isRunning else { return }
         guard canRun(isPro: entitlements.isPro) else {
             phase = .error("Free Peek limit reached — upgrade for unlimited Auto Optimize")
@@ -137,11 +137,14 @@ final class AutoOptimizeController: ObservableObject {
         let message = """
         Auto Optimize for live capture. Prefer a field recipe from the book presets.         Respond with the best preset for this scene and a short reason.         Focus on exposure triangle and technique — no beauty filters or sky replacement.
         """
+        let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let messageWithNote = note.isEmpty ? message : message + "
+Photographer scene note: \(note)"
 
         let response: RecommendResponse
         do {
             response = try await api.recommend(
-                message: message,
+                message: messageWithNote,
                 favorites: Array(entitlements.favoriteIds),
                 imageJPEGData: probe
             )

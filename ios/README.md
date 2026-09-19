@@ -79,6 +79,17 @@ UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agen
 
 ### Permissions (`Info.plist`)
 
+
+## Voice / Grok STT + scene prefill
+
+- **Mic** on Field Coach (Describe / optional photo note) and Camera (scene field above Auto Optimize).
+- **Pattern:** tap to talk → tap Stop → audio uploads to `POST /api/stt` (Grok). No live partials in v1; v1.1 may add WSS `interim_results` / `smart_turn` via a server proxy.
+- **API key stays on the server** — never embedded in the app.
+- **Describe scene:** Camera on appear (and Refresh) calls `POST /api/describe-scene` with a viewfinder probe JPEG. Soft-fails to the placeholder. Chip: `From viewfinder`.
+- **Quota:** STT + describe-scene do **not** burn Ask / Auto Optimize quota. Optimize still does.
+- **Settings:** “Auto Optimize after voice” defaults **OFF**. Privacy: voice becomes text for scene matching; we don’t keep audio clips.
+- **Permission:** `NSMicrophoneUsageDescription` in Info.plist.
+
 - `NSCameraUsageDescription` — live capture  
 - `NSPhotoLibraryAddUsageDescription` — save to Camera Roll  
 - `NSPhotoLibraryUsageDescription` — Ask vision picker  

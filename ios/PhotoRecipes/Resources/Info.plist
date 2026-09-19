@@ -48,5 +48,7 @@
 	<string>Photo Recipes saves captures to your Camera Roll.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Photo Recipes uses motion to show a horizon level while shooting.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Photo Recipes uses the microphone so you can dictate a scene description for Field Coach and Auto Optimize.</string>
 </dict>
 </plist>
