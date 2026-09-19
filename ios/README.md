@@ -259,6 +259,16 @@ For local/sandbox StoreKit testing, use `ios/PhotoRecipes/Resources/Products.sto
 - [ ] **Push timing:** no prompt on install/launch; first successful AO triggers one prompt; accept/deny is not repeated on later AO runs.
 - [ ] **Push deep link:** tap a delivered notification and confirm `photo-recipes://auto-optimize` opens the Camera AO flow.
 
+## GitHub Actions → TestFlight
+
+CI can Archive + upload without a local Mac:
+
+1. Repo secrets (already set): `APP_STORE_CONNECT_API_KEY_P8`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`
+2. GitHub → **Actions** → **iOS TestFlight** → **Run workflow**
+3. Build number = Actions run number. Wait for ASC processing, then add internal testers (e.g. `yisheng.jiang@gmail.com`).
+
+Uses automatic signing via the App Store Connect API key (`-allowProvisioningUpdates`). First run may create the App Store distribution profile on the team.
+
 ## Done vs next
 
 **Done in this PR**
