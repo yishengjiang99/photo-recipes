@@ -1,9 +1,10 @@
 # Agentic Prompt v2 — Auto Optimize / Recommend
 
 **Extends:** [`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)  
+**Primary story:** Point the camera at the shot → Sense (viewfinder/image) → Auto Optimize → apply `phoneTargets` (shutter/ISO/EV/WB/focus[/zoom]).  
 **Implements:** Sense → reason with tools → act (phone targets) → verify (mental check) → finalize  
 **Server:** `server/recommend.ts` (`POST /api/recommend`)  
-**Related:** `server/describeScene.ts` (scene prefill), `server/stt.ts` (voice → camera intents / Auto Optimize apply path — not text-field-only)
+**Related:** `server/describeScene.ts` (viewfinder scene prefill), `server/stt.ts` (alternate input — transcripts feed the same recommend/apply path)
 
 ---
 
@@ -13,16 +14,17 @@ Keep this text in sync with `buildSystemPrompt()` in `server/recommend.ts`. Favo
 
 ```
 You are the Photo Recipes field assistant for Auto Optimize (Camera) and Ask / Photo Vision (web + iOS).
+Primary job: analyze the scene from the viewfinder (image + optional note) → select one catalog recipe → emit phoneTargets for Auto Optimize to apply.
 Tone: darkroom field notes — quiet, concrete, instructor-at-your-shoulder. Never chatty. Never invent recipes.
 
 LOOP (strict):
 1. SENSE — {vision: Inspect the attached image plus any scene note. Infer light (direction/quality/contrast), motion, subject, depth cues, and dynamic range. Status-ready — think like a viewfinder caption, not a chat reply. | text: Infer light, motion, subject, and depth from the photographer's scene note. Status-ready field notes only.}
 2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id (keep current recipe if it fits, or a better catalog match).
 3. ACT / FINALIZE — Call select_preset with structured phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY — Targets match the recipe technique and any spoken control ask; shutter/ISO/EV/zoom phone-plausible; aperture/ND/tripod in coachOnly; panCue only for panning/motion.
+4. VERIFY — Targets match the recipe technique and any control ask in the note; shutter/ISO/EV/zoom phone-plausible; aperture/ND/tripod in coachOnly; panCue only for panning/motion.
 
-VOICE / SPOKEN CAMERA INTENTS:
-- STT transcripts may be camera control asks — still call tools and emit phoneTargets (same apply path as Auto Optimize / AVCapture). Never text-field-only.
+ALTERNATE INPUT (spoken / STT transcripts — secondary):
+- When the user message is a voice transcript, treat it as another way into the same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
 - Examples: "slower shutter for panning" → shutter + panCue; "lock focus on the rider" → focusMode (+ focusPoint); "go to 2x" → zoom; EV/WB similarly.
 - Control adjustments: phoneTargets MUST include the relevant keys (not empty {}).
 
@@ -67,7 +69,7 @@ CRITICAL RULES:
 | `tips` | | Array of strings; **max 3** |
 | `phoneTargets` | ✓ | Object; see §3 (may be empty `{}` if nothing phone-applicable) |
 | `coachOnly` | ✓ | Object; aperture / nd / tripod / notes |
-| `panCue` | | `{ direction: 'left'\|'right'\|'either', note? }` when panning fits |
+| `panCue` | | `{ direction: 'left'|'right'|'either', note? }` when panning fits |
 | `senseSummary` | | One-line status: light / motion / subject |
 
 **Validation (server):** unknown `presetId` rejected; empty `reason` / `teachWhy` rejected; `tips.length > 3` rejected; bad `panCue.direction` rejected. Failed select does **not** end the loop — model can retry with a valid id.
@@ -92,7 +94,7 @@ CRITICAL RULES:
 
 **Additive / optional:** every `phoneTargets` key is optional. Older iOS builds that do not know `zoom` / `focusPoint` must **ignore unknown keys** (JSON decode with unknown keys discarded). Do not require new keys for catalog-only Auto Optimize.
 
-iOS Auto Optimize applies `phoneTargets` to the live `AVCapture` session (same path for voice follow-ups and button Auto Optimize). `coachOnly` stays UI-only.
+iOS Auto Optimize applies `phoneTargets` to the live `AVCapture` session (default path: viewfinder → Auto Optimize button). Spoken follow-ups reuse that same apply helper. `coachOnly` stays UI-only.
 
 ---
 
@@ -164,23 +166,23 @@ Older clients that ignore unknown keys (current iOS `RecommendResponse`, web Fie
 
 | Client | Contract |
 |--------|----------|
-| **iOS Auto Optimize** | Still uses `presetId` / `reason` / `preset` / `tips`. Can adopt `teachWhy`, `phoneTargets`, `panCue`, `senseSummary` for Teach sheet + apply without schema break. |
+| **iOS Auto Optimize** | Default path: viewfinder frame (+ optional note) → recommend → apply `phoneTargets`. Uses `presetId` / `reason` / `preset` / `tips`; can adopt `teachWhy`, `phoneTargets`, `panCue`, `senseSummary` for Teach sheet + apply. |
 | **iOS Ask** | Same recommend endpoint; additive fields optional. |
 | **Web FieldCoach / Ask** | Reads `reason`, `tips`, `preset`; new fields ignored until UI wired. |
-| **describe-scene** | Status-ready scene note → feeds Sense as text/note; not a recommend. |
-| **STT** | Photo keyterms bias; transcript is a **camera intent** for the shared Auto Optimize apply path (recommend → phoneTargets → AVCapture) — not Ask text-field-only. |
+| **describe-scene** | Status-ready scene note from the viewfinder → feeds Sense as text/note; not a recommend. |
+| **STT (secondary)** | Photo keyterms bias; transcript is an **alternate input** into the same Auto Optimize apply path (recommend → phoneTargets → AVCapture). |
 | **Quota** | Free Peek Ask/Vision/Auto Optimize pool unchanged (`checkAskGrokQuota`). |
 
 ---
 
-## 8. Voice → STT → recommend tools → apply phoneTargets
+## 8. Alternate input — Voice → STT → same recommend/apply path
 
-Voice is **not** text-field-only. It shares the Auto Optimize apply path:
+Voice is **secondary**, not the product lead. Default UX is point-camera → Auto Optimize. Spoken input is another way into the **same** apply path:
 
 ```
-Mic capture
+Mic capture (optional)
   → POST /api/stt (Grok STT, photo keyterms)
-  → transcript as recommend `message` (spoken camera intent and/or scene note)
+  → transcript as recommend `message` (spoken control intent and/or scene note)
   → POST /api/recommend (agent tools: list_presets → select_preset)
   → response.phoneTargets (+ panCue if needed) applied to AVCapture session
   → optional teachWhy / tips shown in Teach / coach UI
@@ -188,12 +190,12 @@ Mic capture
 
 | Step | Owner | Contract |
 |------|-------|----------|
-| STT | Server `stt.ts` | `{ text }` transcript — camera intent vocabulary |
+| STT | Server `stt.ts` | `{ text }` transcript — field vocabulary bias |
 | Recommend | Server `recommend.ts` | Tools + `phoneTargets` / `panCue` / `teachWhy` |
 | Apply | **iOS** (Ios Expert) | Map `phoneTargets` → session (shutter/ISO/EV/WB/focus/zoom/focusPoint); show `panCue`; optional Teach sheet |
 | Web Ask | Web | May still treat transcript as Field Coach text until wired; ignore unknown keys |
 
-**Same apply path:** button Auto Optimize and voice follow-ups both end in applying `phoneTargets` to the capture session. Voice must not only fill an Ask text field.
+**Same apply path:** button Auto Optimize (primary) and spoken follow-ups (secondary) both end in applying `phoneTargets` to the capture session.
 
 ---
 
@@ -220,7 +222,7 @@ Leave wiring to Ios Expert; server/doc contract:
 1. **Decode additively** — ignore unknown `phoneTargets` keys on older builds.
 2. **`zoom?: number`** — set `AVCaptureDevice.videoZoomFactor` (clamp to device min/max). Optionally map 0.5 / 1 / 2 to ultra-wide / wide / tele lens switch when available.
 3. **`focusPoint?: { x, y }`** — 0–1 normalized; drive tap-to-focus / focus-of-interest. If omitted, apply `focusMode` only.
-4. **Shared apply** — voice recommend responses use the **same** apply helper as Auto Optimize (shutter, ISO, EV, WB, focus, zoom).
+4. **Shared apply** — spoken recommend responses use the **same** apply helper as Auto Optimize (shutter, ISO, EV, WB, focus, zoom).
 5. **`panCue`** — overlay / coach cue only; not an AVCapture lock.
 6. **`teachWhy`** — Teach mode sheet; optional after apply.
 
@@ -228,8 +230,7 @@ Leave wiring to Ios Expert; server/doc contract:
 
 ## 11. Branch / base notes
 
-
-This PR is based on `feat/fieldcoach-voice-input` (PR #4) so `describeScene.ts` / `stt.ts` and their index mounts ship with aligned field-coach tone. Prefer merging #4 first, or merge this PR which includes those routes.
+This branch merges latest `main` (including #11 voice→shared Auto Optimize apply wiring). Prompt/schema work stays additive: `zoom`, `focusPoint`, `panCue`, `teachWhy`, `coachOnly` remain optional.
 
 ---
 

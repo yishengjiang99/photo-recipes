@@ -341,3 +341,10 @@ See **[`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)** and the
 ## Addendum — Voice input
 
 Mic → recording pulse → transcript-in-field → stop/done on Ask + Camera: **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.
+
+
+---
+
+## Addendum — SEO landing
+
+Marketing site layout (hero, dual-phone, features, FAQ, footer): **[`design-handoff-landing-v1.md`](./design-handoff-landing-v1.md)**.

@@ -63,6 +63,15 @@ struct SettingsView: View {
                         LabeledContent("Monthly", value: IAPProductID.monthly)
                     }
 
+                    Section("Voice") {
+                        Text("Camera dictate runs the same Auto Optimize → apply path as the button (including phoneTargets). Uses your Optimize quota.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Field Coach mic fills the Ask field only — tap Recommend after. Voice becomes text for scene matching; we don't keep audio clips.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Section("About") {
                         LabeledContent("Bundle ID", value: "com.yishengjiang.photorecipes")
                         Text("Field technique assistant — recipes with dials + checklists. Not a filter / AI-magic camera app.")
@@ -90,7 +99,7 @@ struct SettingsView: View {
         defer { isChecking = false }
         do {
             let h = try await api.health()
-            healthText = "ok=\(h.ok) hasKey=\(h.hasKey ?? false) stripe=\(h.stripe ?? false) vision=\(h.vision ?? false)"
+            healthText = "ok=\(h.ok) hasKey=\(h.hasKey ?? false) stripe=\(h.stripe ?? false) vision=\(h.vision ?? false) stt=\(h.stt ?? false)"
             await entitlements.refresh()
         } catch {
             healthText = error.localizedDescription

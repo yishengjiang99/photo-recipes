@@ -51,4 +51,6 @@ struct HealthResponse: Codable, Hashable {
     var hasKey: Bool?
     var stripe: Bool?
     var vision: Bool?
+    var stt: Bool?
+    var describeScene: Bool?
 }

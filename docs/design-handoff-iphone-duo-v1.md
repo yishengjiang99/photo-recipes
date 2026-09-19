@@ -90,3 +90,10 @@ Regenerate from this handoff if product UI drifts (Field Coach / voice / agent s
 ---
 
 *Designer · iPhone duo marketing v1*
+
+
+---
+
+## Addendum — iPhone + Android duo
+
+For platform breadth, pair iPhone + **regular Android** (thicker bezels). Spec: **[`design-handoff-phones-v1.md`](./design-handoff-phones-v1.md)** §4. Assets: `assets/marketing/phones-duo-iphone-android-camera.png`.

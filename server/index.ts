@@ -72,6 +72,7 @@ app.get('/api/health', (_req, res) => {
     stripe: Boolean(getStripe()),
     vision: true,
     stt: Boolean(process.env.XAI_API_KEY?.trim()),
+    describeScene: Boolean(process.env.XAI_API_KEY?.trim()),
   })
 })
 

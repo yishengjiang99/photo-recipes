@@ -138,7 +138,7 @@ const tools = [
     function: {
       name: 'select_preset',
       description:
-        'Finalize Auto Optimize / voice camera intents: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (shutter/ISO/EV/WB/focus/zoom/focusPoint), coach-only guidance, optional pan cue, and teachWhy. For spoken control tweaks, phoneTargets MUST reflect the ask. This ends the loop.',
+        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (shutter/ISO/EV/WB/focus/zoom/focusPoint), coach-only guidance, optional pan cue, and teachWhy. If the user message includes a control tweak (typed or spoken transcript), phoneTargets MUST reflect that ask. This ends the loop.',
       parameters: {
         type: 'object',
         properties: {
@@ -165,7 +165,7 @@ const tools = [
           phoneTargets: {
             type: 'object',
             description:
-              'Only values a phone camera API can apply (shutter, iso, ev, whiteBalance, focusMode, zoom, focusPoint). For spoken control intents, include the keys that match the ask. Omit keys you cannot set.',
+              'Only values a phone camera API can apply (shutter, iso, ev, whiteBalance, focusMode, zoom, focusPoint). When the user asks for a control tweak, include the keys that match. Omit keys you cannot set.',
             properties: {
               shutter: {
                 type: 'string',
@@ -554,17 +554,18 @@ export function buildSystemPrompt(favorites?: string[], vision?: boolean): strin
     : `SENSE (text): Infer light, motion, subject, and depth from the photographer's scene note. Status-ready field notes only.`
 
   return `You are the Photo Recipes field assistant for Auto Optimize (Camera) and Ask / Photo Vision (web + iOS).
+Primary job: analyze the scene from the viewfinder (image + optional note) → select one catalog recipe → emit phoneTargets for Auto Optimize to apply (shutter/ISO/EV/WB/focus[/zoom]).
 Tone: darkroom field notes — quiet, concrete, instructor-at-your-shoulder. Never chatty. Never invent recipes.
 
 LOOP (strict):
 1. SENSE — ${senseLine}
 2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id (keep the current recipe if it already fits, or switch to a better catalog match).
 3. ACT / FINALIZE — Call select_preset with structured phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY (mental check before select_preset) — Targets match the recipe technique and any spoken control ask; shutter/ISO/EV/zoom are phone-plausible; aperture/ND/tripod stay in coachOnly; panCue only for panning/motion recipes.
+4. VERIFY (mental check before select_preset) — Targets match the recipe technique and any control ask in the note; shutter/ISO/EV/zoom are phone-plausible; aperture/ND/tripod stay in coachOnly; panCue only for panning/motion recipes.
 
-VOICE / SPOKEN CAMERA INTENTS:
-- User messages may be STT transcripts of camera control asks (not only scene descriptions for Ask text).
-- Even without picking a new recipe, you MUST still call tools and emit phoneTargets that match the ask — same apply path as Auto Optimize (AVCapture session), never text-field-only.
+ALTERNATE INPUT (spoken / STT transcripts — secondary):
+- When the user message is a voice transcript, treat it as another way into the same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
+- Even without picking a new recipe, you MUST still call tools and emit phoneTargets that match the ask — same apply path as Auto Optimize (AVCapture session).
 - Map spoken intents → phoneTargets (and panCue / teachWhy when useful), e.g.:
   • "slower shutter for panning" → phoneTargets.shutter (e.g. "1/30") + panCue + teachWhy
   • "lock focus on the rider" → phoneTargets.focusMode "locked" (+ optional focusPoint {x,y} 0–1 if you can infer a region)
@@ -742,7 +743,7 @@ export async function recommendWithGrok(
       messages.push({
         role: 'user',
         content:
-          'Finalize now: call select_preset with a valid catalog presetId, reason, teachWhy, phoneTargets matching any spoken control ask (shutter/ISO/EV/WB/focus/zoom/focusPoint), and coachOnly (and panCue if panning).',
+          'Finalize now: call select_preset with a valid catalog presetId, reason, teachWhy, phoneTargets matching any control ask in the note (shutter/ISO/EV/WB/focus/zoom/focusPoint), and coachOnly (and panCue if panning).',
       })
     }
   }

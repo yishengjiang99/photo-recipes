@@ -24,12 +24,13 @@ Keep Ask Grok / Photo Vision as **coach into a recipe**, then hand off into Came
 
 ## 1. Design principles (camera-specific)
 
-1. **Viewfinder is sacred** — chrome is thin, high-contrast, mostly black scrims + hairlines. No rose glow panels over the preview.
-2. **Dials = physical language** — same DialCluster visual system as Detail, but interactive; values use `font-mono` / semibold.
-3. **One primary capture action** — shutter is the only large filled control in the bottom safe area.
-4. **Recipe is a session badge** — always visible when applied; easy to clear without leaving camera.
-5. **Pro gate is clear, not muddy** — show locked dials at rest with a single upgrade strip; never pink-wash the entire preview.
-6. **Outdoor legibility** — labels ≥ `ink-secondary`; critical EXIF/readouts white; minimum 44pt hits.
+1. **Photograph first, UI second** — live preview is **edge-to-edge (100% of the screen)**; chrome is **overlaid**, never stacked panels that shrink the picture.
+2. **Viewfinder is sacred** — only safe-area insets + thin gradient scrims under floating controls. No rose glow panels; no card stacks eating preview height.
+3. **Dials / Teach = sheets** — Manual dials and Teach mode live behind **one overflow (`···`) or sheet**, not persistent on-canvas chrome.
+4. **One primary capture action** — shutter remains the large center control; Auto Optimize is compact overlaid, not a second full-width panel tower.
+5. **Recipe is a session badge** — compact pill over the preview; easy to clear.
+6. **Pro gate is clear, not muddy** — sheets over full preview; never pink-wash the frame.
+7. **Outdoor legibility** — white readouts with hairline shadow; minimum 44pt hits.
 
 **Reuse tokens** from handoff v1 (`bg`, `surface`, `border`, `ink*`, `accent`, `tip`, radii, space). Camera adds:
 
@@ -57,52 +58,67 @@ Camera is the launch surface after pivot.
 
 ---
 
-## 3. Screen: Viewfinder (default chrome)
+## 3. Screen: Viewfinder — full-bleed preview (canonical)
 
-### Layout (portrait primary; landscape: mirror chrome to edges)
+**Canonical principle: photograph first, UI second.**
+
+### Layout (critical)
+
+- Live preview = **100% of the screen** (width and height).
+- Respect **safe-area insets only** (notch / Island / home indicator / Android cutout + nav). Do **not** reserve a middle “content column” or stacked card stack that letterboxes the camera.
+- All controls are **overlays** on top of the preview (absolute / ZStack), not siblings that compress it.
 
 ```
 ┌─────────────────────────────┐
-│ scrim top                   │
-│ [Flash] [Ratio]    [Flip]   │  ← icon buttons, 44pt
+│ ← full-bleed LIVE PREVIEW → │
+│ [flash][aspect]    [flip][···] │  floating, safe-area top
 │                             │
-│     LIVE PREVIEW            │
+│  ‹                     ›    │  pan cues (when needed)
 │                             │
-│  (optional grid 3×3, 20% white) │
-│                             │
-│ [Recipe badge or + Recipe]  │  ← floating above bottom scrim
-│ scrim bottom                │
-│ [Gallery]  ( SHUTTER )  [Dials] │
-│     mode readout strip      │
+│   [status pill]             │  e.g. Reading light…
+│   [scene chip ▾] [mic]      │  collapsible; minimal
+│   [⚡ Auto Optimize]        │  compact pill, not a panel
+│   [before→after] (ephemeral)│
+│ [gallery] ( SHUTTER ) [cue] │  bottom safe-area overlay
 └─────────────────────────────┘
 ```
 
-### Top chrome
-- **Flash:** Off / On / Auto — cycle; icon + tiny caption on long-press menu if needed.
-- **Aspect:** `4:3` default (sensor), optional `1:1` / `16:9` crop guides only (don’t letterbox aggressively).
-- **Flip:** front/back.
-- **Status (trailing or under top):** tiny `4K` / `PHOTO` if modes expand later — default still **Photo**.
+### Chrome density (reduce vs older mocks)
 
-### Bottom chrome
-- **Gallery thumb** — last capture; opens Photos/limited library sheet.
-- **Shutter** — 72–80pt outer ring (`shutter-ring`), 58–64pt inner fill (`shutter-core`). Press scale 0.94. Disabled state 40% opacity when permission missing.
-- **Dials affordance** — aperture-ring glyph button; opens Manual dials overlay (Pro) or Pro gate sheet (Free).
+| Keep overlaid (always or contextual) | Hide behind `···` / sheets |
+|--------------------------------------|----------------------------|
+| Flash, flip (top) | Aspect ratio, grid, settings |
+| Status pill (agent) | Teach mode (“Why this?”) |
+| Compact **Auto Optimize** | Full Field Coach / long scene textarea |
+| Shutter · gallery thumb | Manual dials cluster (sheet) |
+| Mic (icon) | Extended recipe steps checklist |
+| Pan ←→ cues when agent asks | Secondary mode readouts |
+| Collapsible scene / `From viewfinder` chip | Recipe library browser |
 
-### Mode readout strip (always on)
-Single line, mono/`body-sm`, white text with black hairline shadow for glare:
-`A · f/5.6 · 1/125 · ISO 200`  
-When recipe applied, prefix chip (see §5).
+**Anti-pattern (retired):** Tall bottom “panel stack” (large scene textarea + dual cards + wide CTA block) that shrinks the preview to a letterboxed rectangle.
 
-### Grid / level (Settings toggles)
-- Rule-of-thirds: 1px `rgba(255,255,255,0.22)`.
-- Horizon level: tip-colored when ±1° (optional v1.1).
+### Top overlay
+- Safe-area top padding only.
+- Icon buttons on translucent circular hits (`rgba(0,0,0,0.35)`), white glyphs — **no** solid toolbars.
+- Trailing **`···`** opens overflow sheet: Manual dials, Teach, grid, aspect, settings.
+
+### Bottom overlay
+- Gradient scrim only under controls: transparent → `camera-scrim` over ~96–120pt (does not crop the sensor feed; it’s drawn on top).
+- **Shutter** center, 72–80pt, clears home indicator ≥8pt.
+- **Gallery** leading · **overflow shortcut / last cue** trailing (or flip if flip is top-only).
+- **Auto Optimize**: compact pill (height 40–44), accent fill, sits **above** shutter row — single line label `Auto Optimize` / `Optimizing…`. Not a full-width marketing panel.
+- **Status pill**: single line above Auto Optimize when running/ready.
+- **Scene chip**: collapsed default shows one line or `From viewfinder` + chevron; expand inline to edit (or sheet). Mic icon adjacent.
+- Mode readout strip: optional tiny mono line under shutter; omit on short Android if cluttered.
+
+### Scrims
+- Prefer **edge gradients** under floating controls, not opaque bars.
+- `camera-scrim-strong` only for permission / hard errors (still can dim preview, not replace with empty letterbox layout).
 
 ### Do / Don’t
-- **Do** keep chrome ≤ 20% of vertical space combined (top+bottom scrims).  
-- **Don’t** put Ask Grok cards or library lists on top of the preview.  
-- **Don’t** use purple vision glow on camera chrome.
-
----
+- **Do** keep interactive chrome visually ≤ ~15% of the pixels; preview always full-bleed behind.
+- **Don’t** put Ask Grok cards, dual Vision panels, or tall forms on the Camera tab.
+- **Don’t** use purple AI glow or stacked glass cards over the center of the frame.
 
 ## 4. Overlay: Manual dials
 
@@ -231,7 +247,7 @@ Annual remains **primary CTA** on paywall.
 ## 10. Engineer checklist — iOS Expert (priority)
 
 - [ ] Camera tab as default root; AVCamera preview + permission flows §6.  
-- [ ] Viewfinder chrome §3 (flash, flip, shutter, gallery, dials button, readout strip).  
+- [ ] Full-bleed preview §3 — overlays only (flash/flip/`···`, status, compact Auto Optimize, collapsible scene+mic, shutter/gallery); dials+Teach in sheets.  
 - [ ] Manual dials overlay §4 wired to capture device controls; respect device limits.  
 - [ ] Apply recipe session model §5 (stage / apply / clamp / clear); badge + readout.  
 - [ ] Pro gate §7 via existing StoreKit Pro entitlement; Free = auto + read-only recipe dials.  
@@ -272,3 +288,16 @@ North star loop (sense → reason/tools → apply → verify → capture) and UI
 ## Addendum — Voice input
 
 Dictate scene for agent hints: see **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.
+
+
+---
+
+## Addendum — Direction arrows & multi-phone
+
+Pan/point chevrons on viewfinder + regular Android layouts: **[`design-handoff-phones-v1.md`](./design-handoff-phones-v1.md)** §3–4.
+
+---
+
+## Addendum — Full-bleed camera (critical)
+
+**User mandate:** edge-to-edge live picture; **simpler buttons overlaid** on the viewfinder. Stacked panels that shrink the preview are out of spec. See §1 and §3 (rewritten). Regenerate marketing mocks that show letterboxed camera chrome when practical; docs are source of truth meanwhile.

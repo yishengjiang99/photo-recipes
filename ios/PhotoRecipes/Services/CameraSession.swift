@@ -308,6 +308,56 @@ final class CameraSession: NSObject, ObservableObject {
         return true
     }
 
+
+    /// Shared with Auto Optimize button + Camera voice: write phone-settable targets when Pro.
+    @discardableResult
+    func applyPhoneTargets(_ targets: PhoneTargets, asPro: Bool) -> Bool {
+        guard asPro else {
+            clampMessages.append("Pro required to write phoneTargets (shutter/ISO/EV/focus).")
+            return false
+        }
+        var wrote = false
+        if let raw = targets.shutter, let sec = RecipeCameraMapper.parseShutter(raw) {
+            setShutter(sec)
+            wrote = true
+        }
+        if let raw = targets.iso, let val = RecipeCameraMapper.parseISO(raw) {
+            setISO(val)
+            wrote = true
+        }
+        if let raw = targets.ev, let bias = RecipeCameraMapper.parseEV(raw) {
+            setEV(bias)
+            wrote = true
+        }
+        if let focus = targets.focusMode?.lowercased() {
+            switch focus {
+            case "locked", "lock", "near":
+                let pt = focusPoint ?? CGPoint(x: 0.5, y: 0.5)
+                focus(at: pt, lock: true)
+                wrote = true
+            case "continuous", "auto", "infinity":
+                unlockFocus()
+                wrote = true
+            default:
+                clampMessages.append("Focus mode “\(focus)” left as guidance.")
+            }
+        }
+        if let wb = targets.whiteBalance, !wb.isEmpty {
+            if capabilities.supportsWhiteBalanceLock, let device = input?.device {
+                configure(device) {
+                    if device.isWhiteBalanceModeSupported(.locked) {
+                        device.whiteBalanceMode = .locked
+                    }
+                }
+                whiteBalanceLocked = true
+                wrote = true
+            } else {
+                clampMessages.append("WB “\(wb)” — guidance only on this device.")
+            }
+        }
+        return wrote
+    }
+
     func clearRecipe() {
         appliedRecipeId = nil
         appliedRecipeTitle = nil

@@ -70,6 +70,23 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 
 UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
 
+### Viewfinder pan / point cues
+
+Quiet edge chevrons (`ViewfinderPanCuesView`) cue reframing from the active recipe + optional agent status:
+
+| Cue | When |
+|---|---|
+| Left + right | Motion / panning recipes (or status mentioning pan / motion) |
+| Down | Composition / get-low recipes (or status mentioning low / kneel) |
+| Up | Optional — only from agent status hooks (`look up` / `raise`) |
+
+Hide when no recipe and Auto Optimize is idle; clear with recipe clear. Ink/white @ ~0.7; soft pulse unless Reduce Motion.
+
+### Small-phone layout
+
+Camera chrome is compact-aware (`GeometryReader` + `horizontalSizeClass`): on ~320–375pt widths / short heights (SE, 375×667), Auto Optimize CTA shrinks to 44pt, shutter row uses tighter side frames, and horizontal padding drops so bottom chrome + status fit without overflowing Pro Max–only spacing. Mentally target 375×667 and 390×844.
+
+
 ### Device fallbacks
 
 - Ultra-wide / some formats: custom exposure unavailable → guidance + clamp banner  
@@ -79,6 +96,18 @@ UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agen
 
 ### Permissions (`Info.plist`)
 
+
+## Voice / Grok STT + scene prefill
+
+- **Mic** on Field Coach (Describe / optional photo note) and Camera (scene field above Auto Optimize).
+- **Pattern:** tap to talk → tap Stop → audio uploads to `POST /api/stt` (Grok). No live partials in v1; v1.1 may add WSS `interim_results` / `smart_turn` via a server proxy.
+- **API key stays on the server** — never embedded in the app.
+- **Describe scene:** Camera on appear (and Refresh) calls `POST /api/describe-scene` with a viewfinder probe JPEG. Soft-fails to the placeholder. Chip: `From viewfinder`.
+- **Quota:** STT + describe-scene do **not** burn Ask / Auto Optimize quota. Optimize still does.
+- **Camera mic:** after STT, always runs the **same** Auto Optimize → `apply` / `applyPhoneTargets` path as the button (uses Optimize quota). Ask mic only fills the text field.
+- **Privacy:** voice becomes text for scene matching; we don’t keep audio clips.
+- **Permission:** `NSMicrophoneUsageDescription` in Info.plist.
+
 - `NSCameraUsageDescription` — live capture  
 - `NSPhotoLibraryAddUsageDescription` — save to Camera Roll  
 - `NSPhotoLibraryUsageDescription` — Ask vision picker  
@@ -87,7 +116,7 @@ UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agen
 ### Architecture (new)
 
 ```
-Features/Camera/   CameraView, preview, dials, agent chips, teach sheet
+Features/Camera/   CameraView, preview, pan cues, dials, agent chips, teach sheet
 Services/          CameraSession, RecipeCameraMapper, AutoOptimizeController,
                    CameraRouter, HorizonMonitor, PhotoLibrarySaver
 ```
