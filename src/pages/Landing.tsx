@@ -12,6 +12,7 @@ import {
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Seo } from '../components/Seo'
+import { LandingEmailCapture } from '../components/LandingEmailCapture'
 import { useSubscription } from '../hooks/useSubscription'
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL } from '../lib/site'
 
@@ -511,6 +512,9 @@ export function Landing() {
               >
                 Open Free Peek
               </Link>
+            </div>
+            <div className="mt-10 flex justify-center border-t border-border/60 pt-8">
+              <LandingEmailCapture className="text-left sm:text-center [&_p]:sm:text-center" />
             </div>
             <p className="mt-3 text-xs text-ink-tertiary">
               7-day trial · Free Peek to browse · Cancel anytime
