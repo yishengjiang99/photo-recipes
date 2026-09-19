@@ -265,3 +265,10 @@ iOS can present viewfinder chrome, permission covers, manual dials (Pro), apply/
 ## Addendum — Agentic Auto Optimize
 
 North star loop (sense → reason/tools → apply → verify → capture) and UI (Auto Optimize CTA, status, before/after chip, override, teach mode): **[`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)**.
+
+
+---
+
+## Addendum — Voice input
+
+Dictate scene for agent hints: see **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.

@@ -234,3 +234,10 @@ Camera presents Auto Optimize as primary CTA; runs show live status; applies are
 ---
 
 *Designer · Agentic Auto Optimize handoff v1*
+
+
+---
+
+## Addendum — Voice input
+
+Scene dictate beside Auto Optimize / Ask: **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.
