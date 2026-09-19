@@ -58,7 +58,7 @@ export function AskGrok() {
         setPaywalled(true)
         setError(
           data.error ||
-            'Free Peek limit reached (1 Ask Grok per day). Upgrade for unlimited Ask Grok.',
+            'Free Peek limit reached (1 Ask / Photo Vision per day). Upgrade for unlimited.',
         )
         void refresh()
         return
@@ -110,7 +110,7 @@ export function AskGrok() {
               </span>
             ) : remaining !== null ? (
               <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400 ring-1 ring-zinc-700">
-                Free Peek · {remaining} left today
+                Free Peek · shared with Photo · {remaining} left today
               </span>
             ) : null}
           </div>

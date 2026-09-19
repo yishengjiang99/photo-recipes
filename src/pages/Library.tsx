@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AskGrok } from '../components/AskGrok'
+import { PhotoVision } from '../components/PhotoVision'
 import { FilterBar } from '../components/FilterBar'
 import { PresetCard } from '../components/PresetCard'
 import { presets } from '../data/presets'
@@ -29,11 +30,13 @@ export function Library() {
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
           Five field presets transcribed from the photography recipes book.
           Tap a card for full steps, dials, and a shoot checklist — or ask Grok
-          which recipe fits your scene.
+          which recipe fits your scene — or drop a photo for Photo Vision.
         </p>
       </div>
 
       <AskGrok />
+
+      <PhotoVision />
 
       <FilterBar
         activeTag={filter}

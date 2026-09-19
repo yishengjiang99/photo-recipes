@@ -253,7 +253,7 @@ export function checkAskGrokQuota(
   return {
     allowed: false,
     body: {
-      error: 'Free Peek limit reached (1 Ask Grok per day). Upgrade to Photo Recipes Pro for unlimited Ask Grok.',
+      error: 'Free Peek limit reached (1 Ask / Photo Vision per day). Upgrade to Photo Recipes Pro for unlimited Ask Grok & Photo Vision.',
       code: 'paywall',
       asksUsedToday: status.asksUsedToday,
       asksLimit: FREE_ASKS_PER_DAY,

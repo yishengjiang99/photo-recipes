@@ -2,13 +2,22 @@ import { presets } from '../src/data/presets.ts'
 import type { RecipePreset } from '../src/types/index.ts'
 
 const XAI_BASE = 'https://api.x.ai/v1'
+/** Text Ask Grok models */
 const PRIMARY_MODEL = 'grok-4'
 const FALLBACK_MODEL = 'grok-3-mini'
+/**
+ * Vision + tools: grok-4.6 (current xAI frontier with image input + function calling).
+ * Falls back to grok-4 if grok-4.6 is unavailable (404).
+ * @see https://docs.x.ai/developers/grok-4-6
+ */
+const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
 const MAX_ROUNDS = 5
 
 export interface RecommendRequest {
   message: string
   favorites?: string[]
+  /** data:image/...;base64,... — when set, uses vision model + multimodal user content */
+  imageDataUrl?: string
 }
 
 export interface RecommendResult {
@@ -16,12 +25,17 @@ export interface RecommendResult {
   reason: string
   tips: string[]
   preset: RecipePreset
+  model: string
   messages?: unknown[]
 }
 
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+
 type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content?: string | null
+  content?: string | ContentPart[] | null
   tool_calls?: ToolCall[]
   tool_call_id?: string
   name?: string
@@ -225,15 +239,19 @@ async function callXai(
   }
 }
 
-function buildSystemPrompt(favorites?: string[]): string {
+function buildSystemPrompt(favorites?: string[], vision?: boolean): string {
   const favLine =
     favorites && favorites.length > 0
       ? `\nThe user has favorited these preset ids (prefer them only when they fit the scene equally well): ${favorites.join(', ')}.`
       : ''
 
-  return `You are a photography field coach for the Photo Recipes web app.
-Your job is to recommend exactly ONE recipe from the app's catalog for the user's scene description.
+  const visionLine = vision
+    ? `\nThe user attached a photo of the scene. Analyze lighting, subject motion, depth, composition, and dynamic range from the image (and any short note). Recommend the catalog recipe that best matches what you see.`
+    : ''
 
+  return `You are a photography field coach for the Photo Recipes web app.
+Your job is to recommend exactly ONE recipe from the app's catalog for the user's scene${vision ? ' (from the photo)' : ' description'}.
+${visionLine}
 CRITICAL RULES:
 - You MUST use tools. Never invent recipes, titles, or ids outside the catalog.
 - First call list_presets (and optionally get_preset_details) to inspect the catalog.
@@ -242,31 +260,78 @@ CRITICAL RULES:
 - Match technique to the scene (e.g. sunset with dark foreground → HDR; kid running → motion/panning; landscapes needing full sharpness → depth of field; fresh angle → get low).${favLine}`
 }
 
+function buildUserContent(req: RecommendRequest): string | ContentPart[] {
+  const note = req.message.trim()
+  const text = note
+    ? `Scene note from the photographer:\n${note}\n\nAnalyze the attached photo and recommend the best catalog recipe.`
+    : 'Analyze this photo and recommend the best photography recipe from the catalog for this scene.'
+
+  if (!req.imageDataUrl) {
+    return req.message.trim()
+  }
+
+  return [
+    { type: 'text', text },
+    {
+      type: 'image_url',
+      image_url: { url: req.imageDataUrl, detail: 'high' },
+    },
+  ]
+}
+
+function isModelMissing(status: number, body: string): boolean {
+  if (status === 404) return true
+  const lower = body.toLowerCase()
+  return (
+    status === 400 &&
+    (lower.includes('model') || lower.includes('not found') || lower.includes('does not exist'))
+  )
+}
+
 export async function recommendWithGrok(
   apiKey: string,
   req: RecommendRequest,
 ): Promise<RecommendResult> {
+  const vision = Boolean(req.imageDataUrl)
+  if (!vision && !req.message.trim()) {
+    throw Object.assign(new Error('Message or image is required'), { status: 400 })
+  }
+
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(req.favorites) },
-    { role: 'user', content: req.message.trim() },
+    { role: 'system', content: buildSystemPrompt(req.favorites, vision) },
+    { role: 'user', content: buildUserContent(req) },
   ]
 
-  let model = PRIMARY_MODEL
+  const modelQueue = vision
+    ? [...VISION_MODELS]
+    : [PRIMARY_MODEL, FALLBACK_MODEL]
+  let model = modelQueue[0]!
+  let modelIndex = 0
   let selection: { presetId: string; reason: string; tips: string[] } | undefined
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let response = await callXai(apiKey, model, messages)
 
-    if (!response.ok && response.status === 404 && model === PRIMARY_MODEL) {
-      model = FALLBACK_MODEL
+    while (
+      !response.ok &&
+      isModelMissing(response.status, response.body) &&
+      modelIndex < modelQueue.length - 1
+    ) {
+      modelIndex += 1
+      model = modelQueue[modelIndex]!
+      console.warn(`[recommend] model unavailable, falling back to ${model}`)
       response = await callXai(apiKey, model, messages)
     }
 
     if (!response.ok) {
+      const visionHint = vision
+        ? ' Vision models may be unavailable for this API key; try text Ask Grok or check xAI model access.'
+        : ''
       const err = new Error(
-        `xAI API error (${response.status}). Check model availability and API key.`,
+        `xAI API error (${response.status}). Check model availability and API key.${visionHint}`,
       ) as Error & { status?: number; details?: string }
       err.status = response.status >= 400 && response.status < 600 ? response.status : 502
+      // Never include image bytes; body may be truncated error JSON only
       err.details = response.body.slice(0, 500)
       throw err
     }
@@ -287,7 +352,6 @@ export async function recommendWithGrok(
 
     const toolCalls = assistant.tool_calls
     if (!toolCalls || toolCalls.length === 0) {
-      // Nudge the model to use tools
       messages.push({
         role: 'user',
         content:
@@ -319,6 +383,7 @@ export async function recommendWithGrok(
         reason: selection.reason,
         tips: selection.tips,
         preset,
+        model,
         messages,
       }
     }
@@ -329,3 +394,5 @@ export async function recommendWithGrok(
     { status: 502 },
   )
 }
+
+export { VISION_MODELS, PRIMARY_MODEL, FALLBACK_MODEL }

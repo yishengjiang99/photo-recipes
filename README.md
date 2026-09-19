@@ -2,14 +2,14 @@
 
 A mobile-friendly web app of photography field presets, transcribed from pages of a “30 Recipes” photography book. Use it on location for steps, gear checklists, and educational camera dials — or ask Grok which recipe fits your scene.
 
-**Soft funnel:** browsing presets is always free (Free Peek). Ask Grok is limited to **1/day** on Free Peek; **Photo Recipes Pro** unlocks unlimited Ask Grok + interactive field checklists via Stripe Checkout (7-day trial).
+**Soft funnel:** browsing presets is always free (Free Peek). Ask Grok **and Photo Vision** share **1 free ask/day** on Free Peek; **Photo Recipes Pro** unlocks unlimited Ask Grok + Photo Vision + interactive field checklists via Stripe Checkout (7-day trial).
 
 ## Stack
 
 - Vite + React 19 + TypeScript
 - Tailwind CSS v4
 - React Router
-- Express + tsx API (`server/`) with xAI Grok tool-calling
+- Express + tsx API (`server/`) with xAI Grok tool-calling (text + vision)
 - Stripe Checkout subscriptions + webhook entitlements
 - Favorites & checklist progress in `localStorage`
 - Entitlements / Ask quota in gitignored `server/data/entitlements.json`
@@ -33,8 +33,8 @@ Preset data lives in `src/data/presets.ts` (shared with the API).
 | Monthly | **$7.99**/mo (799¢ USD) | 7-day free trial |
 | Annual | **$59.99**/yr (5999¢ USD) | **Primary CTA / Best value**, 7-day free trial |
 
-- Free Peek: browse presets; Ask Grok **1/day**
-- Pro: unlimited Ask Grok + field checklists
+- Free Peek: browse presets; Ask Grok **or** Photo Vision **1 combined/day**
+- Pro: unlimited Ask Grok + Photo Vision + field checklists
 
 ## Environment
 
@@ -129,13 +129,33 @@ curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/billing-portal \
   -X POST -H 'Content-Type: application/json' -d '{}'
 ```
 
-Ask Grok (Free Peek: 1/day; then **402** paywall JSON):
+Ask Grok (Free Peek: 1 combined Ask/Photo Vision per day; then **402** paywall JSON):
 
 ```bash
 curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
   -H 'Content-Type: application/json' \
   -d '{"message":"sunset canyon with dark foreground","favorites":[]}'
 ```
+
+Photo Vision — JSON with base64 / data URL (client compresses to JPEG ~1280px first):
+
+```bash
+# tiny 1×1 jpeg as a smoke test (replace with a real scene photo)
+IMG=$(python3 -c "import base64; print('data:image/jpeg;base64,'+base64.b64encode(open('/path/to/scene.jpg','rb').read()).decode())")
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
+  -H 'Content-Type: application/json' \
+  -d "{\"message\":\"keep the subject sharp\",\"image\":\"$IMG\"}"
+```
+
+Photo Vision — multipart:
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
+  -F 'image=@./scene.jpg;type=image/jpeg' \
+  -F 'message=want silky water'
+```
+
+Vision uses **grok-4.6** (image + tools), falling back to `grok-4` if a model id is unavailable. MIME allowlist: `image/jpeg|png|webp` (max ~4MB). JPEG EXIF is stripped server-side; never log image bytes.
 
 ## Build
 
@@ -147,7 +167,8 @@ npm run preview
 ## Features
 
 - Preset library cards (title, blurb, gear icons, key settings)
-- **Ask Grok** — Free Peek 1/day; Pro unlimited; soft 402 paywall modal CTA
+- **Ask Grok** — Free Peek 1 combined/day with Photo Vision; Pro unlimited; soft 402 paywall modal CTA
+- **Photo Vision** — drag-drop / file picker / mobile camera; Grok vision + same tool loop → preset detail
 - Detail view: steps, tips, equipment, when-to-use, phone/advanced notes + AI reason banner
 - Field checklist / step-by-step mode (Pro-gated; steps remain readable)
 - Simulated camera dials for recommended settings
