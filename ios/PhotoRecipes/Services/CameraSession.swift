@@ -853,8 +853,14 @@ final class CameraSession: NSObject, ObservableObject {
         }
         guard let fps, fps > 0 else { return choseFormat }
         let duration = CMTime(value: 1, timescale: CMTimeScale(max(1, Int(fps.rounded()))))
-        let minD = device.activeFormat.minFrameDuration
-        let maxD = device.activeFormat.maxFrameDuration
+        let ranges = device.activeFormat.videoSupportedFrameRateRanges
+        guard !ranges.isEmpty else {
+            clampMessages.append("No frame-rate ranges for active format — skipped.")
+            return choseFormat
+        }
+        // minFrameDuration = fastest allowed; maxFrameDuration = slowest allowed
+        let minD = ranges.map(\.minFrameDuration).min(by: { CMTimeCompare($0, $1) < 0 })!
+        let maxD = ranges.map(\.maxFrameDuration).max(by: { CMTimeCompare($0, $1) < 0 })!
         var use = duration
         if CMTimeCompare(duration, minD) < 0 { use = minD }
         if CMTimeCompare(duration, maxD) > 0 { use = maxD }

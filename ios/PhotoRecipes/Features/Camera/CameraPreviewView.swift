@@ -30,6 +30,13 @@ struct CameraPreviewView: UIViewRepresentable {
         private var lutOverlay: CALayer?
         private var lookOverlay: CALayer?
 
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            lutOverlay?.frame = bounds
+            lookOverlay?.frame = bounds
+        }
+
+
         /// Thin preview-only LUT hook. Does NOT mutate capture pipeline / JPEG.
         func applyPreviewLUT(_ id: String?) {
             lutOverlay?.removeFromSuperlayer()
@@ -37,7 +44,6 @@ struct CameraPreviewView: UIViewRepresentable {
             guard let id, !id.isEmpty else { return }
             let overlay = CALayer()
             overlay.frame = bounds
-            overlay.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
             overlay.opacity = 0.12
             overlay.backgroundColor = Self.lutTint(for: id).cgColor
             overlay.name = "previewLUT"
@@ -52,7 +58,6 @@ struct CameraPreviewView: UIViewRepresentable {
             guard let look, look.resolvedIntensity > 0, CreativeLookCatalog.isKnown(look.id) else { return }
             let overlay = CALayer()
             overlay.frame = bounds
-            overlay.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
             let intensity = CGFloat(look.resolvedIntensity)
             overlay.opacity = Float(0.08 + 0.22 * intensity)
             overlay.backgroundColor = Self.lookTint(for: look.id).cgColor
