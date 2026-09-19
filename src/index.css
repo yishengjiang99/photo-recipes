@@ -16,10 +16,10 @@
   --color-ink-tertiary: #8b8b96;
   --color-accent: #f43f5e;
   --color-accent-soft: #fb7185;
-  --color-accent-muted: color-mix(in oklab, #f43f5e 14%, transparent);
+  --color-accent-muted: rgba(244, 63, 94, 0.14);
   --color-vision: #8b7cf6;
   --color-tip: #e7b549;
-  --color-tip-bg: color-mix(in oklab, #e7b549 8%, transparent);
+  --color-tip-bg: rgba(231, 181, 73, 0.08);
   --color-success: #34d399;
   --color-danger: #f87171;
 
@@ -119,7 +119,7 @@ body {
 .diff-before {
   color: var(--color-ink-tertiary);
   text-decoration: line-through;
-  text-decoration-color: color-mix(in oklab, var(--color-ink-tertiary) 55%, transparent);
+  text-decoration-color: rgba(139, 139, 150, 0.55);
 }
 .diff-after {
   color: var(--color-ink);

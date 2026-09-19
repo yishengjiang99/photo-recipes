@@ -26,7 +26,17 @@ server {
         proxy_read_timeout 120s;
     }
 
-    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff2?)$ {
+    # JS: force a Safari-friendly MIME (module scripts reject wrong types).
+    # types map prefers text/javascript; default_type covers if types is empty.
+    location ~* \.js$ {
+        types { text/javascript js; }
+        default_type application/javascript;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location ~* \.(css|png|jpg|jpeg|gif|svg|ico|webp|woff2?)$ {
         expires 7d;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
