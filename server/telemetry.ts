@@ -35,6 +35,7 @@ export const TELEMETRY_EVENT_ALLOWLIST = new Set([
   'look_applied',
   'look_dismissed',
   'shutter_tap',
+  'recommend_cta_tap',
   'capture_success',
   'recipe_open',
   'teach_open',

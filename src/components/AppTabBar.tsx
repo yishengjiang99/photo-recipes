@@ -9,6 +9,7 @@ export const SHUTTER_EVENT = 'photo-recipes:shutter'
 /**
  * Instagram-inspired bottom tab bar (layout/IA only).
  * Library | Camera (center shutter) | Pro/Account
+ * On /app, shutter fires one-shot Recommend (capture-if-needed + recommend).
  */
 export function AppTabBar() {
   const location = useLocation()
@@ -20,7 +21,7 @@ export function AppTabBar() {
 
   function onShutter() {
     if (onCamera) {
-      track('shutter_tap', { source: 'tab_bar' })
+      track('shutter_tap', { source: 'tab_bar', oneshot: true })
       window.dispatchEvent(new CustomEvent(SHUTTER_EVENT))
       return
     }
@@ -52,7 +53,9 @@ export function AppTabBar() {
           <button
             type="button"
             onClick={onShutter}
-            aria-label={onCamera ? 'Capture frame' : 'Open Camera'}
+            aria-label={
+              onCamera ? 'Recommend recipe from viewfinder' : 'Open Camera'
+            }
             className={`relative -mt-7 flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
               onCamera
                 ? 'bg-accent shadow-[0_10px_28px_-10px_rgba(244,63,94,0.7)] ring-[3px] ring-white/90'
@@ -65,7 +68,7 @@ export function AppTabBar() {
           <span
             className={`mt-1 text-[10px] font-semibold ${onCamera ? 'text-accent-soft' : 'text-ink-tertiary'}`}
           >
-            Camera
+            {onCamera ? 'Recommend' : 'Camera'}
           </span>
         </div>
 
