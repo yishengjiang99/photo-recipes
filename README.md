@@ -252,3 +252,17 @@ npm start   # API on :8787; use vite preview or any static server for dist/
 ## License / attribution
 
 Educational personal-use transcription of book recipes. Not affiliated with the book’s publisher or author.
+
+## iOS app (SwiftUI)
+
+Native iOS 17+ client lives in [`ios/`](./ios/). Soft TestFlight launch: browse Free Peek offline, Ask Grok + Photo Vision against this API, unlock **Pro via StoreKit 2 IAP only** (not Stripe-in-app).
+
+| | |
+|--|--|
+| Open | `cd ios && open PhotoRecipes.xcodeproj` |
+| Bundle ID | `com.yishengjiang.photorecipes` |
+| IAP yearly (primary) | `com.yishengjiang.photorecipes.pro.yearly` ($59.99/yr, 7-day trial) |
+| IAP monthly | `com.yishengjiang.photorecipes.pro.monthly` ($7.99/mo, 7-day trial) |
+| Verify | `POST /api/iap/verify` (see `server/iap.ts`) |
+
+Full setup, ASC checklist, and TestFlight steps: **[ios/README.md](./ios/README.md)**.

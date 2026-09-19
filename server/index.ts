@@ -20,6 +20,7 @@ import {
   mountStripeRoutes,
   mountStripeWebhook,
 } from './stripe.ts'
+import { mountIapRoutes } from './iap.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -44,6 +45,7 @@ app.use(express.json({ limit: '6mb' }))
 app.use(identityMiddleware)
 
 mountStripeRoutes(app)
+mountIapRoutes(app)
 
 const upload = multer({
   storage: multer.memoryStorage(),

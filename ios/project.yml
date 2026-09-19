@@ -1,0 +1,42 @@
+# XcodeGen project — generate with: brew install xcodegen && cd ios && xcodegen generate
+# Or open the checked-in PhotoRecipes.xcodeproj if present.
+name: PhotoRecipes
+options:
+  bundleIdPrefix: com.yishengjiang
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    PRODUCT_BUNDLE_IDENTIFIER: com.yishengjiang.photorecipes
+configs:
+  Debug: debug
+  Release: release
+targets:
+  PhotoRecipes:
+    type: application
+    platform: iOS
+    sources:
+      - path: PhotoRecipes
+        excludes:
+          - "**/*.md"
+    resources:
+      - path: PhotoRecipes/Resources/Assets.xcassets
+      - path: PhotoRecipes/Resources/Products.storekit
+    settings:
+      base:
+        INFOPLIST_FILE: PhotoRecipes/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.yishengjiang.photorecipes
+        PRODUCT_NAME: Photo Recipes
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: YES
+        CODE_SIGN_STYLE: Automatic
+    entitlements:
+      path: PhotoRecipes/PhotoRecipes.entitlements
