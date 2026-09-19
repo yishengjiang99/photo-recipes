@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { PricingModal } from './components/PricingModal'
+import { CameraPage } from './pages/Camera'
 import { Landing } from './pages/Landing'
 import { Library } from './pages/Library'
 import { PresetDetail } from './pages/PresetDetail'
@@ -18,7 +19,8 @@ export default function App() {
         <Route path="/" element={<Landing />} />
 
         <Route path="/app" element={<Layout />}>
-          <Route index element={<Library />} />
+          <Route index element={<CameraPage />} />
+          <Route path="library" element={<Library />} />
           <Route path="preset/:id" element={<PresetDetail />} />
           <Route path="success" element={<Success />} />
         </Route>
@@ -29,7 +31,6 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {/* Shared paywall so landing CTAs and app Upgrade both work */}
       <PricingModal />
     </>
   )

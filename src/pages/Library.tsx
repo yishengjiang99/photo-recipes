@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
-import { FieldCoach } from '../components/FieldCoach'
 import { FilterBar } from '../components/FilterBar'
 import { PresetCard } from '../components/PresetCard'
 import { presets } from '../data/presets'
 import { useFavorites } from '../hooks/useFavorites'
+import { useMemo, useState } from 'react'
 import type { TechniqueTag } from '../types'
 
 export function Library() {
@@ -22,16 +21,10 @@ export function Library() {
 
   return (
     <div>
-      <div className="mb-6 text-left">
-        <h1 className="font-display text-[1.75rem] text-ink sm:text-3xl">
-          Recipe library
-        </h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
-          Shoot checklists + dials. Ask when you’re stuck.
-        </p>
+      <div className="mb-4 text-left">
+        <h1 className="font-display text-xl text-ink sm:text-2xl">Library</h1>
+        <p className="mt-1 text-xs text-ink-tertiary">Browse field recipes</p>
       </div>
-
-      <FieldCoach />
 
       <FilterBar
         activeTag={filter}
@@ -39,7 +32,7 @@ export function Library() {
         favoritesCount={favorites.length}
       />
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
         {visible.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border px-6 py-12 text-center text-sm text-ink-tertiary lg:col-span-2">
             {filter === 'favorites'

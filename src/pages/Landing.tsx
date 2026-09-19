@@ -1,11 +1,12 @@
 import { Camera, Check, ChevronDown, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { CameraCta } from '../components/CameraCta'
 import { LandingDialProof } from '../components/LandingDialProof'
 import { LandingEmailCapture } from '../components/LandingEmailCapture'
 import { Seo } from '../components/Seo'
 import { useSubscription } from '../hooks/useSubscription'
-import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL } from '../lib/site'
+import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, TESTFLIGHT_URL } from '../lib/site'
 
 const TRUST_LINE =
   'Free Peek · 1 Auto Optimize/day · Pro $7.99/mo or $59.99/yr · 7-day trial'
@@ -179,7 +180,7 @@ export function Landing() {
   }
 
   return (
-    <div className="min-h-dvh bg-bg text-ink">
+    <div className="min-h-dvh bg-bg text-ink pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={jsonLd} />
 
       {/* Nav */}
@@ -208,18 +209,16 @@ export function Landing() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Link
-              to="/app"
-              className="hidden min-h-9 items-center rounded-full px-3 py-1.5 text-sm font-medium text-ink-secondary ring-1 ring-border hover:bg-surface sm:inline-flex"
-            >
-              Open Free Peek
-            </Link>
+            <CameraCta
+              label="Open Camera"
+              className="!min-h-9 !px-3.5 !py-1.5 !text-sm !shadow-none"
+            />
             <button
               type="button"
               onClick={startTrial}
-              className="inline-flex min-h-9 items-center rounded-full bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-soft"
+              className="hidden min-h-9 items-center rounded-full px-3 py-1.5 text-sm font-medium text-ink-secondary ring-1 ring-border hover:bg-surface sm:inline-flex"
             >
-              Start free trial
+              Free trial
             </button>
             <button
               type="button"
@@ -244,25 +243,20 @@ export function Landing() {
         {navOpen ? (
           <div className="border-t border-border px-4 py-3 md:hidden">
             <div className="flex flex-col gap-3 text-sm text-ink-secondary">
-              <a href="#how" onClick={closeNav} className="hover:text-ink">
-                How
-              </a>
-              <a href="#recipes" onClick={closeNav} className="hover:text-ink">
-                Recipes
-              </a>
-              <a href="#pricing" onClick={closeNav} className="hover:text-ink">
+              <CameraCta label="Open Camera" fullWidth onClick={closeNav} />
+              <Link
+                to="/app/library"
+                onClick={closeNav}
+                className="inline-flex min-h-11 items-center justify-center rounded-full px-3 py-1.5 font-medium text-ink ring-1 ring-border"
+              >
+                Library
+              </Link>
+              <a href="#pricing" onClick={closeNav} className="py-1 hover:text-ink">
                 Pricing
               </a>
-              <a href="#notes" onClick={closeNav} className="hover:text-ink">
-                Notes
+              <a href="#notes" onClick={closeNav} className="py-1 hover:text-ink">
+                Field notes
               </a>
-              <Link
-                to="/app"
-                onClick={closeNav}
-                className="inline-flex min-h-9 w-fit items-center rounded-full px-3 py-1.5 font-medium text-ink ring-1 ring-border"
-              >
-                Open Free Peek
-              </Link>
             </div>
           </div>
         ) : null}
@@ -286,19 +280,19 @@ export function Landing() {
               </p>
               <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
               <div className="mt-7 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center">
-                <button
-                  type="button"
-                  onClick={startTrial}
-                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-soft min-[400px]:w-auto"
-                >
-                  Start free trial
-                </button>
-                <Link
-                  to="/app"
+                <CameraCta size="lg" fullWidth className="min-[400px]:!w-auto" />
+                <a
+                  href={TESTFLIGHT_URL}
                   className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface min-[400px]:w-auto"
                 >
-                  Open Free Peek
-                </Link>
+                  Get TestFlight
+                </a>
+                <a
+                  href="#notes"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium text-ink-secondary hover:text-ink min-[400px]:w-auto"
+                >
+                  Join waitlist
+                </a>
               </div>
               <p className="mt-3 text-xs text-ink-tertiary">{TRUST_LINE}</p>
             </div>
@@ -443,7 +437,7 @@ export function Landing() {
               {RECIPE_CARDS.map((card) => (
                 <Link
                   key={card.title}
-                  to="/app"
+                  to="/app/library"
                   className="rounded-2xl border border-border bg-surface p-5 text-left transition hover:border-border-strong hover:bg-surface-2"
                 >
                   <h3 className="font-display text-xl text-ink">{card.title}</h3>
@@ -451,12 +445,13 @@ export function Landing() {
                 </Link>
               ))}
             </div>
-            <div className="mt-8 flex justify-center">
+            <div className="mt-8 flex justify-center gap-3">
+              <CameraCta />
               <Link
-                to="/app"
+                to="/app/library"
                 className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface"
               >
-                Open Free Peek
+                Browse library
               </Link>
             </div>
           </div>
@@ -484,10 +479,10 @@ export function Landing() {
                   </li>
                 </ul>
                 <Link
-                  to="/app"
+                  to="/app/library"
                   className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-full text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface-2"
                 >
-                  Open Free Peek
+                  Browse library
                 </Link>
               </article>
 
@@ -566,19 +561,14 @@ export function Landing() {
             <h2 className="font-display text-3xl text-ink sm:text-4xl">Go make the frame.</h2>
             <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+              <CameraCta size="lg" />
               <button
                 type="button"
                 onClick={startTrial}
-                className="inline-flex min-h-11 items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-soft"
+                className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface"
               >
                 Start free trial
               </button>
-              <Link
-                to="/app"
-                className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface"
-              >
-                Open Free Peek
-              </Link>
             </div>
             <p className="mt-3 text-xs text-ink-tertiary">{TRUST_LINE}</p>
             <a href="#notes" className="mt-5 inline-block text-sm text-ink-tertiary hover:text-ink">
@@ -587,6 +577,11 @@ export function Landing() {
           </div>
         </section>
       </main>
+
+      {/* Sticky mobile camera CTA */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-bg/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md md:hidden">
+        <CameraCta fullWidth size="lg" />
+      </div>
 
       <footer className="border-t border-border py-10">
         <div className="mx-auto flex max-w-[1120px] flex-col gap-6 px-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
