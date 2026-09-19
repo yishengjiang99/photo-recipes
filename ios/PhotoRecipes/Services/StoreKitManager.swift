@@ -157,7 +157,8 @@ final class StoreKitManager: ObservableObject {
                 productId: productId,
                 plan: plan
             )
-            if res.pro == true || res.ok == true {
+            // Fail closed: only trust explicit pro from verified server payload.
+            if res.pro == true {
                 entitlements.applyVerifiedPro(plan: plan)
             }
             await entitlements.refresh()

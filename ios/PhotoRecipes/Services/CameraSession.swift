@@ -87,6 +87,8 @@ final class CameraSession: NSObject, ObservableObject {
         guard auth == .authorized else { return }
         do {
             try await configureIfNeeded()
+            // Re-start safe: drop any prior observers before attaching new ones.
+            unregisterInterruptionObservers()
             registerInterruptionObservers()
             await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
                 queue.async { [weak self] in
