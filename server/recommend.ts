@@ -59,6 +59,35 @@ export type MaxPhotoDimensions = {
   height: number
 }
 
+/** V1 creative look pack — ORIGINAL ids only (never trademarked filter brand names). */
+export const CREATIVE_LOOK_IDS = [
+  'crispCool',
+  'warmGlow',
+  'warmPop',
+  'editorialRed',
+  'softVintage',
+  'monoInk',
+  'goldenHour',
+  'loFiPunch',
+  'tealOrange',
+  'blockbuster',
+  'moodyFilm',
+  'coolBlue',
+  'softDream',
+  'filmGrain',
+] as const
+
+export type CreativeLookId = (typeof CREATIVE_LOOK_IDS)[number]
+
+export type CreativeLook = {
+  /** One of CREATIVE_LOOK_IDS (V1 enum). */
+  id: CreativeLookId
+  /** Grade / preview blend strength 0…1. */
+  intensity: number
+}
+
+const CREATIVE_LOOK_ID_SET = new Set<string>(CREATIVE_LOOK_IDS)
+
 export interface PhoneTargets {
   /** Human / recipe shutter string, e.g. "1/60", "1/500". Keep alongside exposureDurationSec. */
   shutter?: string
@@ -106,6 +135,11 @@ export interface PhoneTargets {
    * capture settings (exposure/WB/focus/…) remain primary.
    */
   previewLUT?: string
+  /**
+   * P1 optional creative grade / preview look (ORIGINAL pack ids). Default: omit (none / identity).
+   * Capture settings remain PRIMARY; intensity is grade blend 0…1. Never trademarked brand names.
+   */
+  creativeLook?: CreativeLook
   /**
    * P1 / OS-gated simulated aperture. If the device cannot apply it, put f-stop in coachOnly.aperture.
    * Never invent hardware aperture on fixed-aperture phones.
@@ -207,7 +241,7 @@ const tools = [
     function: {
       name: 'select_preset',
       description:
-        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (AVFoundation levers: shutter/exposureDurationSec/iso/ev/WB/focus/lensPosition/zoom/cameraDevice/torch/flash/HDR/bracket/…), coach-only guidance, optional pan cue, and teachWhy. Aperture stays coachOnly (or simulatedAperture only if OS-gated). previewLUT is preview-only. If the user message includes a control tweak (typed or spoken transcript), phoneTargets MUST reflect that ask. This ends the loop.',
+        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (AVFoundation levers: shutter/exposureDurationSec/iso/ev/WB/focus/lensPosition/zoom/cameraDevice/torch/flash/HDR/bracket/…), coach-only guidance, optional pan cue, and teachWhy. Aperture stays coachOnly (or simulatedAperture only if OS-gated). previewLUT / creativeLook are preview-only grades. If the user message includes a control tweak (typed or spoken transcript), phoneTargets MUST reflect that ask. This ends the loop.',
       parameters: {
         type: 'object',
         properties: {
@@ -234,7 +268,7 @@ const tools = [
           phoneTargets: {
             type: 'object',
             description:
-              'Only values a phone camera API can apply (AVFoundation levers). All keys optional/additive; omit unsupported or unknown. Never put aperture here — use coachOnly.aperture (or simulatedAperture only if OS-gated). When the user asks for a control tweak, include matching keys. previewLUT is preview-only — never a capture magic filter.',
+              'Only values a phone camera API can apply (AVFoundation levers). All keys optional/additive; omit unsupported or unknown. Never put aperture here — use coachOnly.aperture (or simulatedAperture only if OS-gated). When the user asks for a control tweak, include matching keys. previewLUT / creativeLook are preview-only grades — never capture magic filters. creativeLook default: omit (none).',
             properties: {
               shutter: {
                 type: 'string',
@@ -387,6 +421,39 @@ const tools = [
                 type: 'string',
                 description:
                   'Preview-only LUT id. NEVER a capture magic filter — exposure/WB/focus remain primary.',
+              },
+              creativeLook: {
+                type: 'object',
+                description:
+                  'Optional P1 creative grade / preview look. ORIGINAL pack ids only. Default omit (none/identity). Capture settings remain PRIMARY; intensity is blend 0…1. Voice e.g. "warm film look" → warmGlow or moodyFilm.',
+                properties: {
+                  id: {
+                    type: 'string',
+                    enum: [
+                      'crispCool',
+                      'warmGlow',
+                      'warmPop',
+                      'editorialRed',
+                      'softVintage',
+                      'monoInk',
+                      'goldenHour',
+                      'loFiPunch',
+                      'tealOrange',
+                      'blockbuster',
+                      'moodyFilm',
+                      'coolBlue',
+                      'softDream',
+                      'filmGrain',
+                    ],
+                    description: 'V1 creative look id (exact spelling)',
+                  },
+                  intensity: {
+                    type: 'number',
+                    description: 'Grade / preview blend strength 0…1',
+                  },
+                },
+                required: ['id', 'intensity'],
+                additionalProperties: false,
               },
               simulatedAperture: {
                 type: 'number',
@@ -649,6 +716,30 @@ function parseMaxPhotoDimensions(
   return { width: Math.round(w), height: Math.round(h) }
 }
 
+function parseCreativeLook(
+  raw: unknown,
+): CreativeLook | undefined | { error: string } {
+  if (raw == null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'phoneTargets.creativeLook must be an object { id, intensity }' }
+  }
+  const o = raw as Record<string, unknown>
+  const id = o.id
+  if (typeof id !== 'string' || !CREATIVE_LOOK_ID_SET.has(id)) {
+    return {
+      error:
+        'phoneTargets.creativeLook.id must be one of the V1 look pack (crispCool, warmGlow, warmPop, editorialRed, softVintage, monoInk, goldenHour, loFiPunch, tealOrange, blockbuster, moodyFilm, coolBlue, softDream, filmGrain)',
+    }
+  }
+  if (typeof o.intensity !== 'number' || !Number.isFinite(o.intensity)) {
+    return { error: 'phoneTargets.creativeLook.intensity must be a finite number' }
+  }
+  if (o.intensity < 0 || o.intensity > 1) {
+    return { error: 'phoneTargets.creativeLook.intensity must be in 0–1' }
+  }
+  return { id: id as CreativeLookId, intensity: o.intensity }
+}
+
 export function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'phoneTargets must be an object' }
@@ -774,6 +865,12 @@ export function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string 
 
   const previewLUT = asOptionalString(o.previewLUT)
   if (previewLUT) out.previewLUT = previewLUT
+
+  const creativeLook = parseCreativeLook(o.creativeLook)
+  if (creativeLook && typeof creativeLook === 'object' && 'error' in creativeLook) {
+    return creativeLook
+  }
+  if (creativeLook && 'id' in creativeLook) out.creativeLook = creativeLook
 
   if (o.simulatedAperture != null) {
     if (typeof o.simulatedAperture !== 'number' || !Number.isFinite(o.simulatedAperture)) {
@@ -980,7 +1077,7 @@ LOOP (strict):
 1. SENSE — ${senseLine}
 2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id (keep the current recipe if it already fits, or switch to a better catalog match).
 3. ACT / FINALIZE — Call select_preset with structured phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY (mental check before select_preset) — Targets match the recipe technique and any control ask in the note; exposure/ISO/EV/zoom/lens/torch ranges are phone-plausible; aperture/ND/tripod stay in coachOnly (simulatedAperture only if OS-gated); previewLUT never sold as capture filter; panCue only for panning/motion recipes.
+4. VERIFY (mental check before select_preset) — Targets match the recipe technique and any control ask in the note; exposure/ISO/EV/zoom/lens/torch ranges are phone-plausible; aperture/ND/tripod stay in coachOnly (simulatedAperture only if OS-gated); previewLUT / creativeLook never sold as capture filters (default omit look); panCue only for panning/motion recipes.
 
 ALTERNATE INPUT (spoken / STT transcripts — secondary):
 - When the user message is a voice transcript, treat it as another way into the same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
@@ -993,12 +1090,13 @@ ALTERNATE INPUT (spoken / STT transcripts — secondary):
   • "switch to ultra-wide" → phoneTargets.cameraDevice "ultraWide"; "lock lens near" → lensPosition
   • "torch on low" → torch { mode: "on", level }; "flash off" → flash "off"
   • "bracket for HDR" → bracket { stops: [-2,0,2] }; "re-optimize if subject moves" → monitorSubjectAreaChange true
+  • "warm film look" / "moody grade" / "teal orange" → creativeLook { id, intensity } mapped to V1 pack (e.g. warmGlow, moodyFilm, tealOrange); default omit / none / identity when no look helps
 - When the intent is a control adjustment, phoneTargets MUST include the relevant keys (do not finalize with empty {} if they asked to change a settable control).
 
 CRITICAL RULES:
 - Catalog only: never invent preset ids, titles, or off-catalog recipes.
 - You MUST use tools. Do not free-form recommend without select_preset.
-- phoneTargets = AVFoundation levers only (all optional; omit if unsupported): shutter, exposureDurationSec, iso, ev, whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint, lensPosition, zoom, cameraDevice (ultraWide|wide|tele), torch {mode,level?}, flash, lowLightBoost, videoHDR, frameRate, preferFormatHint, bracket {stops,count?}, monitorSubjectAreaChange, maxPhotoDimensions, previewLUT (preview-only — NEVER a capture magic filter), simulatedAperture (P1/OS-gated only).
+- phoneTargets = AVFoundation levers only (all optional; omit if unsupported): shutter, exposureDurationSec, iso, ev, whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint, lensPosition, zoom, cameraDevice (ultraWide|wide|tele), torch {mode,level?}, flash, lowLightBoost, videoHDR, frameRate, preferFormatHint, bracket {stops,count?}, monitorSubjectAreaChange, maxPhotoDimensions, previewLUT (preview-only — NEVER a capture magic filter), creativeLook { id, intensity 0–1 } (optional P1 grade from V1 pack — default omit/none/identity; capture settings remain PRIMARY), simulatedAperture (P1/OS-gated only). Auto Optimize MAY suggest a look when it improves the story; otherwise omit.
 - NEVER put hardware aperture in phoneTargets — use coachOnly.aperture (nd, tripod, notes stay coach-only). Prefer cameraDevice over zoom-only lens hints.
 - coachOnly = aperture, nd, tripod, notes — shown to the photographer, NOT applied on device.
 - teachWhy = 1–2 short sentences for Teach mode ("Why this?").
