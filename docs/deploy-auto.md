@@ -2,7 +2,7 @@
 
 **Primary:** GitHub Actions workflow `.github/workflows/deploy-photo-grepawk.yml` (see `docs/deploy-github-actions.md`).
 
-**Backup:** On merge to `main`, the Chief of Staff (CoS) routine `auto-deploy-photo-grepawk-com` can still deploy via `./deploy.sh` using the operator SSH key — useful if Actions secrets are unset.
+**Backup:** On merge to `main`, the Chief of Staff (CoS) routine `auto-deploy-photo-grepawk-com` can still deploy via `./deploy.sh` using the operator SSH key — useful if Actions secrets are unset. It must **skip** merges that only touch `ios/**` or `.github/workflows/ios-testflight.yml` (same allowlist idea as the Actions workflow).
 
 ## Target
 
