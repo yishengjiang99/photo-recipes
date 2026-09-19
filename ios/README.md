@@ -98,7 +98,7 @@ All keys optional; unsupported keys are **skipped** (clamp/coach banners). Never
 | `monitorSubjectAreaChange` | `isSubjectAreaChangeMonitoringEnabled` + observer → debounced Auto Optimize (~1.5s) | Off when false/absent |
 | `maxPhotoDimensions` | `AVCapturePhotoOutput.maxPhotoDimensions` (iOS 16+) | Skip on older OS |
 | `previewLUT` | Preview overlay only (`CameraPreviewView`) | **Never** baked into JPEG |
-| `creativeLook` `{id,intensity}` | Preview grade / LUT blend (P1) | **Never** capture magic filter; default omit |
+| `creativeLook` `{id,intensity}` | CIFilter capture grade; bake preview **and** still at intensity>0 (default 0.55); Look chip Apply/Dismiss — never silent | Not a beauty filter; suggest via chip |
 | `simulatedAperture` | OS-gated if API exists | Else coach / `coachOnly.aperture` |
 | `coachOnly.aperture` / `nd` / `tripod` | — | UI guidance only |
 

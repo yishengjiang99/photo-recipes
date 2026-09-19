@@ -63,6 +63,15 @@ struct SettingsView: View {
                         LabeledContent("Monthly", value: IAPProductID.monthly)
                     }
 
+                    Section("Camera") {
+                        Button("Show camera tips") {
+                            CameraCoachMarksStore.requestReplay()
+                        }
+                        Text("Replays the 3 field tips on the Camera tab (Auto Optimize → chips → Controls).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Section("Voice") {
                         Text("Camera dictate runs the same Auto Optimize → apply path as the button (including phoneTargets). Uses your Optimize quota.")
                             .font(.caption)

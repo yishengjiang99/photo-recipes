@@ -137,6 +137,11 @@ struct TorchTarget: Codable, Hashable {
 
     enum CodingKeys: String, CodingKey { case mode, level }
 
+    init(mode: String, level: Double? = nil) {
+        self.mode = mode
+        self.level = level
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         mode = try c.decodeIfPresent(String.self, forKey: .mode) ?? "off"
@@ -236,33 +241,6 @@ enum WhiteBalanceTarget: Codable, Hashable {
     }
 }
 
-
-/// P1 preview-only grade (V1 look pack). Never baked into JPEG / capture filters.
-struct CreativeLook: Codable, Hashable {
-    var id: String
-    /// Blend 0…1 (0 = identity, 1 = full look).
-    var intensity: Double?
-
-    enum CodingKeys: String, CodingKey { case id, intensity }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
-        if let d = try? c.decodeIfPresent(Double.self, forKey: .intensity) {
-            intensity = min(max(d, 0), 1)
-        } else if let i = try? c.decodeIfPresent(Int.self, forKey: .intensity) {
-            intensity = min(max(Double(i), 0), 1)
-        } else {
-            intensity = nil
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encodeIfPresent(intensity, forKey: .intensity)
-    }
-}
 
 struct FocusPointNorm: Codable, Hashable {
     var x: Double
