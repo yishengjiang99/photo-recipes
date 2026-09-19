@@ -313,7 +313,7 @@ final class CameraSession: NSObject, ObservableObject {
     @discardableResult
     func applyPhoneTargets(_ targets: PhoneTargets, asPro: Bool) -> Bool {
         guard asPro else {
-            clampMessages.append("Pro required to write phoneTargets (shutter/ISO/EV/focus).")
+            clampMessages.append("Pro required to write phoneTargets (shutter/ISO/EV/focus/zoom).")
             return false
         }
         var wrote = false
@@ -329,7 +329,13 @@ final class CameraSession: NSObject, ObservableObject {
             setEV(bias)
             wrote = true
         }
-        if let focus = targets.focusMode?.lowercased() {
+
+        // focusPoint (0…1) when provided; else focusMode alone
+        if let fp = targets.focusPoint {
+            let lock = (targets.focusMode?.lowercased()).map { ["locked", "lock", "near"].contains($0) } ?? true
+            focus(at: fp.cgPoint, lock: lock)
+            wrote = true
+        } else if let focus = targets.focusMode?.lowercased() {
             switch focus {
             case "locked", "lock", "near":
                 let pt = focusPoint ?? CGPoint(x: 0.5, y: 0.5)
@@ -342,6 +348,12 @@ final class CameraSession: NSObject, ObservableObject {
                 clampMessages.append("Focus mode “\(focus)” left as guidance.")
             }
         }
+
+        if let factor = targets.zoom {
+            setZoomFactor(factor)
+            wrote = true
+        }
+
         if let wb = targets.whiteBalance, !wb.isEmpty {
             if capabilities.supportsWhiteBalanceLock, let device = input?.device {
                 configure(device) {
@@ -356,6 +368,20 @@ final class CameraSession: NSObject, ObservableObject {
             }
         }
         return wrote
+    }
+
+    func setZoomFactor(_ factor: Double) {
+        guard let device = input?.device else { return }
+        let minZ = Double(device.minAvailableVideoZoomFactor)
+        let maxZ = Double(device.maxAvailableVideoZoomFactor)
+        let clamped = min(max(factor, minZ), maxZ)
+        if abs(clamped - factor) > 0.01 {
+            clampMessages.append(String(format: "Zoom %.2f× clamped to %.2f×", factor, clamped))
+        }
+        configure(device) {
+            device.videoZoomFactor = CGFloat(clamped)
+        }
+        lensLabel = String(format: "%.1f×", clamped)
     }
 
     func clearRecipe() {

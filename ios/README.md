@@ -70,6 +70,12 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 
 UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
 
+### Full-bleed overlay (canonical)
+
+Live preview is **edge-to-edge**; chrome is ZStack overlays only (`design-handoff-camera-v1`). Compact Auto Optimize pill (40–44), status, collapsible scene + mic, shutter — dials/Teach/grid behind `···`. Thin ~96–120pt bottom scrim on top of the feed.
+
+Shared `CameraSession.applyPhoneTargets` (PR #11) applies shutter/ISO/EV/WB/focusMode plus optional **`zoom`** (`videoZoomFactor`) and **`focusPoint` {x,y}** (0–1). `panCue` → chevrons; `teachWhy` / `coachOnly` → Teach sheet.
+
 ### Viewfinder pan / point cues
 
 Quiet edge chevrons (`ViewfinderPanCuesView`) cue reframing from the active recipe + optional agent status:
