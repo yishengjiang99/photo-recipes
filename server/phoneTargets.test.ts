@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { parsePhoneTargets } from './recommend.ts'
+import { parsePhoneTargets, CREATIVE_LOOK_DEFAULT_INTENSITY } from './recommend.ts'
 
 function isError(r: ReturnType<typeof parsePhoneTargets>): r is { error: string } {
   return typeof r === 'object' && r !== null && 'error' in r
@@ -177,6 +177,27 @@ describe('parsePhoneTargets', () => {
     assert.equal(isError(r), false)
     if (isError(r)) return
     assert.equal('creativeLook' in r, false)
+  })
+
+  it('defaults creativeLook.intensity to 0.55 when omitted or null', () => {
+    assert.equal(CREATIVE_LOOK_DEFAULT_INTENSITY, 0.55)
+
+    const omitted = parsePhoneTargets({ creativeLook: { id: 'crispCool' } })
+    assert.equal(isError(omitted), false)
+    if (isError(omitted)) return
+    assert.deepEqual(omitted.creativeLook, { id: 'crispCool', intensity: 0.55 })
+
+    const nulled = parsePhoneTargets({ creativeLook: { id: 'warmGlow', intensity: null } })
+    assert.equal(isError(nulled), false)
+    if (isError(nulled)) return
+    assert.deepEqual(nulled.creativeLook, { id: 'warmGlow', intensity: 0.55 })
+  })
+
+  it('keeps explicit creativeLook.intensity including 0', () => {
+    const r = parsePhoneTargets({ creativeLook: { id: 'tealOrange', intensity: 0 } })
+    assert.equal(isError(r), false)
+    if (isError(r)) return
+    assert.deepEqual(r.creativeLook, { id: 'tealOrange', intensity: 0 })
   })
 })
 
