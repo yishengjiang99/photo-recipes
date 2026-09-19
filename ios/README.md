@@ -72,7 +72,7 @@ UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agen
 
 ### Full-bleed overlay (canonical)
 
-Live preview is **edge-to-edge**; chrome is ZStack overlays only (`design-handoff-camera-v1`). Compact Auto Optimize pill (40–44), status, collapsible scene + mic, shutter — dials/Teach/grid behind `···`. Thin ~96–120pt bottom scrim on top of the feed.
+Live preview is **edge-to-edge**; chrome is ZStack overlays only (`design-handoff-camera-v1`). Compact Auto Optimize pill (40–44, filled amber primary), always-visible outline **Recommend** secondary (viewfinder/scene → coach result sheet, does not write dials), status, collapsible scene + mic, shutter — dials/Teach/grid behind `···`. Thin ~112–136pt bottom scrim on top of the feed.
 
 Shared `CameraSession.applyPhoneTargets` (PR #11) applies shutter/ISO/EV/WB/focusMode plus optional **`zoom`** (`videoZoomFactor`) and **`focusPoint` {x,y}** (0–1). `panCue` → chevrons; `teachWhy` / `coachOnly` → Teach sheet.
 
@@ -132,7 +132,7 @@ Camera chrome is compact-aware (`GeometryReader` + `horizontalSizeClass`): on ~3
 
 ## Voice / Grok STT + scene prefill
 
-- **Mic** on Field Coach (Describe / optional photo note) and Camera (scene field above Auto Optimize).
+- **Mic** on Field Coach (Describe / optional photo note) and Camera (scene field above Auto Optimize). Mic stays secondary — Recommend / Auto Optimize are the loud CTAs.
 - **Pattern:** tap to talk → tap Stop → audio uploads to `POST /api/stt` (Grok). No live partials in v1; v1.1 may add WSS `interim_results` / `smart_turn` via a server proxy.
 - **API key stays on the server** — never embedded in the app.
 - **Describe scene:** Camera on appear (and Refresh) calls `POST /api/describe-scene` with a viewfinder probe JPEG. Soft-fails to the placeholder. Chip: `From viewfinder`.
@@ -194,7 +194,7 @@ ios/
 |---------|--------|
 | Library | Cards, tag filter, favorites (UserDefaults), offline bundled presets |
 | Detail | Steps, tips, dials UI, variants, gear checklist (Pro toggles; steps always readable) |
-| Field Coach | Segmented Describe / From photo + `PhotosPicker` → `POST /api/recommend` (JPEG base64 vision). Handles **402** paywall + **503** missing key |
+| Field Coach | Always-visible filled **Recommend a recipe** (Describe / From photo are secondary). `POST /api/recommend` text + JPEG vision; **402** paywall + **503** missing key |
 | Session | Cookie session; subscription-status on launch; Free Peek / Pro badge |
 | Paywall | **Yearly primary**, monthly secondary, 7-day trial badge; StoreKit 2 only |
 | Settings | API URL, health check, restore purchases, billing note (Apple subscriptions) |

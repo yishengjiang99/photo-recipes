@@ -68,14 +68,21 @@ struct FieldCoachPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.space3) {
             header
-            segment
             quotaCaption
+            // Mode shapes input only — does not gate the primary CTA
+            segment
 
             if mode == .describe {
                 describeBody
             } else {
                 photoBody
             }
+
+            // Filled primary always visible (enabled when note or photo)
+            submitButton(
+                title: isLoading ? "Matching a recipe…" : "Recommend a recipe",
+                enabled: canSubmit
+            )
 
             if let errorText {
                 errorBanner(errorText)
@@ -217,9 +224,6 @@ struct FieldCoachPanel: View {
                 }
             }
             VoiceStatusCaption(controller: voice)
-
-
-            submitButton(title: isLoading ? "Matching a recipe…" : "Recommend a recipe", enabled: canSubmitDescribe)
         }
     }
 
@@ -286,12 +290,6 @@ struct FieldCoachPanel: View {
                     appendVoice(text)
                 }
             }
-
-
-            submitButton(
-                title: isLoading ? "Matching a recipe…" : "Recommend from photo",
-                enabled: selectedImage != nil && !isLoading
-            )
         }
     }
 
@@ -303,8 +301,11 @@ struct FieldCoachPanel: View {
         message = cur.isEmpty ? t : cur + " " + t
     }
 
-    private var canSubmitDescribe: Bool {
-        !isLoading && !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var canSubmit: Bool {
+        guard !isLoading else { return false }
+        let hasNote = !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasPhoto = selectedImage != nil
+        return hasNote || hasPhoto
     }
 
     private func submitButton(title: String, enabled: Bool) -> some View {
@@ -312,7 +313,7 @@ struct FieldCoachPanel: View {
             Task { await submit() }
         } label: {
             HStack(spacing: 8) {
-                if isLoading { ProgressView().tint(.white) }
+                if isLoading { ProgressView().tint(AppTheme.accentOnAccent) }
                 Text(title)
             }
         }
@@ -410,10 +411,20 @@ struct FieldCoachPanel: View {
         showPaywallFromQuota = false
         isLoading = true
         defer { isLoading = false }
-        let jpeg: Data? = mode == .photo ? selectedImage.flatMap { APIClient.compressForVision($0) } : nil
+        // Prefer attached photo when present (mode only shapes input UI)
+        let jpeg: Data? = selectedImage.flatMap { APIClient.compressForVision($0) }
+        Analytics.shared.track("recommend_cta_tap", props: [
+            "surface": "ask",
+            "had_held_frame": jpeg != nil ? "true" : "false",
+        ])
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty && jpeg == nil {
+            errorText = "Add a scene note or choose a photo"
+            return
+        }
         do {
             let response = try await api.recommend(
-                message: message.trimmingCharacters(in: .whitespacesAndNewlines),
+                message: trimmed.isEmpty ? "From photo" : trimmed,
                 favorites: Array(entitlements.favoriteIds),
                 imageJPEGData: jpeg
             )
