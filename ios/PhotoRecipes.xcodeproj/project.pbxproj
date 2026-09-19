@@ -41,6 +41,11 @@
 		468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */; };
 		F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */; };
 		7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18387B310F694F1F91524975 /* ManualDialsSheet.swift */; };
+		B2C3D4E5F6471802LOOKCHIPBF /* LookChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64701LOOKCHIP01 /* LookChip.swift */; };
+		B2C3D4E5F6471804CTRLSHEETBF /* ControlsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64703CTRLSHEET1 /* ControlsSheet.swift */; };
+		B2C3D4E5F6471806COACHMARKBF /* CameraCoachMarksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64705COACHMARK1 /* CameraCoachMarksView.swift */; };
+		B2C3D4E5F6471808CREATIVEBF /* CreativeLook.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64707CREATIVE1 /* CreativeLook.swift */; };
+		B2C3D4E5F647180ALOOKENGINBF /* CreativeLookEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -82,6 +87,11 @@
 		80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeforeAfterChip.swift; sourceTree = "<group>"; };
 		995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeachModeSheet.swift; sourceTree = "<group>"; };
 		18387B310F694F1F91524975 /* ManualDialsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDialsSheet.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F64701LOOKCHIP01 /* LookChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookChip.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F64703CTRLSHEET1 /* ControlsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsSheet.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F64705COACHMARK1 /* CameraCoachMarksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCoachMarksView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F64707CREATIVE1 /* CreativeLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLook.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLookEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -177,6 +187,7 @@
 				E87980B7E9694E61BC2C380D /* Recipe.swift */,
 				42596CF2C7594D54982A5AA2 /* RecommendResponse.swift */,
 				DDC9BB6B9ADC456F83FF78B5 /* SubscriptionStatus.swift */,
+				A1B2C3D4E5F64707CREATIVE1 /* CreativeLook.swift */,
 			);
 			path = "Models";
 			sourceTree = "<group>";
@@ -219,8 +230,11 @@
 				80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */,
 				995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */,
 				18387B310F694F1F91524975 /* ManualDialsSheet.swift */,
+				A1B2C3D4E5F64701LOOKCHIP01 /* LookChip.swift */,
+				A1B2C3D4E5F64703CTRLSHEET1 /* ControlsSheet.swift */,
+				A1B2C3D4E5F64705COACHMARK1 /* CameraCoachMarksView.swift */,
 			);
-			path = Camera;
+			path = Features/Camera;
 			sourceTree = "<group>";
 		};
 		46A9F2944A2A25162C2F6BBE /* Voice */ = {
@@ -228,7 +242,7 @@
 			children = (
 				2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */,
 			);
-			path = Voice;
+			path = Features/Voice;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -338,6 +352,11 @@
 				468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */,
 				F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */,
 				7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */,
+				B2C3D4E5F6471802LOOKCHIPBF /* LookChip.swift in Sources */,
+				B2C3D4E5F6471804CTRLSHEETBF /* ControlsSheet.swift in Sources */,
+				B2C3D4E5F6471806COACHMARKBF /* CameraCoachMarksView.swift in Sources */,
+				B2C3D4E5F6471808CREATIVEBF /* CreativeLook.swift in Sources */,
+				B2C3D4E5F647180ALOOKENGINBF /* CreativeLookEngine.swift in Sources */,
 				C2D3E4F5061728394A5B6C7D /* PushNotificationManager.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* PushAnalytics.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;

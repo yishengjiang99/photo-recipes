@@ -70,10 +70,44 @@ final class CameraSession: NSObject, ObservableObject {
     @Published var subjectAreaChangeToken: Int = 0
     /// Preview-only LUT id from previewLUT — never baked into JPEG.
     @Published var previewLUTId: String?
-    /// Preview-only creativeLook from phoneTargets — never baked into JPEG.
-    @Published var creativeLook: CreativeLook?
+    /// Active Creative Look (user-applied). Baked into preview + still when intensity > 0.
+    @Published var activeCreativeLook: CreativeLook?
     @Published var pendingBracket: BracketTarget?
     @Published var simulatedApertureCoach: String?
+
+    // Controls sheet state (Light / Lens / Capture)
+    @Published var torchOn = false
+    @Published var lowLightBoostOn = false
+    @Published var videoHDROn = false
+    @Published var preferredFrameRate: Double?
+    @Published var selectedLens: LensChoice = .wide
+    @Published var lensPosition: Double = 0.5
+
+    enum LensChoice: String, CaseIterable, Identifiable {
+        case ultraWide, wide, tele
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .ultraWide: return "UW"
+            case .wide: return "Wide"
+            case .tele: return "Tele"
+            }
+        }
+    }
+
+    var supportsTorch: Bool { input?.device.hasTorch == true }
+    var supportsLowLightBoost: Bool { input?.device.isLowLightBoostSupported == true }
+    var supportsVideoHDR: Bool { input?.device.activeFormat.isVideoHDRSupported == true }
+    var supportsLensPosition: Bool {
+        input?.device.isLockingFocusWithCustomLensPositionSupported == true
+    }
+    var pendingBracketStops: [Double]? { pendingBracket?.stops }
+
+    /// Back-compat alias used by older notes paths.
+    var creativeLook: CreativeLook? {
+        get { activeCreativeLook }
+        set { activeCreativeLook = newValue }
+    }
 
     private var configured = false
     private var interruptionObserver: NSObjectProtocol?
@@ -498,16 +532,14 @@ final class CameraSession: NSObject, ObservableObject {
             previewLUTId = nil
         }
 
-        // P1 — creativeLook preview-only grade (capture settings remain primary).
+        // P1 — creativeLook is suggested to UI (never silent apply). Capture settings stay primary.
+        // AutoOptimizeController promotes targets.creativeLook → suggestedLook chip (Apply/Dismiss).
         if let look = targets.creativeLook, !look.id.isEmpty {
-            creativeLook = look
-            let intensity = look.intensity ?? 1
+            let intensity = look.intensity ?? CreativeLookCatalog.defaultIntensity
             applyNotes.append(
-                String(format: "Creative look “\(look.id)” @ %.0f%% — preview grade only, not a capture filter.", intensity * 100)
+                String(format: "Suggested look “\(look.id)” @ %.0f%% — Apply from chip to bake preview & still.", intensity * 100)
             )
             wrote = true
-        } else {
-            creativeLook = nil
         }
 
         // P1 — simulatedAperture only if OS API exists; else coach.
@@ -546,8 +578,9 @@ final class CameraSession: NSObject, ObservableObject {
         applyNotes = []
         optimizeReason = nil
         previewLUTId = nil
-        creativeLook = nil
+        activeCreativeLook = nil
         pendingBracket = nil
+        preferredFrameRate = nil
         simulatedApertureCoach = nil
         setSubjectAreaMonitoring(false)
         captureMode = .auto
@@ -583,6 +616,7 @@ final class CameraSession: NSObject, ObservableObject {
             device.setFocusModeLocked(lensPosition: clamped, completionHandler: nil)
         }
         focusLocked = true
+        lensPosition = Double(clamped)
         return true
     }
 
@@ -695,7 +729,12 @@ final class CameraSession: NSObject, ObservableObject {
                 Task { @MainActor in self.clampMessages.append("Torch: \(error.localizedDescription)") }
             }
         }
+        torchOn = (torch.mode.lowercased() == "on")
         return true
+    }
+
+    func setTorch(_ on: Bool) {
+        _ = applyTorch(TorchTarget(mode: on ? "on" : "off", level: on ? 1.0 : nil))
     }
 
     @discardableResult
@@ -718,6 +757,7 @@ final class CameraSession: NSObject, ObservableObject {
         configure(device) {
             device.automaticallyEnablesLowLightBoostWhenAvailable = enabled
         }
+        lowLightBoostOn = enabled
         return true
     }
 
@@ -736,6 +776,7 @@ final class CameraSession: NSObject, ObservableObject {
                 device.isVideoHDREnabled = false
             }
         }
+        videoHDROn = enabled
         return true
     }
 
@@ -822,7 +863,12 @@ final class CameraSession: NSObject, ObservableObject {
             device.activeVideoMinFrameDuration = use
             device.activeVideoMaxFrameDuration = use
         }
+        preferredFrameRate = fps
         return true
+    }
+
+    func setPreferredFrameRate(_ fps: Double) {
+        _ = setFrameRate(fps, preferFormatHint: nil)
     }
 
     private func pickFormat(device: AVCaptureDevice, hint: String) -> AVCaptureDevice.Format? {
@@ -919,8 +965,62 @@ final class CameraSession: NSObject, ObservableObject {
         return results
     }
 
-    func capturePhoto() async throws -> Data {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+
+    // MARK: - Creative Look (user apply) + lens pick
+
+    func setActiveLook(_ look: CreativeLook) {
+        guard CreativeLookCatalog.isKnown(look.id) else {
+            clampMessages.append("Look couldn’t apply")
+            return
+        }
+        var copy = look
+        if copy.intensity == nil { copy.intensity = CreativeLookCatalog.defaultIntensity }
+        activeCreativeLook = copy
+        applyNotes.append(
+            String(format: "Look “\(copy.displayName)” @ %.0f%% — baking preview & still.", copy.resolvedIntensity * 100)
+        )
+    }
+
+    func clearActiveLook() {
+        activeCreativeLook = nil
+    }
+
+    func supportsLens(_ lens: LensChoice) -> Bool {
+        let pos: AVCaptureDevice.Position = isFront ? .front : .back
+        let type: AVCaptureDevice.DeviceType = {
+            switch lens {
+            case .ultraWide: return .builtInUltraWideCamera
+            case .wide: return .builtInWideAngleCamera
+            case .tele: return .builtInTelephotoCamera
+            }
+        }()
+        let disc = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [type],
+            mediaType: .video,
+            position: pos
+        )
+        return !disc.devices.isEmpty
+    }
+
+    func selectLens(_ lens: LensChoice) {
+        let name: String = {
+            switch lens {
+            case .ultraWide: return "ultrawide"
+            case .wide: return "wide"
+            case .tele: return "tele"
+            }
+        }()
+        if switchCameraDevice(name) {
+            selectedLens = lens
+        }
+    }
+
+    /// When false, photo delegate skips Creative Look bake (probe / vision frames).
+    private var bakeLookOnNextCapture = true
+
+    func capturePhoto(bakeLook: Bool = true) async throws -> Data {
+        bakeLookOnNextCapture = bakeLook
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
                 Task { @MainActor in self.photoCont = cont }
@@ -933,7 +1033,7 @@ final class CameraSession: NSObject, ObservableObject {
         }
     }
 
-    func captureProbeFrame() async throws -> Data { try await capturePhoto() }
+    func captureProbeFrame() async throws -> Data { try await capturePhoto(bakeLook: false) }
 
     func refreshReadouts() {
         guard let device = input?.device else { return }
@@ -979,8 +1079,15 @@ extension CameraSession: AVCapturePhotoCaptureDelegate {
             guard let data = photo.fileDataRepresentation() else {
                 cont?.resume(throwing: CamError.captureFailed); return
             }
-            lastThumb = UIImage(data: data)
-            cont?.resume(returning: data)
+            let out: Data
+            if self.bakeLookOnNextCapture {
+                out = CreativeLookEngine.shared.bakeJPEG(data, look: self.activeCreativeLook)
+            } else {
+                out = data
+            }
+            self.bakeLookOnNextCapture = true
+            lastThumb = UIImage(data: out)
+            cont?.resume(returning: out)
         }
     }
 }

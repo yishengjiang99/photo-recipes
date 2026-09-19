@@ -6,8 +6,11 @@ struct TeachModeSheet: View {
     let oneLiner: String?
     let tips: [String]
     let diffs: [AutoOptimizeController.DiffLine]
+    var advancedDiffs: [AutoOptimizeController.DiffLine] = []
     let verifyWarning: String?
     var coachOnly: CoachOnly? = nil
+    var activeLook: CreativeLook? = nil
+    var onReoptimizeSubject: (() -> Void)? = nil
     var onDone: () -> Void
 
     var body: some View {
@@ -25,32 +28,33 @@ struct TeachModeSheet: View {
                     }
 
                     if entitlements.isPro {
+                        if !diffs.isEmpty {
+                            sectionTitle("What we wrote (Core)")
+                            ForEach(diffs) { d in diffRow(d) }
+                        }
+                        if !advancedDiffs.isEmpty {
+                            sectionTitle("What we wrote (Advanced)")
+                            ForEach(advancedDiffs) { d in diffRow(d) }
+                        }
+                        if let look = activeLook {
+                            sectionTitle("Look")
+                            Text("\(look.displayName) · \(String(format: "%.2f", look.resolvedIntensity))")
+                                .font(AppTheme.monoSm())
+                                .foregroundStyle(AppTheme.ink)
+                            Text(look.craftSentence)
+                                .font(AppTheme.bodySm())
+                                .foregroundStyle(AppTheme.inkSecondary)
+                            Text("Capture grade — baked into preview & still at this intensity.")
+                                .font(AppTheme.caption())
+                                .foregroundStyle(AppTheme.inkTertiary)
+                        }
                         if let coach = coachOnly { coachBlock(coach) }
                         if !tips.isEmpty {
-                            Text("Because")
-                                .font(AppTheme.overline())
-                                .foregroundStyle(AppTheme.inkTertiary)
+                            sectionTitle("Because")
                             ForEach(tips.prefix(3), id: \.self) { tip in
                                 HStack(alignment: .top, spacing: 8) {
                                     Text("•").foregroundStyle(AppTheme.accent)
                                     Text(tip).font(AppTheme.bodySm()).foregroundStyle(AppTheme.inkSecondary)
-                                }
-                            }
-                        }
-                        if !diffs.isEmpty {
-                            Text("What we set")
-                                .font(AppTheme.overline())
-                                .foregroundStyle(AppTheme.inkTertiary)
-                            ForEach(diffs) { d in
-                                HStack {
-                                    Text(d.label).font(AppTheme.caption()).foregroundStyle(AppTheme.inkTertiary)
-                                        .frame(width: 44, alignment: .leading)
-                                    Text(d.before).font(AppTheme.monoSm()).foregroundStyle(AppTheme.diffBefore)
-                                    Image(systemName: "arrow.right").font(.caption2).foregroundStyle(AppTheme.inkTertiary)
-                                    Text(d.after).font(AppTheme.monoSm()).foregroundStyle(AppTheme.diffAfter)
-                                    if d.clamped {
-                                        Text("clamped").font(AppTheme.overline()).foregroundStyle(AppTheme.tip)
-                                    }
                                 }
                             }
                         }
@@ -66,6 +70,11 @@ struct TeachModeSheet: View {
                             .padding(AppTheme.space3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(RoundedRectangle(cornerRadius: AppTheme.radiusMd).fill(AppTheme.tipBg))
+                        }
+                        if let onReoptimizeSubject {
+                            Button("Re-optimize on subject", action: onReoptimizeSubject)
+                                .font(AppTheme.bodySmMedium())
+                                .foregroundStyle(AppTheme.accent)
                         }
                     } else {
                         Text(oneLiner ?? "The agent matched a field recipe for this light.")
@@ -91,6 +100,26 @@ struct TeachModeSheet: View {
         .presentationDetents([.medium, .large])
     }
 
+    private func sectionTitle(_ t: String) -> some View {
+        Text(t)
+            .font(AppTheme.overline())
+            .foregroundStyle(AppTheme.inkTertiary)
+    }
+
+    private func diffRow(_ d: AutoOptimizeController.DiffLine) -> some View {
+        HStack {
+            Text(d.label).font(AppTheme.caption()).foregroundStyle(AppTheme.inkTertiary)
+                .frame(width: 64, alignment: .leading)
+            Text(d.before).font(AppTheme.monoSm()).foregroundStyle(AppTheme.diffBefore)
+            Image(systemName: "arrow.right").font(.caption2).foregroundStyle(AppTheme.inkTertiary)
+            Text(d.after).font(AppTheme.monoSm()).foregroundStyle(AppTheme.diffAfter)
+                .lineLimit(2)
+            if d.clamped {
+                Text("clamped").font(AppTheme.overline()).foregroundStyle(AppTheme.tip)
+            }
+        }
+    }
+
     @ViewBuilder
     private func coachBlock(_ coach: CoachOnly) -> some View {
         let rows: [(String, String)] = [
@@ -100,9 +129,7 @@ struct TeachModeSheet: View {
             coach.notes.map { ("Notes", $0) }
         ].compactMap { $0 }
         if !rows.isEmpty {
-            Text("Coach only")
-                .font(AppTheme.overline())
-                .foregroundStyle(AppTheme.inkTertiary)
+            sectionTitle("Coach-only")
             Text("Guidance only — not written to the phone camera API.")
                 .font(AppTheme.caption())
                 .foregroundStyle(AppTheme.inkCaption)

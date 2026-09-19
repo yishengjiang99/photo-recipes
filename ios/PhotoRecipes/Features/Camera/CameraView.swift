@@ -25,6 +25,10 @@ struct CameraView: View {
     @State private var showClearConfirm = false
     @State private var isCapturing = false
     @State private var captureError: String?
+    @State private var controlsTab: ControlsSheet.Tab = .core
+    @State private var showCoachMarks = false
+    @State private var coachStep = 0
+    @State private var lookToast: String?
 
     var body: some View {
         ZStack {
@@ -71,6 +75,10 @@ struct CameraView: View {
                 horizon.start()
             }
             applyStagingIfNeeded()
+            if CameraCoachMarksStore.shouldShow {
+                coachStep = 0
+                showCoachMarks = true
+            }
         }
         .onChange(of: router.stagedRecipeId) { _, _ in applyStagingIfNeeded() }
         .onChange(of: router.pendingAutoOptimize) { _, pending in
@@ -80,6 +88,10 @@ struct CameraView: View {
             describeTask?.cancel()
             describeTask = Task { await refreshSceneFromViewfinder() }
             Task { await consumePendingAutoOptimizeIfNeeded() }
+            if CameraCoachMarksStore.shouldShow {
+                coachStep = 0
+                showCoachMarks = true
+            }
         }
         .alert("Microphone is off", isPresented: $showMicDenied) {
             Button("Open Settings") {
@@ -108,17 +120,32 @@ struct CameraView: View {
             horizon.stop()
         }
         .sheet(isPresented: $showDials) {
-            ManualDialsSheet(session: session, optimizer: optimizer)
-                .environmentObject(entitlements)
+            ControlsSheet(
+                session: session,
+                optimizer: optimizer,
+                initialTab: controlsTab,
+                onTeach: {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showTeach = true }
+                },
+                onLookApplied: { _ in lookToast = nil }
+            )
+            .environmentObject(entitlements)
+            .id(controlsTab)
         }
         .sheet(isPresented: $showTeach) {
             TeachModeSheet(
                 recipeTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
                 oneLiner: optimizer.teachOneLiner,
                 tips: optimizer.tips,
-                diffs: optimizer.diffs,
+                diffs: optimizer.coreDiffs,
+                advancedDiffs: optimizer.advancedDiffs,
                 verifyWarning: optimizer.verifyWarning,
                 coachOnly: optimizer.coachOnly,
+                activeLook: session.activeCreativeLook,
+                onReoptimizeSubject: {
+                    showTeach = false
+                    Task { await runOptimize() }
+                },
                 onDone: { showTeach = false }
             )
             .environmentObject(entitlements)
@@ -136,7 +163,8 @@ struct CameraView: View {
                 canTeach: optimizer.phase == .ready || optimizer.teachOneLiner != nil,
                 onDials: {
                     showOverflow = false
-                    if entitlements.isPro { showDials = true } else { entitlements.showPaywall = true }
+                    controlsTab = .core
+                    showDials = true
                 },
                 onTeach: {
                     showOverflow = false
@@ -169,7 +197,11 @@ struct CameraView: View {
             let compact = isCompactChrome(width: geo.size.width, height: geo.size.height)
             let bottomScrim: CGFloat = compact ? 96 : 120
             ZStack {
-                CameraPreviewView(session: session.session, previewLUTId: session.previewLUTId)
+                CameraPreviewView(
+                    session: session.session,
+                    previewLUTId: session.previewLUTId,
+                    creativeLook: session.activeCreativeLook
+                )
                     .ignoresSafeArea()
                     .simultaneousGesture(
                         SpatialTapGesture().onEnded { value in
@@ -205,6 +237,15 @@ struct CameraView: View {
                     topOverlay(compact: compact)
                     Spacer(minLength: 0)
                     bottomOverlay(compact: compact, width: geo.size.width, scrimHeight: bottomScrim)
+                }
+
+                if showCoachMarks {
+                    CameraCoachMarksView(step: $coachStep) {
+                        showCoachMarks = false
+                        CameraCoachMarksStore.markSeen()
+                    }
+                    .transition(.opacity)
+                    .zIndex(20)
                 }
             }
         }
@@ -301,8 +342,32 @@ struct CameraView: View {
             AgentStatusPill(
                 phase: optimizer.phase,
                 verifyWarning: optimizer.verifyWarning,
+                statusOverride: optimizer.pillStatus,
                 onStop: { optimizer.clear() }
             )
+
+            if let mode = lookChipMode {
+                LookChip(
+                    mode: mode,
+                    onApply: { optimizer.applySuggestedLook(session: session) },
+                    onDismiss: { optimizer.dismissSuggestedLook() },
+                    onClear: { session.clearActiveLook() },
+                    onOpenLooks: {
+                        controlsTab = .looks
+                        showDials = true
+                    }
+                )
+                .padding(.horizontal, hPad)
+            }
+
+            if let lookToast {
+                Text(lookToast)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(AppTheme.agentStatusBg))
+            }
 
             sceneMicRow(compact: compact)
                 .padding(.horizontal, hPad)
@@ -326,12 +391,21 @@ struct CameraView: View {
                 .background(Capsule().fill(AppTheme.accent.opacity(canOptimize ? 1 : 0.4)))
             }
             .disabled(!canOptimize || optimizer.phase.isRunning)
+            .accessibilityLabel("Auto Optimize")
 
             if case .ready = optimizer.phase {
                 BeforeAfterChip(
-                    diffs: optimizer.diffs,
+                    diffs: optimizer.coreDiffs,
                     recipeTitle: optimizer.chosenRecipeTitle,
-                    onTap: { showDials = true }
+                    hasMoreAdvanced: !optimizer.advancedDiffs.isEmpty,
+                    onTap: {
+                        controlsTab = .core
+                        showDials = true
+                    },
+                    onMore: {
+                        controlsTab = .light
+                        showDials = true
+                    }
                 )
             }
 
@@ -457,14 +531,24 @@ struct CameraView: View {
 
             Spacer(minLength: 8)
 
-            floatingIcon("camera.aperture") {
-                if entitlements.isPro { showDials = true }
-                else { entitlements.showPaywall = true }
+            floatingIcon("ellipsis.circle") {
+                controlsTab = .core
+                showDials = true
             }
             .frame(width: side, height: side)
-            .accessibilityLabel("Manual dials")
+            .accessibilityLabel("Controls")
         }
         .padding(.horizontal, hPad)
+    }
+
+    private var lookChipMode: LookChip.Mode? {
+        if let active = session.activeCreativeLook {
+            return .active(active)
+        }
+        if let suggested = optimizer.suggestedLook {
+            return .suggested(suggested)
+        }
+        return nil
     }
 
     private var canOptimize: Bool { optimizer.canRun(isPro: entitlements.isPro) }
@@ -630,7 +714,7 @@ struct CameraOverflowSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Button("Manual dials", action: onDials)
+                Button("Controls…", action: onDials)
                 if canTeach {
                     Button("Why this? (Teach)", action: onTeach)
                 }

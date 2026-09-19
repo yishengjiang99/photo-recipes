@@ -3,12 +3,17 @@ import SwiftUI
 struct AgentStatusPill: View {
     let phase: AutoOptimizeController.Phase
     let verifyWarning: String?
+    /// When set, shown instead of phase.statusCopy / verifyWarning pairing.
+    var statusOverride: String? = nil
     var onStop: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
     var body: some View {
-        let copy = verifyWarning ?? phase.statusCopy
+        let copy = {
+            if let statusOverride, !statusOverride.isEmpty { return statusOverride }
+            return verifyWarning ?? phase.statusCopy
+        }()
         if !copy.isEmpty {
             HStack(spacing: 8) {
                 Circle()
