@@ -17,7 +17,7 @@ Point. Auto Optimize. Shoot · Capture the technique, not fix later
 
 ## Story (1–2 statics)
 
-1. Point camera / live viewfinder  
+1. Point camera / live viewfinder — real mountain landscape photo, not empty chrome  
 2. **From viewfinder** chip (lead) + rose **Auto Optimize** pill  
 3. Before→after chips: **shutter · ISO · EV · WB · focus** (NO aperture as applied)  
 4. Optional tiny Ready status  
