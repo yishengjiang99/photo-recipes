@@ -60,20 +60,22 @@ Camera may **prefill** an editable scene note from a live viewfinder caption. Ch
 
 ## 2. Viewfinder chrome — Auto Optimize as primary CTA
 
-### Bottom bar (portrait) — revised
+### Bottom / overlay chrome — full-bleed (align with camera v1 §3)
+
+**Preview stays edge-to-edge.** Auto Optimize is a **compact overlaid pill** (height 40–44, `accent` fill) floating above the shutter on a bottom gradient scrim — **not** a stacked panel tower and **not** a second page region that shrinks the viewfinder.
 
 ```
 ┌─────────────────────────────────────────┐
-│ [Gallery]   ( SHUTTER )   [Dials]       │
-│                                         │
-│     [ ⚡ Auto Optimize ]                │  ← full-width or prominent pill ABOVE shutter row
-│     status / chips stack                │
+│         FULL-BLEED PREVIEW              │
+│  status pill · before→after (ephemeral) │
+│  [⚡ Auto Optimize]  [scene ▾] [mic]   │  overlays
+│  [gallery]   ( SHUTTER )   [···]        │
 └─────────────────────────────────────────┘
 ```
 
-**Layout rule:** Auto Optimize sits **above** the shutter row as the **primary text CTA** (height 48–52, `accent` fill, white label, bolt or aperture icon). Shutter remains the physical capture control (center, large). Do **not** replace shutter with Auto Optimize.
+Teach mode + Manual dials open from **`···` / sheets** after a run — not persistent on-canvas blocks. Shutter remains center capture control.
 
-**Alternative (landscape / iPad):** Auto Optimize as vertical accent button opposite shutter; same hierarchy.
+**Alternative (landscape / iPad):** Auto Optimize as compact trailing overlay; preview still full-bleed.
 
 ### Idle label
 - Free with quota: `Auto Optimize` · caption `1 left today`
@@ -252,3 +254,9 @@ Scene dictate beside Auto Optimize / Ask: **[`design-handoff-voice-v1.md`](./des
 ## Addendum — Direction arrows
 
 Agent may emit pan/point cues during Optimize (left/right/up/down). UI: soft edge chevrons — **[`design-handoff-phones-v1.md`](./design-handoff-phones-v1.md)** §3. Clear when Verify passes.
+
+---
+
+## Addendum — Full-bleed camera
+
+Align Auto Optimize / status / before→after with **edge-to-edge preview** overlays in [`design-handoff-camera-v1.md`](./design-handoff-camera-v1.md) §3. No stacked forms on Camera.
