@@ -39,6 +39,7 @@ final class AppModel: ObservableObject {
     let push = PushNotificationManager.shared
 
     init() {
+        Analytics.shared.bootstrap()
         let ents = EntitlementsStore(api: APIClient.shared)
         self.entitlements = ents
         self.storeKit = StoreKitManager(api: APIClient.shared, entitlements: ents)

@@ -48,6 +48,7 @@ struct RecipeDetailView: View {
                 .padding(.bottom, AppTheme.space6)
             }
         }
+        .onAppear { Analytics.shared.track("recipe_open", props: ["recipe_id": recipe.id, "source": "ios"]) }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {

@@ -165,6 +165,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
     func openAutoOptimize(fromPush: Bool) {
         if fromPush {
             analytics.track(.pushOpened, properties: ["deepLink": "auto-optimize"])
+            Analytics.shared.track("push_opened", props: ["deepLink": "auto-optimize"])
         }
         router?.openAutoOptimize()
     }

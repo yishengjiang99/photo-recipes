@@ -85,6 +85,7 @@ struct CameraView: View {
             if pending { Task { await consumePendingAutoOptimizeIfNeeded() } }
         }
         .onAppear {
+            Analytics.shared.track("camera_open", props: ["source": "camera_tab"])
             describeTask?.cancel()
             describeTask = Task { await refreshSceneFromViewfinder() }
             Task { await consumePendingAutoOptimizeIfNeeded() }
@@ -125,9 +126,13 @@ struct CameraView: View {
                 optimizer: optimizer,
                 initialTab: controlsTab,
                 onTeach: {
+                    Analytics.shared.track("teach_open", props: ["source": "controls"])
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showTeach = true }
                 },
-                onLookApplied: { _ in lookToast = nil }
+                onLookApplied: { look in
+                    Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "controls"])
+                    lookToast = nil
+                }
             )
             .environmentObject(entitlements)
             .id(controlsTab)
@@ -349,8 +354,18 @@ struct CameraView: View {
             if let mode = lookChipMode {
                 LookChip(
                     mode: mode,
-                    onApply: { optimizer.applySuggestedLook(session: session) },
-                    onDismiss: { optimizer.dismissSuggestedLook() },
+                    onApply: {
+                        if let look = optimizer.suggestedLook {
+                            Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "chip"])
+                        }
+                        optimizer.applySuggestedLook(session: session)
+                    },
+                    onDismiss: {
+                        if let look = optimizer.suggestedLook {
+                            Analytics.shared.track("look_dismissed", props: ["look_id": look.id, "source": "chip"])
+                        }
+                        optimizer.dismissSuggestedLook()
+                    },
                     onClear: { session.clearActiveLook() },
                     onOpenLooks: {
                         controlsTab = .looks
@@ -515,6 +530,7 @@ struct CameraView: View {
             Spacer(minLength: 8)
 
             Button {
+                Analytics.shared.track("shutter_tap", props: ["source": "camera"])
                 Task { await takePhoto() }
             } label: {
                 ZStack {
@@ -628,6 +644,7 @@ struct CameraView: View {
         do {
             let data = try await session.capturePhoto()
             try await PhotoLibrarySaver.saveJPEG(data)
+            Analytics.shared.track("capture_success", props: ["source": "camera"])
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } catch {
             captureError = error.localizedDescription

@@ -131,10 +131,16 @@ final class AutoOptimizeController: ObservableObject {
 
     func markDirty() { isDirtyOverride = true }
 
-    func dismissSuggestedLook() { suggestedLook = nil }
+    func dismissSuggestedLook() {
+        if let look = suggestedLook {
+            Analytics.shared.track("look_dismissed", props: ["look_id": look.id, "source": "suggested"])
+        }
+        suggestedLook = nil
+    }
 
     func applySuggestedLook(session: CameraSession) {
         guard let look = suggestedLook else { return }
+        Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "suggested"])
         session.setActiveLook(look)
         suggestedLook = nil
         phase = .ready
@@ -153,11 +159,14 @@ final class AutoOptimizeController: ObservableObject {
         guard !phase.isRunning else { return }
         guard canRun(isPro: entitlements.isPro) else {
             phase = .error("Free Peek limit reached — upgrade for unlimited Auto Optimize")
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "paywall"])
+            Analytics.shared.track("paywall_view", props: ["source": "auto_optimize_limit"])
             entitlements.showPaywall = true
             return
         }
 
         PushAnalytics.shared.track(.autoOptimizeStarted)
+        Analytics.shared.track("auto_optimize_start", props: ["source": "ios"])
         verifyWarning = nil; diffs = []; advancedDiffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
@@ -191,9 +200,12 @@ final class AutoOptimizeController: ObservableObject {
             )
         } catch let APIError.paywall(p) {
             phase = .error(p.error ?? "Free Peek limit reached")
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "paywall"])
+            Analytics.shared.track("paywall_view", props: ["source": "recommend_paywall"])
             entitlements.showPaywall = true
             return
         } catch {
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "recommend"])
             phase = .error(error.localizedDescription); return
         }
 
@@ -208,6 +220,7 @@ final class AutoOptimizeController: ObservableObject {
             recipe = response.preset ?? response.presetId.flatMap { BundledPresets.recipe(id: $0) }
         }
         guard let recipe else {
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "no_recipe"])
             phase = .error("Couldn’t match a recipe — try again"); return
         }
 
@@ -238,6 +251,7 @@ final class AutoOptimizeController: ObservableObject {
                 phase = .applying("Suggesting look: \(suggested.displayName)…")
                 try? await Task.sleep(nanoseconds: 220_000_000)
                 suggestedLook = suggested
+                Analytics.shared.track("look_suggested", props: ["look_id": suggested.id])
             }
         }
         session.optimizeReason = teachOneLiner ?? reasonNote
@@ -249,6 +263,7 @@ final class AutoOptimizeController: ObservableObject {
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
             agentBaseline = afterSnapshot
             phase = .ready
+            Analytics.shared.track("auto_optimize_success", props: ["recipe_id": recipe.id, "coach_only": "true"])
             PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
             return
         }
@@ -268,6 +283,7 @@ final class AutoOptimizeController: ObservableObject {
         // Clear motion verifyWarning so look-suggested ready status can show; keep handshake in tips if needed.
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
+        Analytics.shared.track("auto_optimize_success", props: ["recipe_id": recipe.id])
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
     }
 
