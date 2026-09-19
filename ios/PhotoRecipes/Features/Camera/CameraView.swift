@@ -91,6 +91,13 @@ struct CameraView: View {
         } message: {
             Text("Enable the microphone to dictate a scene for Auto Optimize.")
         }
+
+        .onChange(of: session.subjectAreaChangeToken) { _, token in
+            guard token > 0, canOptimize else { return }
+            // monitorSubjectAreaChange → debounced re-run of Auto Optimize (same apply path).
+            Task { await runOptimize() }
+        }
+
         .onChange(of: voice.phase) { _, phase in
             if case .error = phase, voice.permission == .denied { showMicDenied = true }
         }
@@ -162,7 +169,7 @@ struct CameraView: View {
             let compact = isCompactChrome(width: geo.size.width, height: geo.size.height)
             let bottomScrim: CGFloat = compact ? 96 : 120
             ZStack {
-                CameraPreviewView(session: session.session)
+                CameraPreviewView(session: session.session, previewLUTId: session.previewLUTId)
                     .ignoresSafeArea()
                     .simultaneousGesture(
                         SpatialTapGesture().onEnded { value in
