@@ -207,7 +207,7 @@ export function updatePushPrefs(
 }
 
 const HEX_TOKEN = /^[0-9a-fA-F]{64,}$/
-const EXPECTED_BUNDLE = 'com.yishengjiang.photorecipes'
+const EXPECTED_BUNDLE = 'com.ragnus.mvp'
 
 export function registerApnsToken(
   guestId: string,

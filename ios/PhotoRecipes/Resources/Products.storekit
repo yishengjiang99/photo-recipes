@@ -49,7 +49,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.yishengjiang.photorecipes.pro.monthly",
+          "productID" : "com.ragnus.mvp.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Pro Monthly",
           "type" : "RecurringSubscription"
@@ -79,7 +79,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.yishengjiang.photorecipes.pro.yearly",
+          "productID" : "com.ragnus.mvp.pro.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Pro Yearly",
           "type" : "RecurringSubscription"

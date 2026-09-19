@@ -24,7 +24,7 @@ xcodegen generate   # reads project.yml
 open PhotoRecipes.xcodeproj
 ```
 
-- **Bundle ID:** `com.yishengjiang.photorecipes`
+- **Bundle ID:** `com.ragnus.mvp`
 - **Deployment:** iOS 17+
 - Select the **PhotoRecipes** scheme → run on a simulator or device.
 - For StoreKit local testing: Scheme → Edit Scheme → Run → Options → StoreKit Configuration → `PhotoRecipes/Resources/Products.storekit`
@@ -35,8 +35,8 @@ Copy `Config/Debug.xcconfig.example` → `Config/Debug.xcconfig` for local overr
 
 | Plan | Product ID | Price | Trial |
 |------|------------|-------|-------|
-| **Yearly (primary CTA)** | `com.yishengjiang.photorecipes.pro.yearly` | $59.99/yr | 7-day free |
-| Monthly | `com.yishengjiang.photorecipes.pro.monthly` | $7.99/mo | 7-day free |
+| **Yearly (primary CTA)** | `com.ragnus.mvp.pro.yearly` | $59.99/yr | 7-day free |
+| Monthly | `com.ragnus.mvp.pro.monthly` | $7.99/mo | 7-day free |
 
 Subscription group name suggestion: **Photo Recipes Pro**. Put yearly at the higher service level / primary ranking. These IDs are hard-coded in `StoreKitManager.swift` (`IAPProductID`) and `Products.storekit` — keep them identical everywhere.
 
@@ -211,9 +211,9 @@ ios/
 
 ```bash
 # Required in production for real Apple verification:
-APPLE_IAP_BUNDLE_ID=com.yishengjiang.photorecipes
-APPLE_IAP_PRODUCT_MONTHLY=com.yishengjiang.photorecipes.pro.monthly
-APPLE_IAP_PRODUCT_YEARLY=com.yishengjiang.photorecipes.pro.yearly
+APPLE_IAP_BUNDLE_ID=com.ragnus.mvp
+APPLE_IAP_PRODUCT_MONTHLY=com.ragnus.mvp.pro.monthly
+APPLE_IAP_PRODUCT_YEARLY=com.ragnus.mvp.pro.yearly
 APPLE_IAP_ISSUER_ID=        # App Store Connect → Users and Access → Keys → Issuer ID
 APPLE_IAP_KEY_ID=           # In-App Purchase key id
 APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your secret manager)
@@ -226,7 +226,7 @@ APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your s
 ## App Store Connect + TestFlight checklist (decisions for you)
 
 1. **Apple Developer Program** membership active.
-2. Create App ID `com.yishengjiang.photorecipes` with In-App Purchase capability.
+2. Create App ID `com.ragnus.mvp` with In-App Purchase capability.
 3. Create app record in App Store Connect; attach subscription group **Photo Recipes Pro**.
 4. Create the two auto-renewable products with the exact IDs above; add 7-day free trial introductory offers.
 5. Paid Apps Agreement + banking/tax complete (subscriptions won’t clear otherwise).
@@ -270,7 +270,7 @@ Declared in `Info.plist` (`CFBundleURLTypes`). Notification taps and foreground 
 {
   "token": "<apns hex>",
   "platform": "ios",
-  "bundleId": "com.yishengjiang.photorecipes",
+  "bundleId": "com.ragnus.mvp",
   "environment": "sandbox" | "production",
   "appVersion": "1.0"
 }

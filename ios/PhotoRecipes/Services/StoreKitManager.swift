@@ -3,8 +3,8 @@ import StoreKit
 
 /// Product IDs — must match App Store Connect + Products.storekit exactly.
 enum IAPProductID {
-    static let monthly = "com.yishengjiang.photorecipes.pro.monthly"
-    static let yearly = "com.yishengjiang.photorecipes.pro.yearly"
+    static let monthly = "com.ragnus.mvp.pro.monthly"
+    static let yearly = "com.ragnus.mvp.pro.yearly"
     static let all: Set<String> = [monthly, yearly]
 
     static func plan(for productId: String) -> SubscriptionPlan? {

@@ -1,8 +1,8 @@
 // Copy to Debug.xcconfig (gitignored) for local overrides.
-// PRODUCT_BUNDLE_IDENTIFIER = com.yishengjiang.photorecipes
+// PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp
 // Optional compile-time default API host (app still prefers Settings / UserDefaults):
 // API_BASE_URL = http:/$()/localhost:8787
 
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
-PRODUCT_BUNDLE_IDENTIFIER = com.yishengjiang.photorecipes
-PRODUCT_NAME = Photo Recipes
+PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp
+PRODUCT_NAME = Grepawk Photos

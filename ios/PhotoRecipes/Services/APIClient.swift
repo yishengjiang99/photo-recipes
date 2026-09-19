@@ -270,7 +270,7 @@ final class APIClient: ObservableObject {
         let body = PushRegisterRequest(
             token: token,
             platform: "ios",
-            bundleId: "com.yishengjiang.photorecipes",
+            bundleId: "com.ragnus.mvp",
             environment: environment,
             appVersion: appVersion
         )

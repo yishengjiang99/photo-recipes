@@ -260,9 +260,9 @@ Native iOS 17+ client lives in [`ios/`](./ios/). **Camera-first field camera**: 
 | | |
 |--|--|
 | Open | `cd ios && open PhotoRecipes.xcodeproj` |
-| Bundle ID | `com.yishengjiang.photorecipes` |
-| IAP yearly (primary) | `com.yishengjiang.photorecipes.pro.yearly` ($59.99/yr, 7-day trial) |
-| IAP monthly | `com.yishengjiang.photorecipes.pro.monthly` ($7.99/mo, 7-day trial) |
+| Bundle ID | `com.ragnus.mvp` |
+| IAP yearly (primary) | `com.ragnus.mvp.pro.yearly` ($59.99/yr, 7-day trial) |
+| IAP monthly | `com.ragnus.mvp.pro.monthly` ($7.99/mo, 7-day trial) |
 | Verify | `POST /api/iap/verify` (see `server/iap.ts`) |
 
 Full setup, ASC checklist, and TestFlight steps: **[ios/README.md](./ios/README.md)**.
