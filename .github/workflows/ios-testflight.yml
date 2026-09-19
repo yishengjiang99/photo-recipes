@@ -50,14 +50,13 @@ jobs:
           cp "$ASC_KEY_PATH" "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
           chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
 
-      - name: Ensure Xcode project
+      - name: Generate Xcode project
         working-directory: ios
         run: |
           set -euo pipefail
-          if [[ ! -f PhotoRecipes.xcodeproj/project.pbxproj ]]; then
-            brew install xcodegen
-            xcodegen generate
-          fi
+          # Checked-in .xcodeproj drifts; always regenerate from project.yml
+          brew install xcodegen
+          xcodegen generate
           xcodebuild -list -project PhotoRecipes.xcodeproj
 
       - name: Write ExportOptions.plist
