@@ -40,13 +40,14 @@ struct PhoneTargets: Codable, Hashable {
     var monitorSubjectAreaChange: Bool?
     var maxPhotoDimensions: MaxPhotoDimensions?
     var previewLUT: String?
+    var creativeLook: CreativeLook?
     var simulatedAperture: Double?
 
     enum CodingKeys: String, CodingKey {
         case shutter, exposureDurationSec, iso, ev, whiteBalance, focusMode, zoom, focusPoint
         case lensPosition, torch, flash, lowLightBoost, videoHDR, cameraDevice
         case frameRate, preferFormatHint, bracket, monitorSubjectAreaChange
-        case maxPhotoDimensions, previewLUT, simulatedAperture
+        case maxPhotoDimensions, previewLUT, creativeLook, simulatedAperture
     }
 
     init(from decoder: Decoder) throws {
@@ -71,6 +72,7 @@ struct PhoneTargets: Codable, Hashable {
         monitorSubjectAreaChange = try c.decodeIfPresent(Bool.self, forKey: .monitorSubjectAreaChange)
         maxPhotoDimensions = try c.decodeIfPresent(MaxPhotoDimensions.self, forKey: .maxPhotoDimensions)
         previewLUT = try c.decodeIfPresent(String.self, forKey: .previewLUT)
+        creativeLook = try c.decodeIfPresent(CreativeLook.self, forKey: .creativeLook)
         simulatedAperture = Self.dbl(c, .simulatedAperture)
     }
 
@@ -96,6 +98,7 @@ struct PhoneTargets: Codable, Hashable {
         try c.encodeIfPresent(monitorSubjectAreaChange, forKey: .monitorSubjectAreaChange)
         try c.encodeIfPresent(maxPhotoDimensions, forKey: .maxPhotoDimensions)
         try c.encodeIfPresent(previewLUT, forKey: .previewLUT)
+        try c.encodeIfPresent(creativeLook, forKey: .creativeLook)
         try c.encodeIfPresent(simulatedAperture, forKey: .simulatedAperture)
     }
 
@@ -230,6 +233,34 @@ enum WhiteBalanceTarget: Codable, Hashable {
             try c.encodeIfPresent(greenGain, forKey: .greenGain)
             try c.encodeIfPresent(blueGain, forKey: .blueGain)
         }
+    }
+}
+
+
+/// P1 preview-only grade (V1 look pack). Never baked into JPEG / capture filters.
+struct CreativeLook: Codable, Hashable {
+    var id: String
+    /// Blend 0…1 (0 = identity, 1 = full look).
+    var intensity: Double?
+
+    enum CodingKeys: String, CodingKey { case id, intensity }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        if let d = try? c.decodeIfPresent(Double.self, forKey: .intensity) {
+            intensity = min(max(d, 0), 1)
+        } else if let i = try? c.decodeIfPresent(Int.self, forKey: .intensity) {
+            intensity = min(max(Double(i), 0), 1)
+        } else {
+            intensity = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(intensity, forKey: .intensity)
     }
 }
 

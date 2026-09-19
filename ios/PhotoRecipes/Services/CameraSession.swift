@@ -70,6 +70,8 @@ final class CameraSession: NSObject, ObservableObject {
     @Published var subjectAreaChangeToken: Int = 0
     /// Preview-only LUT id from previewLUT — never baked into JPEG.
     @Published var previewLUTId: String?
+    /// Preview-only creativeLook from phoneTargets — never baked into JPEG.
+    @Published var creativeLook: CreativeLook?
     @Published var pendingBracket: BracketTarget?
     @Published var simulatedApertureCoach: String?
 
@@ -496,6 +498,18 @@ final class CameraSession: NSObject, ObservableObject {
             previewLUTId = nil
         }
 
+        // P1 — creativeLook preview-only grade (capture settings remain primary).
+        if let look = targets.creativeLook, !look.id.isEmpty {
+            creativeLook = look
+            let intensity = look.intensity ?? 1
+            applyNotes.append(
+                String(format: "Creative look “\(look.id)” @ %.0f%% — preview grade only, not a capture filter.", intensity * 100)
+            )
+            wrote = true
+        } else {
+            creativeLook = nil
+        }
+
         // P1 — simulatedAperture only if OS API exists; else coach.
         if let sa = targets.simulatedAperture {
             if applySimulatedAperture(sa) {
@@ -532,6 +546,7 @@ final class CameraSession: NSObject, ObservableObject {
         applyNotes = []
         optimizeReason = nil
         previewLUTId = nil
+        creativeLook = nil
         pendingBracket = nil
         simulatedApertureCoach = nil
         setSubjectAreaMonitoring(false)
