@@ -6,6 +6,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C2D3E4F5061728394A5B6C7D /* PushNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5061728394A5B6C7D8E /* PushNotificationManager.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* PushAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */; };
 		AF65C954A073AF6004DC26D4 /* VoiceDictateButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */; };
 		80552D953A3F71D2A9EC918F /* VoiceCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E3AAA2455783C2B657CAF3 /* VoiceCaptureController.swift */; };
 		D892B022C67A4EDCBB3D0AE4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B5463543CF4748AA949557 /* ContentView.swift */; };
@@ -42,6 +44,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		D3E4F5061728394A5B6C7D8E /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationManager.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushAnalytics.swift; sourceTree = "<group>"; };
 		2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictateButton.swift; sourceTree = "<group>"; };
 		A6E3AAA2455783C2B657CAF3 /* VoiceCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCaptureController.swift; sourceTree = "<group>"; };
 		892AA67F63154D80834A869D /* Photo Recipes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Photo Recipes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -181,6 +185,8 @@
 			isa = PBXGroup;
 			children = (
 				0DC9B7526A0840CC82F39593 /* APIClient.swift */,
+				D3E4F5061728394A5B6C7D8E /* PushNotificationManager.swift */,
+				B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */,
 				89161FDC75D748C6BE10ABD7 /* EntitlementsStore.swift */,
 				B27E2F87255E44ED9BEA7236 /* StoreKitManager.swift */,
 			
@@ -331,7 +337,9 @@
 				B1C4E8A29F0D4C6E8A1B3D5F /* ViewfinderPanCuesView.swift in Sources */,
 				468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */,
 				F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */,
-				7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */,);
+				7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */,
+				C2D3E4F5061728394A5B6C7D /* PushNotificationManager.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* PushAnalytics.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

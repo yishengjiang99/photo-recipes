@@ -245,6 +245,135 @@ final class APIClient: ObservableObject {
         return text
     }
 
+
+    // MARK: - Push (Experiment 1)
+
+    struct PushRegisterRequest: Encodable {
+        var token: String
+        var platform: String
+        var bundleId: String
+        var environment: String
+        var appVersion: String
+    }
+
+    struct PushRegisterResponse: Decodable {
+        var ok: Bool?
+        var guestId: String?
+        var error: String?
+    }
+
+    /// Register APNs device token. Soft-fails on 404/503 (server may not ship yet).
+    func registerPushToken(token: String, environment: String, appVersion: String) async throws {
+        var req = URLRequest(url: try url("/api/push/register"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = PushRegisterRequest(
+            token: token,
+            platform: "ios",
+            bundleId: "com.yishengjiang.photorecipes",
+            environment: environment,
+            appVersion: appVersion
+        )
+        req.httpBody = try encoder.encode(body)
+        let (data, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        if http.statusCode == 404 || http.statusCode == 503 {
+            throw APIError.http(http.statusCode, "push register unavailable")
+        }
+        if !(200..<300).contains(http.statusCode) {
+            let decoded = try? decoder.decode(PushRegisterResponse.self, from: data)
+            throw APIError.http(http.statusCode, decoded?.error ?? String(data: data, encoding: .utf8))
+        }
+        // 200: { ok, guestId } — guestId is session-side; never surface in UI.
+        _ = try? decoder.decode(PushRegisterResponse.self, from: data)
+    }
+
+    struct PushPrefs: Codable, Equatable {
+        var shootWindow: String?
+        var quietHours: String?
+        var weeklyCap: Int?
+        var pushOptIn: Bool?
+        var timezone: String?
+    }
+
+    struct PushPrefsResponse: Decodable {
+        var ok: Bool?
+        var prefs: PushPrefs?
+        var error: String?
+    }
+
+    /// GET /api/push/prefs — soft-fail if missing.
+    func getPushPrefs() async throws -> PushPrefs {
+        var req = URLRequest(url: try url("/api/push/prefs"))
+        req.httpMethod = "GET"
+        let (data, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        if http.statusCode == 404 || http.statusCode == 503 {
+            throw APIError.http(http.statusCode, "push prefs unavailable")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+        }
+        if let wrapped = try? decoder.decode(PushPrefsResponse.self, from: data), let prefs = wrapped.prefs {
+            return prefs
+        }
+        return try decoder.decode(PushPrefs.self, from: data)
+    }
+
+    /// PUT /api/push/prefs — soft-fail if missing.
+    @discardableResult
+    func updatePushPrefs(_ prefs: PushPrefs) async throws -> PushPrefs {
+        var req = URLRequest(url: try url("/api/push/prefs"))
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try encoder.encode(prefs)
+        let (data, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        if http.statusCode == 404 || http.statusCode == 503 {
+            throw APIError.http(http.statusCode, "push prefs unavailable")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+        }
+        if let wrapped = try? decoder.decode(PushPrefsResponse.self, from: data), let prefs = wrapped.prefs {
+            return prefs
+        }
+        return (try? decoder.decode(PushPrefs.self, from: data)) ?? prefs
+    }
+
+    struct PushEventRequest: Encodable {
+        var event: String
+        var properties: [String: String]?
+        var timestamp: String?
+    }
+
+    /// POST /api/push/events — allowlisted names only. Soft-fail on 404/503.
+    func postPushEvent(name: String, properties: [String: String] = [:]) async throws {
+        var req = URLRequest(url: try url("/api/push/events"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var props = properties
+        let ts = props.removeValue(forKey: "timestamp") ?? ISO8601DateFormatter().string(from: Date())
+        let body = PushEventRequest(event: name, properties: props.isEmpty ? nil : props, timestamp: ts)
+        req.httpBody = try encoder.encode(body)
+        let (data, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        if http.statusCode == 404 || http.statusCode == 503 {
+            throw APIError.http(http.statusCode, "push events unavailable")
+        }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+        }
+    }
+
     // MARK: - Helpers
 
     private func get<T: Decodable>(_ req: URLRequest) async throws -> T {

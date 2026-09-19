@@ -129,6 +129,7 @@ final class AutoOptimizeController: ObservableObject {
             return
         }
 
+        PushAnalytics.shared.track(.autoOptimizeStarted)
         verifyWarning = nil; diffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         beforeSnapshot = snap(session)
@@ -206,6 +207,7 @@ final class AutoOptimizeController: ObservableObject {
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
             agentBaseline = afterSnapshot
             phase = .ready
+            PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
             return
         }
 
@@ -222,6 +224,7 @@ final class AutoOptimizeController: ObservableObject {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         phase = .ready
+        PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
     }
 
     private func snap(_ session: CameraSession) -> SettingsSnapshot {
