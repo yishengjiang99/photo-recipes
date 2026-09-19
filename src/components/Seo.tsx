@@ -1,11 +1,21 @@
 import { useEffect } from 'react'
-import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, OG_IMAGE_PATH, SITE_URL } from '../lib/site'
+import {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_TITLE,
+  OG_IMAGE_ALT,
+  OG_IMAGE_HEIGHT,
+  OG_IMAGE_PATH,
+  OG_IMAGE_WIDTH,
+  SITE_NAME,
+  SITE_URL,
+} from '../lib/site'
 
 type SeoProps = {
   title?: string
   description?: string
   path?: string
   image?: string
+  imageAlt?: string
   jsonLd?: Record<string, unknown> | Record<string, unknown>[]
 }
 
@@ -34,13 +44,13 @@ export function Seo({
   description = DEFAULT_DESCRIPTION,
   path = '/',
   image = OG_IMAGE_PATH,
+  imageAlt = OG_IMAGE_ALT,
   jsonLd,
 }: SeoProps) {
   useEffect(() => {
-    const url = `${SITE_URL.replace(/\/$/, '')}${path}`
-    const imageUrl = image.startsWith('http')
-      ? image
-      : `${SITE_URL.replace(/\/$/, '')}${image}`
+    const origin = SITE_URL.replace(/\/$/, '')
+    const url = `${origin}${path}`
+    const imageUrl = image.startsWith('http') ? image : `${origin}${image}`
 
     document.title = title
     upsertMeta('name', 'description', description)
@@ -48,7 +58,11 @@ export function Seo({
     upsertMeta('property', 'og:description', description)
     upsertMeta('property', 'og:type', 'website')
     upsertMeta('property', 'og:url', url)
+    upsertMeta('property', 'og:site_name', SITE_NAME)
     upsertMeta('property', 'og:image', imageUrl)
+    upsertMeta('property', 'og:image:width', String(OG_IMAGE_WIDTH))
+    upsertMeta('property', 'og:image:height', String(OG_IMAGE_HEIGHT))
+    upsertMeta('property', 'og:image:alt', imageAlt)
     upsertMeta('name', 'twitter:card', 'summary_large_image')
     upsertMeta('name', 'twitter:title', title)
     upsertMeta('name', 'twitter:description', description)
@@ -70,7 +84,7 @@ export function Seo({
       const s = document.getElementById(scriptId)
       if (s) s.remove()
     }
-  }, [title, description, path, image, jsonLd])
+  }, [title, description, path, image, imageAlt, jsonLd])
 
   return null
 }

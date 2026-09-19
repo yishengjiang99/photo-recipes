@@ -12,31 +12,26 @@ const TRUST_LINE =
 
 const HOW_STEPS = [
   {
-    n: '1',
     title: 'Sense',
     body: 'Light, motion, subject — from the viewfinder note',
     status: 'Reading light…',
   },
   {
-    n: '2',
     title: 'Reason',
     body: 'Matches a field recipe; clamps to what the phone can set',
     status: 'Matching a recipe…',
   },
   {
-    n: '3',
     title: 'Apply',
     body: 'Writes shutter / ISO / EV / WB / focus',
     status: 'Applying shutter & ISO…',
   },
   {
-    n: '4',
     title: 'Verify',
     body: 'Soft pan ← → if you should reframe',
     status: 'Checking exposure…',
   },
   {
-    n: '5',
     title: 'Capture',
     body: 'You still press shutter',
     status: 'Ready to capture',
@@ -353,9 +348,8 @@ export function Landing() {
             </p>
             <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {HOW_STEPS.map((step) => (
-                <li key={step.n} className="rounded-2xl border border-border bg-surface p-5 text-left">
-                  <span className="font-mono text-xs font-semibold text-accent-soft">{step.n}</span>
-                  <h3 className="mt-2 font-display text-xl text-ink">{step.title}</h3>
+                <li key={step.title} className="rounded-2xl border border-border bg-surface p-5 text-left">
+                  <h3 className="font-display text-xl text-ink">{step.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{step.body}</p>
                   <p className="mt-3 inline-flex rounded-full bg-bg-elevated px-2.5 py-1 font-mono text-[11px] text-ink-tertiary ring-1 ring-border">
                     {step.status}
