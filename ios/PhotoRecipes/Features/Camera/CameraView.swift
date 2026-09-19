@@ -73,9 +73,13 @@ struct CameraView: View {
             applyStagingIfNeeded()
         }
         .onChange(of: router.stagedRecipeId) { _, _ in applyStagingIfNeeded() }
+        .onChange(of: router.pendingAutoOptimize) { _, pending in
+            if pending { Task { await consumePendingAutoOptimizeIfNeeded() } }
+        }
         .onAppear {
             describeTask?.cancel()
             describeTask = Task { await refreshSceneFromViewfinder() }
+            Task { await consumePendingAutoOptimizeIfNeeded() }
         }
         .alert("Microphone is off", isPresented: $showMicDenied) {
             Button("Open Settings") {
@@ -537,6 +541,21 @@ struct CameraView: View {
         } catch {
             captureError = error.localizedDescription
         }
+    }
+
+
+    private func consumePendingAutoOptimizeIfNeeded() async {
+        guard router.consumePendingAutoOptimize() else { return }
+        guard session.auth == .authorized else {
+            // Re-stage so we retry after camera auth.
+            router.pendingAutoOptimize = true
+            return
+        }
+        if !session.isRunning {
+            await session.start()
+            horizon.start()
+        }
+        await runOptimize()
     }
 
     private func applyStagingIfNeeded() {

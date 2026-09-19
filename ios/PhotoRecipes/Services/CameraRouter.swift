@@ -9,6 +9,8 @@ final class CameraRouter: ObservableObject {
     @Published var stagedRecipeId: String?
     @Published var stagedRecipeTitle: String?
     @Published var pendingApply = false
+    /// When true, Camera tab should kick off Auto Optimize (deep link / push).
+    @Published var pendingAutoOptimize = false
 
     func openCamera(staging recipe: Recipe, apply: Bool = true) {
         stagedRecipeId = recipe.id
@@ -17,9 +19,21 @@ final class CameraRouter: ObservableObject {
         selectedTab = .camera
     }
 
+    /// Deep link / push: switch to Camera and stage Auto Optimize.
+    func openAutoOptimize() {
+        pendingAutoOptimize = true
+        selectedTab = .camera
+    }
+
     func clearStaging() {
         stagedRecipeId = nil
         stagedRecipeTitle = nil
         pendingApply = false
+    }
+
+    func consumePendingAutoOptimize() -> Bool {
+        guard pendingAutoOptimize else { return false }
+        pendingAutoOptimize = false
+        return true
     }
 }

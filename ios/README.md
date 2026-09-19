@@ -217,6 +217,75 @@ APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your s
 4. On device TestFlight: real sandbox IAP once products are Created/Ready to Submit.
 5. After purchase, app calls `/api/iap/verify` then refreshes `/api/subscription-status` — checklists + unlimited Ask unlock when `pro: true`.
 
+
+
+## Push notifications (Experiment 1 — pre-alarm shoot brief)
+
+iOS client for Biz Dev Experiment 1. Weather / streaks / web push are **out of scope**.
+
+### When permission is asked
+
+**Not on install or launch.** After the **first successful Auto Optimize** (phase `.ready`), the app sets UserDefaults `hasCompletedFirstAutoOptimize` and, if `didAskPushPermission` is false, presents the system notification prompt once. Soft/hard deny paths set the ask flag so we do not re-prompt on every Optimize (Settings deep link only if the user opts in later).
+
+### URL scheme
+
+| Scheme | Action |
+|--------|--------|
+| `photo-recipes://auto-optimize` | Switch to Camera tab and stage/trigger Auto Optimize via `CameraRouter.openAutoOptimize()` |
+
+Declared in `Info.plist` (`CFBundleURLTypes`). Notification taps and foreground presentation use `UNUserNotificationCenter` delegate → same deep link path. Analytics: `push_opened` on tap.
+
+### Token registration
+
+`POST /api/push/register` (cookie session / `pr_guest` via shared `URLSession` cookie storage — no bearer):
+
+```json
+{
+  "token": "<apns hex>",
+  "platform": "ios",
+  "bundleId": "com.yishengjiang.photorecipes",
+  "environment": "sandbox" | "production",
+  "appVersion": "1.0"
+}
+```
+
+200 `{ ok, guestId }` — `guestId` is never shown in UI. **404 / 503 fail soft** (server Exp 1 may land later).
+
+Also stubbed: `GET`/`PUT` `/api/push/prefs` (`shootWindow`, `quietHours`, `weeklyCap`, `pushOptIn`, `timezone`) and `POST` `/api/push/events`.
+
+### Sandbox vs production (`aps-environment`)
+
+| Build | Entitlements / register `environment` |
+|-------|----------------------------------------|
+| Debug (local / Xcode) | `PhotoRecipes.entitlements` → `aps-environment` = **development**; register sends **`sandbox`** |
+| Release (TestFlight / App Store) | Xcode capability / provisioning sets **production**; register sends **`production`** |
+
+Checked-in entitlements file uses **development** so local device builds work. For App Store / TestFlight archives, enable Push Notifications in the Apple Developer App ID and let Xcode rewrite `aps-environment` to `production` for Release (or maintain a Release entitlements override). Override register env for testing: UserDefaults `push.apnsEnvironment` = `sandbox`|`production`.
+
+### Analytics events
+
+Posted to `POST /api/push/events` when available; always mirrored in UserDefaults (`push.analytics.events`):
+
+| Event | When |
+|-------|------|
+| `push_permission_prompt_shown` | System prompt about to show |
+| `push_permission_accepted` | User grants |
+| `push_permission_denied` | User denies / error |
+| `push_opened` | Notification tap → Auto Optimize deep link |
+| `auto_optimize_started` | Optimize run begins; `attributedToPush=true` if within **2h** of `push_opened` |
+
+### Entitlements / monetization (unchanged)
+
+Free Peek / trial / Pro remain from `EntitlementsStore` + StoreKit 2 only. Push copy and deep links must **never** send users to Stripe web checkout for digital unlock.
+
+### Key types
+
+- `PushNotificationManager` — permission, token, UN delegate, deep link
+- `PushAnalytics` — allowlisted events + 2h attribution
+- `APIClient` — `registerPushToken`, `getPushPrefs` / `updatePushPrefs`, `postPushEvent`
+- `CameraRouter.pendingAutoOptimize` / `openAutoOptimize()`
+
+
 ## Done vs next
 
 **Done in this PR**
