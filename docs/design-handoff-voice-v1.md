@@ -81,3 +81,17 @@ Never block Ask or Auto Optimize if mic fails — typing always works.
 ---
 
 *Designer · Voice input v1 · light add for Ask + Camera*
+
+---
+
+## 6. Scene field from viewfinder (Camera)
+
+When Camera can produce a short **viewfinder caption** (on-device / vision one-liner of the live scene):
+
+- **Prefill** the scene / dictate text field with that caption (editable — user can type, clear, or voice-overwrite).
+- Show a trailing/leading chip: **`From viewfinder`** (`caption`, `accent-muted` fill, hairline border).
+- **Refresh** control on the chip (circular arrow) re-runs captioning and replaces field text **only if** the field is still “clean” (unchanged since last prefills) **or** after confirm `Replace your edits?` if dirty.
+- Clearing the chip or editing the field does not stop live preview; chip stays until refresh/clear.
+- If captioning fails: leave field empty; no error toast unless user tapped Refresh.
+
+Same field is the one voice transcript fills (§2). Prefills → then mic appends unless user selects-all.

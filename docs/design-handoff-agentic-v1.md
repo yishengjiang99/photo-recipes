@@ -54,6 +54,10 @@
 
 ---
 
+## 1a. Scene field from viewfinder
+
+Camera may **prefill** an editable scene note from a live viewfinder caption. Chip: `From viewfinder` + refresh. Full behavior: [`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md) §6. Agent Sense/Reason may use this note (`Using your note…`).
+
 ## 2. Viewfinder chrome — Auto Optimize as primary CTA
 
 ### Bottom bar (portrait) — revised
