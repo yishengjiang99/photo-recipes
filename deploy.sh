@@ -236,7 +236,50 @@ echo "==> Configuring remote host…"
 "${SSH[@]}" "bash -s" <<<"$REMOTE_SCRIPT"
 
 echo
-echo "==> Done."
+echo "==> Post-deploy smoke (https://${SERVER_NAME})…"
+SMOKE_BASE="https://${SERVER_NAME}"
+
+echo "--> Health"
+HEALTH="$(curl -fsS -m 15 "${SMOKE_BASE}/api/health")"
+echo "$HEALTH" | grep -q ok || {
+  echo "SMOKE FAIL: /api/health did not contain ok: $HEALTH" >&2
+  exit 1
+}
+echo "    health ok: $HEALTH"
+
+echo "--> Homepage + hashed assets"
+HOME_HTML="$(curl -fsS -m 15 "${SMOKE_BASE}/")"
+mapfile -t ASSET_URLS < <(printf '%s' "$HOME_HTML" | grep -oE '/assets/[^"'"'"' ]+\.(js|css)' | sort -u)
+if [[ ${#ASSET_URLS[@]} -eq 0 ]]; then
+  echo "SMOKE FAIL: no /assets/*.js or *.css found in homepage HTML" >&2
+  exit 1
+fi
+for asset in "${ASSET_URLS[@]}"; do
+  code="$(curl -sS -o /dev/null -w '%{http_code}' -m 15 -fI "${SMOKE_BASE}${asset}" || true)"
+  if [[ "$code" != "200" ]]; then
+    echo "SMOKE FAIL: ${asset} → HTTP ${code} (expected 200)" >&2
+    exit 1
+  fi
+  echo "    ${asset} → 200"
+done
+
+echo "--> TLS"
+if command -v openssl >/dev/null 2>&1; then
+  echo | openssl s_client -servername "${SERVER_NAME}" -connect "${SERVER_NAME}:443" 2>/dev/null \
+    | openssl x509 -noout -subject -dates >/dev/null \
+    || { echo "SMOKE FAIL: openssl TLS verify for ${SERVER_NAME}" >&2; exit 1; }
+  echo "    openssl cert present for ${SERVER_NAME}"
+fi
+curl -fsSI -m 15 "${SMOKE_BASE}/" >/dev/null || {
+  echo "SMOKE FAIL: curl TLS/HTTPS to ${SMOKE_BASE}/" >&2
+  exit 1
+}
+CC="$(curl -sSI -m 15 "${SMOKE_BASE}/" | tr -d '\r' | grep -i '^cache-control:' || true)"
+echo "    homepage Cache-Control: ${CC:-'(none)'}"
+echo "$CC" | grep -qi 'no-cache' || echo "WARNING: homepage missing no-cache Cache-Control"
+
+echo
+echo "==> Done (smoke passed)."
 echo "    App path : ${DEPLOY_PATH}"
 echo "    API unit : photo-recipes.service (127.0.0.1:8787)"
 echo "    Web      : nginx → ${DEPLOY_PATH}/dist , /api proxied"
