@@ -233,7 +233,7 @@ APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your s
 6. Sandbox testers: Users and Access → Sandbox → Testers.
 7. Xcode: StoreKit Configuration file for local; or sandbox Apple ID on device.
 8. Archive → Upload → TestFlight external/internal. Soft launch: no Stripe Adaptive Sheet for unlock — IAP only.
-9. Privacy nutrition labels: photo library (Ask Vision), purchase history.
+9. Privacy nutrition labels: photo library (Ask Vision), purchase history; **Product Interaction / Analytics** — anonymized in-house funnel events only (no session replay; no camera frames to analytics). See `docs/telemetry.md`.
 10. Optional later: Server Notifications V2 URL for subscription lifecycle → same entitlements store.
 
 ## Soft TestFlight path

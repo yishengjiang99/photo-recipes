@@ -36,6 +36,12 @@ Preset data lives in `src/data/presets.ts` (shared with the API).
 - Free Peek: browse presets; Ask Grok **or** Photo Vision **1 combined/day**
 - Pro: unlimited Ask Grok + Photo Vision + field checklists
 
+## Telemetry & App Privacy
+
+In-house MySQL funnel analytics (`POST /api/telemetry`) — **no** TelemetryDeck/Sentry/session replay. Events are allowlisted; props never include photos or PII. Analytics are anonymized (`anon_id`). See [`docs/telemetry.md`](./docs/telemetry.md) and [`docs/telemetry-funnels.md`](./docs/telemetry-funnels.md).
+
+Configure `MYSQL_*` + optional `TELEMETRY_READ_KEY` in `.env` / `/etc/photo-recipes.env`. App builds and runs when MySQL is unset.
+
 ## Environment
 
 Copy `.env.example` to `.env` (never commit `.env`):
