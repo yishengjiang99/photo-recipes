@@ -20,7 +20,8 @@ Ads-side pairing + creative IDs: [`copy-pairing-v2.md`](./copy-pairing-v2.md).
 
 | Path | Contents |
 |------|----------|
-| `assets/ads/agentic-v2/` | **v2** Auto Optimize statics (PNG) — primary package |
+| `assets/ads/elevator-v1/` | **Ship-now** elevator pitch statics (feed + Stories) |
+| `assets/ads/agentic-v2/` | **v2** Auto Optimize statics (PNG) — expanded package |
 | `assets/ads/c3/` | **v1** Recipe card UI stills (kept; skill-library proof) |
 | `assets/ads/marketing/` | Designer heroes copied for ads ops (see README there) |
 | `docs/ads/` | Briefs, copy pairing, idea dump, production notes |
@@ -46,6 +47,7 @@ See `assets/ads/c3/` — library / detail / dials / checklist. Production notes:
 |-----|------|
 | [`../marketing/ad-copy-v2.md`](../marketing/ad-copy-v2.md) | **Canonical** Marketing v2 PT/H/R/hooks |
 | [`copy-pairing-v2.md`](./copy-pairing-v2.md) | Ads creative × copy matrix (mirrors Marketing) |
+| [`elevator-pitch-v1.md`](./elevator-pitch-v1.md) | Elevator pitch + slogan statics notes |
 | [`copy-pairing.md`](./copy-pairing.md) | v1 archive (Ask / recipe-card era) |
 | [`agentic-briefs-v2.md`](./agentic-briefs-v2.md) | C3-AO, C-BA, C-PAN, C-VF, C1/C2/C4 updates; C5 hold |
 | [`idea-dump.md`](./idea-dump.md) | G1–G12 + agentic section |
@@ -53,6 +55,7 @@ See `assets/ads/c3/` — library / detail / dials / checklist. Production notes:
 
 ## Quick pairing (v2)
 
+- **Elevator** → PT1 + H1 · end H2 slogan · Learn More  
 - **C3-AO** → PT2/PT5 + H1/H4 · Learn More  
 - **C-BA** → PT1 + H1 · Learn More  
 - **C-PAN** → PT2 + H3 · Learn More (video: Hook 4)  
