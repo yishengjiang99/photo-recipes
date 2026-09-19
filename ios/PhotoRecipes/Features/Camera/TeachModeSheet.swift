@@ -7,6 +7,7 @@ struct TeachModeSheet: View {
     let tips: [String]
     let diffs: [AutoOptimizeController.DiffLine]
     let verifyWarning: String?
+    var coachOnly: CoachOnly? = nil
     var onDone: () -> Void
 
     var body: some View {
@@ -24,6 +25,7 @@ struct TeachModeSheet: View {
                     }
 
                     if entitlements.isPro {
+                        if let coach = coachOnly { coachBlock(coach) }
                         if !tips.isEmpty {
                             Text("Because")
                                 .font(AppTheme.overline())
@@ -87,5 +89,30 @@ struct TeachModeSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private func coachBlock(_ coach: CoachOnly) -> some View {
+        let rows: [(String, String)] = [
+            coach.aperture.map { ("Aperture", $0) },
+            coach.nd.map { ("ND", $0) },
+            coach.tripod.map { ("Tripod", $0 ? "Recommended" : "Optional") },
+            coach.notes.map { ("Notes", $0) }
+        ].compactMap { $0 }
+        if !rows.isEmpty {
+            Text("Coach only")
+                .font(AppTheme.overline())
+                .foregroundStyle(AppTheme.inkTertiary)
+            Text("Guidance only — not written to the phone camera API.")
+                .font(AppTheme.caption())
+                .foregroundStyle(AppTheme.inkCaption)
+            ForEach(rows, id: \.0) { row in
+                HStack(alignment: .top) {
+                    Text(row.0).font(AppTheme.caption()).foregroundStyle(AppTheme.inkTertiary)
+                        .frame(width: 72, alignment: .leading)
+                    Text(row.1).font(AppTheme.bodySm()).foregroundStyle(AppTheme.inkSecondary)
+                }
+            }
+        }
     }
 }
