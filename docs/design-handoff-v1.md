@@ -334,3 +334,10 @@ Live capture UI (viewfinder, dials overlay, apply recipe, permissions, Pro gate)
 ## Addendum — Agentic Auto Optimize
 
 See **[`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)** and the Camera addendum. Auto Optimize is the primary Camera CTA; Library/Ask become agent tools + coach surfaces.
+
+
+---
+
+## Addendum — Voice input
+
+Mic → recording pulse → transcript-in-field → stop/done on Ask + Camera: **[`design-handoff-voice-v1.md`](./design-handoff-voice-v1.md)**.
