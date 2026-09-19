@@ -128,16 +128,21 @@ export async function insertTelemetry(row: TelemetryRow): Promise<boolean> {
   const pool = getMysqlPool()
   if (!pool) return false
   try {
+    const appVersion =
+      row.props && typeof row.props.app_version === 'string'
+        ? String(row.props.app_version).slice(0, 32)
+        : null
     await pool.execute(
       `INSERT INTO telemetry_events
-        (app, platform, event, anon_id, session_id, props, ip_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (app, platform, event, anon_id, session_id, app_version, props_json, ip_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.app,
         row.platform,
         row.event,
         row.anon_id,
         row.session_id,
+        appVersion,
         row.props ? JSON.stringify(row.props) : null,
         row.ip_hash,
       ],
@@ -187,7 +192,7 @@ async function countEvents(
     const [rows] = await pool.query(
       `SELECT event, COUNT(*) AS c
        FROM telemetry_events
-       WHERE ts >= (NOW(3) - INTERVAL ? DAY)
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY)
          AND event IN (${events.map(() => '?').join(',')})
          ${platform ? 'AND platform = ?' : ''}
        GROUP BY event`,
@@ -208,15 +213,15 @@ async function dauWau(days: number): Promise<{ dau: number; wau: number; events:
   try {
     const [[dauRow]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE ts >= (NOW(3) - INTERVAL 1 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
     )) as unknown as [Array<{ n: number }>]
     const [[wauRow]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE ts >= (NOW(3) - INTERVAL 7 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
     )) as unknown as [Array<{ n: number }>]
     const [[evRow]] = (await pool.query(
       `SELECT COUNT(*) AS n FROM telemetry_events
-       WHERE ts >= (NOW(3) - INTERVAL ? DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY)`,
       [days],
     )) as unknown as [Array<{ n: number }>]
     return {
@@ -235,12 +240,12 @@ async function conversionByPlan(days: number) {
   try {
     const [rows] = await pool.query(
       `SELECT
-         COALESCE(JSON_UNQUOTE(JSON_EXTRACT(props, '$.plan')), 'unknown') AS plan,
+         COALESCE(JSON_UNQUOTE(JSON_EXTRACT(props_json, '$.plan')), 'unknown') AS plan,
          SUM(event = 'paywall_view') AS paywall_view,
          SUM(event = 'purchase_success') AS purchase_success,
          SUM(event = 'checkout_redirect') AS checkout_redirect
        FROM telemetry_events
-       WHERE ts >= (NOW(3) - INTERVAL ? DAY)
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY)
          AND event IN ('paywall_view','purchase_success','checkout_redirect','purchase_start','paywall_plan_select')
        GROUP BY plan`,
       [days],
