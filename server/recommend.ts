@@ -21,7 +21,9 @@ export interface RecommendRequest {
   imageDataUrl?: string
 }
 
-/** Values a phone camera API can typically apply (AVFoundation / Camera2-style). */
+/** Values a phone camera API can typically apply (AVFoundation / Camera2-style).
+ * All keys optional/additive — older iOS builds ignore unknown keys.
+ */
 export interface PhoneTargets {
   shutter?: string
   iso?: string
@@ -29,6 +31,17 @@ export interface PhoneTargets {
   ev?: string
   whiteBalance?: string
   focusMode?: string
+  /**
+   * Multiplicative zoom factor for AVCaptureDevice.videoZoomFactor (1 = 1×, 2 = 2×).
+   * Clients may also map discrete values to lens switch (e.g. 0.5 ultra-wide, 1 wide, 2 tele).
+   * String forms like "2x" are accepted by the server and normalized to a number.
+   */
+  zoom?: number
+  /**
+   * Normalized viewfinder tap-to-focus point (0–1). Omit when focusMode alone is enough.
+   * Spoken e.g. "lock focus on the rider" → focusMode locked + optional focusPoint.
+   */
+  focusPoint?: { x: number; y: number }
 }
 
 /** Guidance the coach shows but the device does not auto-apply. */
@@ -125,7 +138,7 @@ const tools = [
     function: {
       name: 'select_preset',
       description:
-        'Finalize Auto Optimize: pick exactly one catalog preset and emit phone-settable targets, coach-only guidance, optional pan cue, and a short teachWhy. Call only after sensing the scene and inspecting the catalog. This ends the loop.',
+        'Finalize Auto Optimize / voice camera intents: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (shutter/ISO/EV/WB/focus/zoom/focusPoint), coach-only guidance, optional pan cue, and teachWhy. For spoken control tweaks, phoneTargets MUST reflect the ask. This ends the loop.',
       parameters: {
         type: 'object',
         properties: {
@@ -152,7 +165,7 @@ const tools = [
           phoneTargets: {
             type: 'object',
             description:
-              'Only values a phone camera API can apply. Omit keys you cannot set from the recipe.',
+              'Only values a phone camera API can apply (shutter, iso, ev, whiteBalance, focusMode, zoom, focusPoint). For spoken control intents, include the keys that match the ask. Omit keys you cannot set.',
             properties: {
               shutter: {
                 type: 'string',
@@ -173,6 +186,28 @@ const tools = [
               focusMode: {
                 type: 'string',
                 description: 'e.g. "continuous", "locked", "near", "infinity"',
+              },
+              zoom: {
+                type: 'number',
+                description:
+                  'Multiplicative zoom factor for videoZoomFactor (1 = 1×, 2 = 2×). Clients may map to lens switch (0.5 UW, 1 wide, 2 tele).',
+              },
+              focusPoint: {
+                type: 'object',
+                description:
+                  'Normalized tap-to-focus point (0–1). Use with focusMode when the user names a subject region; omit if focusMode alone is enough.',
+                properties: {
+                  x: {
+                    type: 'number',
+                    description: 'Horizontal position 0 (left) … 1 (right)',
+                  },
+                  y: {
+                    type: 'number',
+                    description: 'Vertical position 0 (top) … 1 (bottom)',
+                  },
+                },
+                required: ['x', 'y'],
+                additionalProperties: false,
               },
             },
             additionalProperties: false,
@@ -258,6 +293,52 @@ function asOptionalString(v: unknown): string | undefined {
   return t ? t : undefined
 }
 
+function parseZoom(raw: unknown): number | undefined | { error: string } {
+  if (raw == null) return undefined
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return { error: 'phoneTargets.zoom must be a positive finite number (videoZoomFactor)' }
+    }
+    // Plausible phone range; iOS clamps further per device.
+    if (raw < 0.5 || raw > 16) {
+      return { error: 'phoneTargets.zoom out of range (use 0.5–16 as videoZoomFactor)' }
+    }
+    return raw
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim().toLowerCase().replace(/×/g, 'x')
+    const m = t.match(/^(\d+(?:\.\d+)?)\s*x?$/)
+    if (!m) {
+      return { error: 'phoneTargets.zoom string must look like "1", "2x", or "0.5"' }
+    }
+    const n = Number(m[1])
+    if (!Number.isFinite(n) || n <= 0 || n < 0.5 || n > 16) {
+      return { error: 'phoneTargets.zoom out of range (use 0.5–16 as videoZoomFactor)' }
+    }
+    return n
+  }
+  return { error: 'phoneTargets.zoom must be a number or string like "2x"' }
+}
+
+function parseFocusPoint(
+  raw: unknown,
+): { x: number; y: number } | undefined | { error: string } {
+  if (raw == null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'phoneTargets.focusPoint must be an object { x, y }' }
+  }
+  const o = raw as Record<string, unknown>
+  const x = o.x
+  const y = o.y
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return { error: 'phoneTargets.focusPoint.x and .y must be finite numbers' }
+  }
+  if (x < 0 || x > 1 || y < 0 || y > 1) {
+    return { error: 'phoneTargets.focusPoint.x/y must be in 0–1 (normalized viewfinder)' }
+  }
+  return { x, y }
+}
+
 function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'phoneTargets must be an object' }
@@ -274,6 +355,17 @@ function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
   if (ev) out.ev = ev
   if (whiteBalance) out.whiteBalance = whiteBalance
   if (focusMode) out.focusMode = focusMode
+
+  const zoom = parseZoom(o.zoom)
+  if (zoom && typeof zoom === 'object' && 'error' in zoom) return zoom
+  if (typeof zoom === 'number') out.zoom = zoom
+
+  const focusPoint = parseFocusPoint(o.focusPoint)
+  if (focusPoint && typeof focusPoint === 'object' && 'error' in focusPoint) {
+    return focusPoint
+  }
+  if (focusPoint && 'x' in focusPoint) out.focusPoint = focusPoint
+
   return out
 }
 
@@ -466,14 +558,24 @@ Tone: darkroom field notes — quiet, concrete, instructor-at-your-shoulder. Nev
 
 LOOP (strict):
 1. SENSE — ${senseLine}
-2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id.
+2. REASON — Call list_presets. Optionally get_preset_details for 1–2 candidates. Pick exactly ONE catalog id (keep the current recipe if it already fits, or switch to a better catalog match).
 3. ACT / FINALIZE — Call select_preset with structured phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY (mental check before select_preset) — Targets match the recipe technique; shutter/ISO/EV are phone-plausible; aperture/ND/tripod stay in coachOnly; panCue only for panning/motion recipes.
+4. VERIFY (mental check before select_preset) — Targets match the recipe technique and any spoken control ask; shutter/ISO/EV/zoom are phone-plausible; aperture/ND/tripod stay in coachOnly; panCue only for panning/motion recipes.
+
+VOICE / SPOKEN CAMERA INTENTS:
+- User messages may be STT transcripts of camera control asks (not only scene descriptions for Ask text).
+- Even without picking a new recipe, you MUST still call tools and emit phoneTargets that match the ask — same apply path as Auto Optimize (AVCapture session), never text-field-only.
+- Map spoken intents → phoneTargets (and panCue / teachWhy when useful), e.g.:
+  • "slower shutter for panning" → phoneTargets.shutter (e.g. "1/30") + panCue + teachWhy
+  • "lock focus on the rider" → phoneTargets.focusMode "locked" (+ optional focusPoint {x,y} 0–1 if you can infer a region)
+  • "zoom in a bit" / "go to 2x" → phoneTargets.zoom (videoZoomFactor number: 1 = 1×, 2 = 2×)
+  • "pull EV down" → phoneTargets.ev; "daylight WB" → phoneTargets.whiteBalance
+- When the intent is a control adjustment, phoneTargets MUST include the relevant keys (do not finalize with empty {} if they asked to change shutter/ISO/EV/WB/focus/zoom).
 
 CRITICAL RULES:
 - Catalog only: never invent preset ids, titles, or off-catalog recipes.
 - You MUST use tools. Do not free-form recommend without select_preset.
-- phoneTargets = only what a phone camera API can apply: shutter, iso, ev, whiteBalance, focusMode.
+- phoneTargets = only what a phone camera API can apply: shutter, iso, ev, whiteBalance, focusMode, zoom, focusPoint.
 - coachOnly = aperture, nd, tripod, notes — shown to the photographer, NOT applied on device.
 - teachWhy = 1–2 short sentences for Teach mode ("Why this?").
 - tips = max 3 short field tips.
@@ -594,7 +696,7 @@ export async function recommendWithGrok(
       messages.push({
         role: 'user',
         content:
-          'You must use tools. Call list_presets, then select_preset with a catalog id, teachWhy, phoneTargets, and coachOnly. Do not invent recipes.',
+          'You must use tools. Call list_presets, then select_preset with a catalog id, teachWhy, phoneTargets (include shutter/ISO/EV/WB/focus/zoom/focusPoint when the user asked for those controls), and coachOnly. Do not invent recipes.',
       })
       continue
     }
@@ -640,7 +742,7 @@ export async function recommendWithGrok(
       messages.push({
         role: 'user',
         content:
-          'Finalize now: call select_preset with a valid catalog presetId, reason, teachWhy, phoneTargets, and coachOnly (and panCue if panning).',
+          'Finalize now: call select_preset with a valid catalog presetId, reason, teachWhy, phoneTargets matching any spoken control ask (shutter/ISO/EV/WB/focus/zoom/focusPoint), and coachOnly (and panCue if panning).',
       })
     }
   }

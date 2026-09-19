@@ -3,8 +3,10 @@
  * Client uploads audio → we forward to xAI with XAI_API_KEY (never on device).
  * Batch REST for v1; live WSS (interim_results / smart_turn) is a v1.1 follow-up.
  *
- * Transcripts feed Auto Optimize / Ask scene notes — keyterms bias toward field-coach
- * vocabulary (exposure, panning, HDR) so STT matches agentic prompt v2 tone.
+ * Transcripts are camera intents for the shared Auto Optimize apply path
+ * (voice → STT → recommend tools → phoneTargets → AVCapture) — not Ask text-field-only.
+ * Keyterms bias toward field-coach + control vocabulary (exposure, panning, zoom, lock focus)
+ * so STT matches agentic prompt v2 tone. See docs/agentic-prompt-v2.md §8–§9.
  */
 import type { Express, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
@@ -48,6 +50,12 @@ export const PHOTO_STT_KEYTERMS = [
   'pan left',
   'pan right',
   'Auto Optimize',
+  'zoom',
+  'lock focus',
+  'focus lock',
+  'two x',
+  'slower shutter',
+  'exposure compensation',
 ] as const
 
 export const ALLOWED_AUDIO_MIMES = new Set([
