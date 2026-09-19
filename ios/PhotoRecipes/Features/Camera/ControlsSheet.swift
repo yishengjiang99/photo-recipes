@@ -181,7 +181,7 @@ struct ControlsSheet: View {
                     } label: {
                         Text(mode.shortLabel)
                             .font(AppTheme.monoSm())
-                            .foregroundStyle(session.captureMode == mode ? .white : AppTheme.inkSecondary)
+                            .foregroundStyle(session.captureMode == mode ? AppTheme.accentOnAccent : AppTheme.inkSecondary)
                             .frame(maxWidth: .infinity).frame(height: 40)
                             .background(
                                 RoundedRectangle(cornerRadius: AppTheme.radiusSm)
@@ -346,7 +346,7 @@ struct ControlsSheet: View {
                     } label: {
                         Text(lens.label)
                             .font(AppTheme.monoSm())
-                            .foregroundStyle(session.selectedLens == lens ? .white : AppTheme.inkSecondary)
+                            .foregroundStyle(session.selectedLens == lens ? AppTheme.accentOnAccent : AppTheme.inkSecondary)
                             .frame(maxWidth: .infinity).frame(height: 44)
                             .background(
                                 RoundedRectangle(cornerRadius: AppTheme.radiusSm)

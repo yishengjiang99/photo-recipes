@@ -1,58 +1,62 @@
 import SwiftUI
 
-/// Design handoff v1 — “Darkroom field notes” tokens (same hexes as docs/design-handoff-v1.md §4).
+/// Color system v2 — Neutral Graphite + Signal Amber (Palette A, confirmed).
+/// Source: docs/design-handoff-color-v2.md — viewfinder scrims stay hue-neutral; amber on CTAs only.
 enum AppTheme {
-    // MARK: - Surfaces
-    static let bg = Color(hex: 0x0C0C0F)
-    static let bgElevated = Color(hex: 0x121216)
-    static let surface = Color(hex: 0x16161C)
-    static let surface2 = Color(hex: 0x1E1E26)
-    static let border = Color(hex: 0x2A2A33)
-    static let borderStrong = Color(hex: 0x3F3F4A)
+    // MARK: - Surfaces (hue-neutral graphite)
+    static let bg = Color(hex: 0x111111)
+    static let bgElevated = Color(hex: 0x161616)
+    static let surface = Color(hex: 0x1C1C1E)
+    static let surface2 = Color(hex: 0x2C2C2E)
+    static let border = Color(hex: 0x3A3A3C)
+    static let borderStrong = Color(hex: 0x545456)
 
     // MARK: - Ink
     static let ink = Color(hex: 0xF5F5F7)
-    static let inkSecondary = Color(hex: 0xC4C4CC)
-    static let inkTertiary = Color(hex: 0x8B8B96)
-    /// Captions ≥ #a8a8b3 per contrast rule
+    static let inkSecondary = Color(hex: 0xC7C7CC)
+    static let inkTertiary = Color(hex: 0x8E8E93)
+    /// Captions ≥ readable meta
     static let inkCaption = Color(hex: 0xA8A8B3)
 
-    // MARK: - Accent (single loud rose CTA)
-    static let accent = Color(hex: 0xF43F5E)
-    static let accentSoft = Color(hex: 0xFB7185)
-    static let accentMuted = Color(hex: 0xF43F5E).opacity(0.14)
+    // MARK: - Accent (Signal Amber — single loud CTA / Auto Optimize)
+    static let accent = Color(hex: 0xE0A812)
+    static let accentSoft = Color(hex: 0xF5C518)
+    static let accentMuted = Color(hex: 0xE0A812).opacity(0.16)
+    /// Label on filled amber buttons (not white)
+    static let accentOnAccent = Color(hex: 0x121212)
 
     // MARK: - Semantic
-    static let vision = Color(hex: 0x8B7CF6)
-    static let tip = Color(hex: 0xE7B549)
-    static let tipBg = Color(hex: 0xE7B549).opacity(0.08)
-    static let success = Color(hex: 0x34D399)
-    static let danger = Color(hex: 0xF87171)
+    static let vision = Color(hex: 0x7A91A8)
+    static let tip = Color(hex: 0xE0A812)
+    static let tipBg = Color(hex: 0xE0A812).opacity(0.10)
+    static let success = Color(hex: 0x30D158)
+    static let warn = Color(hex: 0xFF9F0A)
+    static let danger = Color(hex: 0xFF453A)
     static let overlay = Color.black.opacity(0.72)
 
-    // MARK: - Camera chrome (design-handoff-camera-v1)
+    // MARK: - Camera chrome (neutral scrims — no amber wash on preview)
     static let cameraScrim = Color.black.opacity(0.45)
-    static let cameraScrimStrong = Color.black.opacity(0.72)
+    static let cameraScrimStrong = Color.black.opacity(0.78)
     static let shutterRing = Color(hex: 0xF5F5F7)
     static let shutterCore = accent
-    static let recipeBadgeBg = Color(hex: 0xF43F5E).opacity(0.18)
+    static let recipeBadgeBg = Color(hex: 0xE0A812).opacity(0.18)
     static let aeLock = tip
     /// Viewfinder pan/point chevrons (quiet chrome)
     static let panCue = ink.opacity(0.7)
 
     // MARK: - Agentic Auto Optimize (design-handoff-agentic-v1)
     static let agentStatusBg = Color.black.opacity(0.55)
-    static let agentRunning = Color(hex: 0xFB7185)
-    static let agentReady = Color(hex: 0x34D399)
-    static let agentWarn = Color(hex: 0xE7B549)
-    static let diffBefore = Color(hex: 0x8B8B96)
-    static let diffAfter = Color(hex: 0xF5F5F7)
+    static let agentRunning = accentSoft
+    static let agentReady = success
+    static let agentWarn = warn
+    static let diffBefore = inkTertiary
+    static let diffAfter = ink
 
-    // MARK: - Category tints (~18% fill)
+    // MARK: - Category tints (~14% fill — library only, not on finder)
     static let categoryDoF = Color(hex: 0x5B8DEF)
-    static let categoryMotion = Color(hex: 0xF59E0B)
-    static let categoryHDR = Color(hex: 0xA78BFA)
-    static let categoryComposition = Color(hex: 0x2DD4BF)
+    static let categoryMotion = Color(hex: 0xFF9F0A)
+    static let categoryHDR = Color(hex: 0x8B8DBF)
+    static let categoryComposition = Color(hex: 0x64D2FF)
 
     // MARK: - Radii
     static let radiusSm: CGFloat = 8
@@ -181,7 +185,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(AppTheme.bodyMedium())
-            .foregroundStyle(filled ? Color.white : AppTheme.ink)
+            .foregroundStyle(filled ? AppTheme.accentOnAccent : AppTheme.ink)
             .frame(maxWidth: .infinity, minHeight: AppTheme.touchMin)
             .padding(.horizontal, AppTheme.space4)
             .background(
@@ -208,7 +212,7 @@ struct FilterChip: View {
                 .font(AppTheme.bodySmMedium())
                 .padding(.horizontal, 14)
                 .frame(height: AppTheme.chipHeight)
-                .foregroundStyle(selected ? Color.white : AppTheme.inkSecondary)
+                .foregroundStyle(selected ? AppTheme.accentOnAccent : AppTheme.inkSecondary)
                 .background(
                     Capsule().fill(selected ? AppTheme.accent : Color.clear)
                 )

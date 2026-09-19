@@ -44,7 +44,7 @@ struct CameraCoachMarksView: View {
                         Spacer()
                         Button(step == copy.count - 1 ? "Got it" : "Next") { advance() }
                             .font(AppTheme.bodySmMedium())
-                            .foregroundStyle(.white)
+                            .foregroundStyle(AppTheme.accentOnAccent)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(Capsule().fill(AppTheme.accent))

@@ -377,7 +377,7 @@ struct CameraView: View {
             } label: {
                 HStack(spacing: 6) {
                     if optimizer.phase.isRunning {
-                        ProgressView().tint(.white).scaleEffect(0.85)
+                        ProgressView().tint(AppTheme.accentOnAccent).scaleEffect(0.85)
                         Text("Optimizing…")
                     } else {
                         Image(systemName: "bolt.fill")
@@ -385,7 +385,7 @@ struct CameraView: View {
                     }
                 }
                 .font(AppTheme.bodySmMedium())
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.accentOnAccent)
                 .padding(.horizontal, 18)
                 .frame(height: ctaH)
                 .background(Capsule().fill(AppTheme.accent.opacity(canOptimize ? 1 : 0.4)))

@@ -121,7 +121,7 @@ struct PaywallView: View {
                     Text("Best value")
                         .font(AppTheme.caption())
                         .fontWeight(.bold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.accentOnAccent)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Capsule().fill(AppTheme.accent))
@@ -155,7 +155,7 @@ struct PaywallView: View {
                 }
             } label: {
                 HStack {
-                    if storeKit.isPurchasing { ProgressView().tint(primary ? .white : AppTheme.ink) }
+                    if storeKit.isPurchasing { ProgressView().tint(primary ? AppTheme.accentOnAccent : AppTheme.ink) }
                     Text("Start free trial")
                 }
                 .frame(maxWidth: .infinity)
@@ -180,7 +180,7 @@ struct PaywallView: View {
                 Text("Yearly").font(AppTheme.bodyMedium()).foregroundStyle(AppTheme.ink)
                 Spacer()
                 Text("Best value")
-                    .font(AppTheme.caption()).fontWeight(.bold).foregroundStyle(.white)
+                    .font(AppTheme.caption()).fontWeight(.bold).foregroundStyle(AppTheme.accentOnAccent)
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Capsule().fill(AppTheme.accent))
             }
@@ -193,7 +193,7 @@ struct PaywallView: View {
             Text("Start free trial")
                 .frame(maxWidth: .infinity)
                 .font(AppTheme.bodyMedium())
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.accentOnAccent)
                 .frame(minHeight: AppTheme.touchMin)
                 .background(RoundedRectangle(cornerRadius: AppTheme.radiusMd).fill(AppTheme.accent.opacity(0.55)))
             Text("Load products via StoreKit config / App Store Connect")
