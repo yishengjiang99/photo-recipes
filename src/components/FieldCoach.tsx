@@ -2,12 +2,10 @@ import {
   Camera,
   ImagePlus,
   Loader2,
+  MessageSquareText,
   Mic,
   Square,
   Sparkles,
-  Video,
-  VideoOff,
-  Wand2,
   X,
 } from 'lucide-react'
 import {
@@ -16,14 +14,14 @@ import {
   useId,
   useRef,
   useState,
-  type DragEvent,
   type FormEvent,
 } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useFavorites } from '../hooks/useFavorites'
 import { useVoiceInput, type VoiceInputApi } from '../hooks/useVoiceInput'
 import { useSubscription } from '../hooks/useSubscription'
 import { compressImageForUpload } from '../lib/compressImage'
+import { SHUTTER_EVENT } from './AppTabBar'
 
 const EXAMPLES = [
   'Sunset canyon with a dark foreground',
@@ -41,8 +39,16 @@ export type AiRecommendState = {
 
 type CoachMode = 'describe' | 'photo'
 
-export function FieldCoach() {
-  const [mode, setMode] = useState<CoachMode>('describe')
+type FieldCoachProps = {
+  /** Start live viewfinder once on mount (camera page default). */
+  autoStartCamera?: boolean
+}
+
+export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const cameraQuery = searchParams.get('camera') === '1'
+  const [mode, setMode] = useState<CoachMode>('photo')
+  const autoStartDoneRef = useRef(false)
   const [message, setMessage] = useState('')
   const [note, setNote] = useState('')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -51,16 +57,14 @@ export function FieldCoach() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [paywalled, setPaywalled] = useState(false)
-  const [dragOver, setDragOver] = useState(false)
   const [captioning, setCaptioning] = useState(false)
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraStarting, setCameraStarting] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [describeOpen, setDescribeOpen] = useState(false)
 
   const fileInputId = useId()
-  const cameraInputId = useId()
   const fileRef = useRef<HTMLInputElement>(null)
-  const cameraRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const describeAbortRef = useRef<AbortController | null>(null)
@@ -113,7 +117,7 @@ export function FieldCoach() {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error(
-          'Live camera is not supported in this browser. Use Choose photo or Take photo instead.',
+          'Live camera is not supported in this browser. Use upload instead.',
         )
       }
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -124,9 +128,7 @@ export function FieldCoach() {
       const video = videoRef.current
       if (video) {
         video.srcObject = stream
-        await video.play().catch(() => {
-          /* autoplay may be blocked briefly; playsInline + muted usually ok */
-        })
+        await video.play().catch(() => {})
       }
       setCameraActive(true)
     } catch (err) {
@@ -134,15 +136,15 @@ export function FieldCoach() {
       const name = err instanceof DOMException ? err.name : ''
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setCameraError(
-          'Camera permission denied. Allow camera access, or use Choose photo / Take photo below.',
+          'Camera permission denied. Allow camera access, or upload a photo.',
         )
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        setCameraError('No camera found. Use Choose photo or Take photo instead.')
+        setCameraError('No camera found. Upload a photo instead.')
       } else {
         setCameraError(
           err instanceof Error
             ? err.message
-            : 'Could not start camera. Use Choose photo or Take photo instead.',
+            : 'Could not start camera. Upload a photo instead.',
         )
       }
     } finally {
@@ -150,7 +152,6 @@ export function FieldCoach() {
     }
   }, [cameraActive, cameraStarting, stopCamera])
 
-  // One session at a time
   useEffect(() => {
     if (describeVoice.listening) noteStopRef.current()
   }, [describeVoice.listening])
@@ -167,7 +168,20 @@ export function FieldCoach() {
     }
   }, [mode, stopCamera])
 
-  // Keep <video> bound if the element remounts while a stream is live
+  useEffect(() => {
+    const want = autoStartCamera || cameraQuery
+    if (!want || autoStartDoneRef.current) return
+    autoStartDoneRef.current = true
+    setMode('photo')
+    setDescribeOpen(false)
+    void startCamera()
+    if (cameraQuery) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('camera')
+      setSearchParams(next, { replace: true })
+    }
+  }, [autoStartCamera, cameraQuery, searchParams, setSearchParams, startCamera])
+
   useEffect(() => {
     if (!cameraActive) return
     const video = videoRef.current
@@ -183,15 +197,11 @@ export function FieldCoach() {
     noteRef.current = note
   }, [note])
 
-  // Stop tracks on unmount
   useEffect(() => {
     return () => {
       stopCamera()
     }
   }, [stopCamera])
-
-  const voiceError =
-    (mode === 'describe' ? describeVoice.error : noteVoice.error) || null
 
   const clearImage = useCallback(() => {
     describeAbortRef.current?.abort()
@@ -200,10 +210,8 @@ export function FieldCoach() {
     setPreviewUrl(null)
     setDataUrl(null)
     if (fileRef.current) fileRef.current.value = ''
-    if (cameraRef.current) cameraRef.current.value = ''
   }, [])
 
-  /** Non-blocking caption prefill for optional note — failures stay quiet. */
   function prefillNoteFromScene(imageDataUrl: string) {
     describeAbortRef.current?.abort()
     const ac = new AbortController()
@@ -229,12 +237,10 @@ export function FieldCoach() {
           (typeof data.text === 'string' && data.text.trim()) ||
           ''
         if (!caption || ac.signal.aborted) return
-        // Only fill empty note — never clobber typed/dictated text
         if (noteRef.current.trim()) return
         setNote(caption)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        // Silent / calm — typing and Recommend from photo still work
       } finally {
         if (describeAbortRef.current === ac) {
           describeAbortRef.current = null
@@ -250,11 +256,12 @@ export function FieldCoach() {
     setPreparing(true)
     describeAbortRef.current?.abort()
     setCaptioning(false)
+    setMode('photo')
+    setDescribeOpen(false)
     try {
       const compressed = await compressImageForUpload(file)
       setDataUrl(compressed.dataUrl)
       setPreviewUrl(compressed.dataUrl)
-      // Prefill optional note from a short vision caption (does not block recommend)
       prefillNoteFromScene(compressed.dataUrl)
     } catch (err) {
       clearImage()
@@ -269,18 +276,11 @@ export function FieldCoach() {
     if (file) void ingestFile(file)
   }
 
-  function onDrop(e: DragEvent) {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) void ingestFile(file)
-  }
-
-  async function captureFrame() {
+  const captureFrame = useCallback(async () => {
     const video = videoRef.current
     if (!video || !cameraActive || busy) return
     if (!video.videoWidth || !video.videoHeight) {
-      setCameraError('Camera is still warming up — try Capture again in a moment.')
+      setCameraError('Camera is still warming up — try again in a moment.')
       return
     }
     setCameraError(null)
@@ -301,7 +301,32 @@ export function FieldCoach() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not capture frame')
     }
-  }
+  }, [busy, cameraActive])
+
+  const handleShutter = useCallback(() => {
+    if (busy) return
+    setDescribeOpen(false)
+    setMode('photo')
+    if (previewUrl) {
+      // Retake — clear frame and ensure live view
+      clearImage()
+      if (!cameraActive) void startCamera()
+      return
+    }
+    if (!cameraActive) {
+      void startCamera()
+      return
+    }
+    void captureFrame()
+  }, [busy, previewUrl, cameraActive, startCamera, captureFrame, clearImage])
+
+  useEffect(() => {
+    function onShutterEvent() {
+      handleShutter()
+    }
+    window.addEventListener(SHUTTER_EVENT, onShutterEvent)
+    return () => window.removeEventListener(SHUTTER_EVENT, onShutterEvent)
+  }, [handleShutter])
 
   async function recommend(opts: { text?: string; image?: string }) {
     if (loading) return
@@ -360,7 +385,6 @@ export function FieldCoach() {
       }
 
       void refresh()
-      // Stop live camera before navigating away
       stopCamera()
       navigate(`/app/preset/${data.presetId}`, { state })
     } catch (err) {
@@ -375,398 +399,321 @@ export function FieldCoach() {
     void recommend({ text: message })
   }
 
-  function onPhotoSubmit(e: FormEvent) {
-    e.preventDefault()
+  function onPhotoRecommend() {
     if (!dataUrl || preparing) return
     void recommend({ text: note, image: dataUrl })
   }
 
-  const quotaBadge = status?.pro ? (
-    <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success ring-1 ring-success/30">
-      Unlimited
-    </span>
-  ) : remaining !== null ? (
-    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-ink-tertiary ring-1 ring-border">
-      Free Peek · {remaining} left today
-    </span>
-  ) : null
+  const voiceError =
+    (describeOpen || mode === 'describe' ? describeVoice.error : noteVoice.error) ||
+    null
+
+  const quotaLabel = status?.pro
+    ? 'Unlimited'
+    : remaining !== null
+      ? `${remaining} left today`
+      : null
 
   return (
-    <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-surface p-4 sm:p-5">
-      <div className="mb-4 flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 ring-1 ring-border">
-          {mode === 'photo' ? (
-            <Camera className="h-4 w-4 text-vision" strokeWidth={1.75} />
-          ) : (
-            <Wand2 className="h-4 w-4 text-ink-secondary" strokeWidth={1.75} />
-          )}
-        </span>
-        <div className="min-w-0 flex-1 text-left">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-display text-xl text-ink sm:text-2xl">Field Coach</h2>
-            {quotaBadge}
-          </div>
-          <p className="mt-1 text-xs text-ink-tertiary">
-            Recommends dials from your scene or photo — does not write shutter / ISO / EV / WB /
-            focus in the browser. iOS Auto Optimize applies dials on device.
-          </p>
-        </div>
-      </div>
+    <section
+      className="relative flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom))] flex-1 flex-col overflow-hidden bg-black"
+      aria-label="Field Coach camera"
+    >
+      <input
+        ref={fileRef}
+        id={fileInputId}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        disabled={busy}
+        onChange={(e) => onFileChange(e.target.files)}
+      />
 
-      <div
-        className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1 ring-1 ring-border"
-        role="tablist"
-        aria-label="Coach mode"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'describe'}
-          onClick={() => {
-            setCameraError(null)
-            setMode('describe')
-          }}
-          className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
-            mode === 'describe'
-              ? 'bg-surface text-ink shadow-sm ring-1 ring-border'
-              : 'text-ink-secondary hover:text-ink'
+      {/* Full-bleed viewfinder / preview */}
+      <div className="relative min-h-0 flex-1 bg-black">
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          autoPlay
+          className={`absolute inset-0 h-full w-full object-cover ${
+            cameraActive && !previewUrl ? '' : 'hidden'
           }`}
-        >
-          Describe scene
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'photo'}
-          onClick={() => setMode('photo')}
-          className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition ${
-            mode === 'photo'
-              ? 'bg-surface text-ink shadow-sm ring-1 ring-border'
-              : 'text-ink-secondary hover:text-ink'
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${mode === 'photo' ? 'bg-vision' : 'bg-ink-tertiary/50'}`}
-            aria-hidden
+          aria-label="Live camera preview"
+        />
+
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt="Captured scene"
+            className="absolute inset-0 h-full w-full object-contain bg-black"
           />
-          From photo
-        </button>
-      </div>
+        ) : null}
 
-      {mode === 'describe' ? (
-        <form onSubmit={onDescribeSubmit} className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {EXAMPLES.map((ex) => (
+        {!cameraActive && !previewUrl ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+            <Camera className="mb-3 h-10 w-10 text-white/40" strokeWidth={1.5} />
+            <p className="text-sm text-white/70">
+              {cameraStarting ? 'Starting camera…' : 'Tap the shutter to open the viewfinder'}
+            </p>
+            <p className="mt-1 max-w-xs text-xs text-white/40">
+              Recommends dials — does not write them in the browser
+            </p>
+            {cameraStarting ? (
+              <Loader2 className="mt-4 h-6 w-6 animate-spin text-white/60" />
+            ) : (
               <button
-                key={ex}
                 type="button"
                 disabled={busy}
-                onClick={() => {
-                  setMessage(ex)
-                  void recommend({ text: ex })
-                }}
-                className="inline-flex min-h-9 items-center rounded-full border border-border bg-bg-elevated px-3 py-1.5 text-xs text-ink-secondary transition hover:border-border-strong hover:text-ink disabled:opacity-50"
+                onClick={() => void startCamera()}
+                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-soft disabled:opacity-50"
               >
-                {ex}
+                <Camera className="h-4 w-4" />
+                Open Camera
               </button>
-            ))}
-          </div>
-
-          <label htmlFor="field-coach-scene" className="sr-only">
-            Scene description
-          </label>
-          <div className="relative">
-            <textarea
-              id="field-coach-scene"
-              rows={3}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              disabled={busy}
-              placeholder='e.g. "sunset canyon with dark foreground"'
-              className="min-h-[88px] w-full resize-none rounded-xl border border-border bg-bg-elevated py-3 pl-4 pr-14 text-sm text-ink placeholder:text-ink-tertiary outline-none transition focus:border-border-strong focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
-            />
-            <VoiceMicButton
-              voice={describeVoice}
-              disabled={busy}
-              labelIdle="Dictate scene"
-            />
-          </div>
-          {describeVoice.listening || describeVoice.transcribing ? (
-            <p className="text-xs text-ink-secondary" aria-live="polite">
-              {describeVoice.transcribing ? 'Transcribing…' : 'Listening…'}
-            </p>
-          ) : describeVoice.status === 'unsupported' ? (
-            <p className="text-xs text-ink-tertiary">
-              Voice input not supported in this browser
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={busy || !message.trim()}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Matching a recipe…
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                Recommend a recipe
-              </>
             )}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={onPhotoSubmit} className="space-y-3">
-          <input
-            ref={fileRef}
-            id={fileInputId}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => onFileChange(e.target.files)}
-          />
-          <input
-            ref={cameraRef}
-            id={cameraInputId}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => onFileChange(e.target.files)}
-          />
+          </div>
+        ) : null}
 
-          {/* Live viewfinder — coach only; never applies dials on web */}
-          <div className="overflow-hidden rounded-xl border border-border bg-bg-elevated">
-            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-              <p className="text-xs font-medium text-ink-secondary">Live viewfinder</p>
-              <span className="rounded-full bg-vision/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-vision ring-1 ring-vision/30">
-                Coach — not applied on web
-              </span>
-            </div>
-            <div className="relative bg-black/80">
-              <video
-                ref={videoRef}
-                playsInline
-                muted
-                autoPlay
-                className={`mx-auto max-h-56 w-full object-contain ${cameraActive ? '' : 'hidden'}`}
-                aria-label="Live camera preview"
+        {/* Top chrome — minimal honesty + quota */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pb-10 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <span className="pointer-events-auto rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/80 ring-1 ring-white/15 backdrop-blur">
+            Coach — not applied on web
+          </span>
+          {quotaLabel ? (
+            <span className="pointer-events-auto rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-medium text-white/70 ring-1 ring-white/15 backdrop-blur">
+              {quotaLabel}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Captured frame actions */}
+        {previewUrl ? (
+          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-4 pt-16">
+            <div className="relative mb-3">
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                disabled={busy}
+                placeholder='Optional note — e.g. "want silky water"'
+                className="w-full rounded-full border border-white/15 bg-black/50 py-2.5 pl-4 pr-14 text-sm text-white placeholder:text-white/40 outline-none backdrop-blur focus:border-white/30 disabled:opacity-60"
+                aria-label="Optional note"
               />
-              {!cameraActive ? (
-                <div className="flex min-h-[140px] flex-col items-center justify-center px-4 py-8 text-center">
-                  <Video className="mb-2 h-7 w-7 text-ink-tertiary" strokeWidth={1.5} />
-                  <p className="text-sm text-ink-secondary">
-                    Start the camera to capture a frame for recommendations
-                  </p>
-                  <p className="mt-1 text-xs text-ink-tertiary">
-                    Uses the rear camera when available · preview only
-                  </p>
-                </div>
-              ) : null}
+              <VoiceMicButton
+                voice={noteVoice}
+                disabled={busy}
+                labelIdle="Dictate note"
+                light
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-              {!cameraActive ? (
-                <button
-                  type="button"
-                  disabled={busy || cameraStarting}
-                  onClick={() => void startCamera()}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-vision/15 px-3 py-1.5 text-xs font-medium text-vision ring-1 ring-vision/30 transition hover:bg-vision/25 disabled:opacity-50"
-                >
-                  {cameraStarting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Starting…
-                    </>
-                  ) : (
-                    <>
-                      <Video className="h-3.5 w-3.5" />
-                      Start camera
-                    </>
-                  )}
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={stopCamera}
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink-secondary transition hover:border-border-strong hover:text-ink disabled:opacity-50"
-                  >
-                    <VideoOff className="h-3.5 w-3.5" />
-                    Stop
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void captureFrame()}
-                    className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-soft disabled:opacity-50"
-                  >
-                    <Camera className="h-3.5 w-3.5" />
-                    Capture frame
-                  </button>
-                </>
-              )}
-            </div>
-            {cameraError ? (
-              <p role="status" className="border-t border-border px-3 py-2 text-xs text-ink-secondary">
-                {cameraError}
+            {captioning ? (
+              <p className="mb-2 text-center text-xs text-white/50" aria-live="polite">
+                Captioning scene…
               </p>
             ) : null}
-          </div>
-
-          {!previewUrl ? (
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragOver(true)
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-              className={`flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 transition ${
-                dragOver
-                  ? 'border-vision/60 bg-vision/10'
-                  : 'border-border-strong bg-bg-elevated'
-              }`}
-            >
-              <ImagePlus
-                className="mb-2 h-7 w-7 text-ink-tertiary"
-                strokeWidth={1.5}
-              />
-              <p className="text-sm text-ink-secondary">Or drag & drop / upload a photo</p>
-              <p className="mt-1 text-xs text-ink-tertiary">
-                JPEG, PNG, or WebP · compressed before upload
-              </p>
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <label
-                  htmlFor={fileInputId}
-                  className={`cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink-secondary transition hover:border-border-strong hover:text-ink ${
-                    busy ? 'pointer-events-none opacity-50' : ''
-                  }`}
-                >
-                  Choose photo
-                </label>
-                <label
-                  htmlFor={cameraInputId}
-                  className={`cursor-pointer rounded-full bg-vision/15 px-3 py-1.5 text-xs font-medium text-vision ring-1 ring-vision/30 transition hover:bg-vision/25 sm:hidden ${
-                    busy ? 'pointer-events-none opacity-50' : ''
-                  }`}
-                >
-                  Take photo
-                </label>
-              </div>
-              {preparing ? (
-                <p className="mt-3 inline-flex items-center gap-2 text-xs text-ink-tertiary">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Preparing image…
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="relative overflow-hidden rounded-xl border border-border bg-bg-elevated">
-              <img
-                src={previewUrl}
-                alt="Scene preview"
-                className="max-h-52 w-full object-contain"
-              />
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={clearImage}
                 disabled={busy}
-                className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg/80 text-ink-secondary ring-1 ring-border backdrop-blur hover:bg-surface disabled:opacity-50"
-                aria-label="Remove photo"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/15 disabled:opacity-50"
+                aria-label="Retake"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={onPhotoRecommend}
+                disabled={busy || !dataUrl}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-soft disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Matching…
+                  </>
+                ) : preparing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Preparing…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Recommend recipe
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Overlay controls when live / idle (no preview) */}
+        {!previewUrl ? (
+          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent px-6 pb-5 pt-14">
+            <div className="flex items-center justify-center gap-8">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+                className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-white/70 transition hover:text-white disabled:opacity-50"
+                aria-label="Upload photo"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">
+                  <ImagePlus className="h-5 w-5" strokeWidth={1.75} />
+                </span>
+                <span className="text-[10px] font-medium">Upload</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={busy || cameraStarting}
+                onClick={handleShutter}
+                aria-label={
+                  cameraActive ? 'Capture frame' : 'Open Camera'
+                }
+                className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.25)] transition active:scale-95 disabled:opacity-50"
+              >
+                <span className="absolute inset-[6px] rounded-full border-2 border-black/20" aria-hidden />
+                {cameraStarting ? (
+                  <Loader2 className="relative h-6 w-6 animate-spin text-black/70" />
+                ) : (
+                  <span className="relative h-14 w-14 rounded-full bg-accent" aria-hidden />
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setDescribeOpen(true)
+                  setMode('describe')
+                }}
+                className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-white/70 transition hover:text-white disabled:opacity-50"
+                aria-label="Describe scene"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">
+                  <MessageSquareText className="h-5 w-5" strokeWidth={1.75} />
+                </span>
+                <span className="text-[10px] font-medium">Describe</span>
+              </button>
+            </div>
+            <p className="mt-3 text-center text-[10px] text-white/35">
+              iOS Auto Optimize writes dials on device · web recommends only
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Describe sheet — secondary, not equal peer */}
+      {describeOpen ? (
+        <div
+          className="absolute inset-0 z-20 flex flex-col justify-end bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Describe scene"
+        >
+          <button
+            type="button"
+            className="flex-1"
+            aria-label="Close describe"
+            onClick={() => {
+              setDescribeOpen(false)
+              setMode('photo')
+              if (!cameraActive && !previewUrl) void startCamera()
+            }}
+          />
+          <form
+            onSubmit={onDescribeSubmit}
+            className="rounded-t-2xl border-t border-white/10 bg-[#121212] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white">Describe scene</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setDescribeOpen(false)
+                  setMode('photo')
+                  if (!cameraActive && !previewUrl) void startCamera()
+                }}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
-              {preparing ? (
-                <p className="absolute bottom-2 left-2 inline-flex items-center gap-2 rounded-full bg-bg/80 px-2.5 py-1 text-xs text-ink-tertiary ring-1 ring-border backdrop-blur">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Preparing…
-                </p>
-              ) : null}
             </div>
-          )}
-
-          <label htmlFor="field-coach-note" className="sr-only">
-            Optional note
-          </label>
-          <div className="relative">
-            <input
-              id="field-coach-note"
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              disabled={busy}
-              placeholder='Optional note — e.g. "want silky water"'
-              className="w-full rounded-xl border border-border bg-bg-elevated py-2.5 pl-4 pr-14 text-sm text-ink placeholder:text-ink-tertiary outline-none transition focus:border-border-strong focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
-            />
-            <VoiceMicButton
-              voice={noteVoice}
-              disabled={busy}
-              labelIdle="Dictate note"
-            />
-          </div>
-          {noteVoice.listening || noteVoice.transcribing ? (
-            <p className="text-xs text-ink-secondary" aria-live="polite">
-              {noteVoice.transcribing ? 'Transcribing…' : 'Listening…'}
-            </p>
-          ) : captioning ? (
-            <p className="text-xs text-ink-tertiary" aria-live="polite">
-              Captioning scene…
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={busy || !dataUrl}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Matching a recipe…
-              </>
-            ) : preparing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Preparing…
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                Recommend from photo
-              </>
-            )}
-          </button>
-        </form>
-      )}
-
-      {voiceError && !error ? (
-        <p role="status" className="mt-3 text-sm text-ink-secondary">
-          {voiceError}
-        </p>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {EXAMPLES.slice(0, 3).map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setMessage(ex)
+                    void recommend({ text: ex })
+                  }}
+                  className="rounded-full bg-white/8 px-2.5 py-1 text-[11px] text-white/60 ring-1 ring-white/10 hover:text-white disabled:opacity-50"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+            <div className="relative mb-3">
+              <textarea
+                rows={3}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                disabled={busy}
+                placeholder='e.g. "sunset canyon with dark foreground"'
+                className="min-h-[88px] w-full resize-none rounded-xl border border-white/15 bg-black/40 py-3 pl-4 pr-14 text-sm text-white placeholder:text-white/35 outline-none focus:border-white/30 disabled:opacity-60"
+                aria-label="Scene description"
+              />
+              <VoiceMicButton
+                voice={describeVoice}
+                disabled={busy}
+                labelIdle="Dictate scene"
+                light
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={busy || !message.trim()}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-white hover:bg-accent-soft disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Matching…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Recommend a recipe
+                </>
+              )}
+            </button>
+          </form>
+        </div>
       ) : null}
 
-      {error ? (
+      {(cameraError || error || voiceError) && !describeOpen ? (
         <div
-          role="alert"
-          className={`mt-4 rounded-xl border px-3 py-2.5 text-sm ${
+          role={error ? 'alert' : 'status'}
+          className={`absolute inset-x-3 top-14 z-30 rounded-xl px-3 py-2.5 text-sm backdrop-blur ${
             paywalled
-              ? 'border-border bg-surface-2 text-ink-secondary'
-              : 'border-danger/30 bg-danger/10 text-danger'
+              ? 'border border-white/15 bg-black/80 text-white/80'
+              : error
+                ? 'border border-danger/40 bg-black/85 text-danger'
+                : 'border border-white/15 bg-black/80 text-white/70'
           }`}
         >
-          <p>{error}</p>
+          <p>{error || cameraError || voiceError}</p>
           {paywalled ? (
             <button
               type="button"
               onClick={openPricing}
-              className="mt-3 inline-flex rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-soft"
+              className="mt-2 inline-flex rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-soft"
             >
               Upgrade to Pro — 7-day free trial
             </button>
@@ -777,14 +724,14 @@ export function FieldCoach() {
   )
 }
 
-
 type VoiceMicButtonProps = {
   voice: VoiceInputApi
   disabled?: boolean
   labelIdle: string
+  light?: boolean
 }
 
-function VoiceMicButton({ voice, disabled, labelIdle }: VoiceMicButtonProps) {
+function VoiceMicButton({ voice, disabled, labelIdle, light }: VoiceMicButtonProps) {
   const unsupported = voice.status === 'unsupported'
   const denied = voice.status === 'denied'
   const listening = voice.listening
@@ -814,12 +761,16 @@ function VoiceMicButton({ voice, disabled, labelIdle }: VoiceMicButtonProps) {
         listening ? 'Stop dictation' : transcribing ? 'Transcribing' : labelIdle
       }
       aria-pressed={listening}
-      className={`absolute bottom-2 right-2 inline-flex h-11 w-11 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+      className={`absolute bottom-1.5 right-1.5 inline-flex h-11 w-11 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
         listening
           ? 'bg-accent-muted text-accent ring-1 ring-accent/40 voice-mic-pulse'
           : unsupported || denied
-            ? 'bg-surface text-ink-tertiary ring-1 ring-border opacity-40'
-            : 'bg-surface text-ink-secondary ring-1 ring-border hover:text-ink hover:ring-border-strong'
+            ? light
+              ? 'bg-white/10 text-white/30 ring-1 ring-white/15 opacity-40'
+              : 'bg-surface text-ink-tertiary ring-1 ring-border opacity-40'
+            : light
+              ? 'bg-white/10 text-white/70 ring-1 ring-white/20 hover:text-white'
+              : 'bg-surface text-ink-secondary ring-1 ring-border hover:text-ink hover:ring-border-strong'
       } ${transcribing ? 'opacity-60' : ''}`}
     >
       {transcribing ? (

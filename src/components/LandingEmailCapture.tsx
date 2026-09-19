@@ -1,6 +1,6 @@
 import { Check, Loader2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { CameraCta } from './CameraCta'
 
 type FormState =
   | 'idle'
@@ -77,12 +77,9 @@ export function LandingEmailCapture({ className = '' }: { className?: string }) 
               {state === 'duplicate' ? 'You’re already on the list.' : 'You’re on the list.'}
             </h3>
             <p className="mt-1 text-sm text-ink-secondary">We’ll write when it matters.</p>
-            <Link
-              to="/app"
-              className="mt-4 inline-flex min-h-9 items-center rounded-full px-4 py-1.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface-2"
-            >
-              Open Free Peek
-            </Link>
+            <div className="mt-4">
+              <CameraCta label="Open Camera" />
+            </div>
           </div>
         </div>
       </div>

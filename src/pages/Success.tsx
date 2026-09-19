@@ -1,6 +1,7 @@
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { CameraCta } from '../components/CameraCta'
 import { useSubscription } from '../hooks/useSubscription'
 
 export function Success() {
@@ -76,12 +77,15 @@ export function Success() {
           <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" />
           <h1 className="mt-4 font-display text-2xl text-zinc-50">Welcome to Pro</h1>
           <p className="mt-2 text-sm text-zinc-400">{detail}</p>
-          <Link
-            to="/app"
-            className="mt-6 inline-flex rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-400"
-          >
-            Back to library
-          </Link>
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <CameraCta size="lg" />
+            <Link
+              to="/app/library"
+              className="inline-flex rounded-full px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-zinc-700 hover:text-zinc-200"
+            >
+              Browse library
+            </Link>
+          </div>
         </>
       ) : null}
 
@@ -90,12 +94,15 @@ export function Success() {
           <XCircle className="mx-auto h-10 w-10 text-amber-400" />
           <h1 className="mt-4 font-display text-2xl text-zinc-50">Couldn’t verify yet</h1>
           <p className="mt-2 text-sm text-zinc-400">{detail}</p>
-          <Link
-            to="/app"
-            className="mt-6 inline-flex rounded-xl bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-200 ring-1 ring-zinc-700 hover:bg-zinc-700"
-          >
-            Back to library
-          </Link>
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <CameraCta size="lg" />
+            <Link
+              to="/app/library"
+              className="inline-flex rounded-full px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-zinc-700 hover:text-zinc-200"
+            >
+              Browse library
+            </Link>
+          </div>
         </>
       ) : null}
     </div>

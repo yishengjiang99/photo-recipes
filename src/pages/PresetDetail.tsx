@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
+import { CameraCta } from '../components/CameraCta'
 import type { AiRecommendState } from '../components/FieldCoach'
 import { CameraDials } from '../components/CameraDials'
 import { ChecklistMode } from '../components/ChecklistMode'
@@ -45,33 +46,44 @@ export function PresetDetail() {
   }, [preset, variantId])
 
   if (!preset || !activeDials) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/app/library" replace />
   }
 
   const favorite = isFavorite(preset.id)
 
   return (
     <div className="text-left">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <Link
-          to="/app"
-          className="inline-flex min-h-11 items-center gap-1.5 text-sm text-ink-secondary transition hover:text-ink"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Library
-        </Link>
-        <button
-          type="button"
-          onClick={() => toggleFavorite(preset.id)}
-          className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 transition ${
-            favorite
-              ? 'bg-accent-muted text-accent-soft ring-accent/30'
-              : 'bg-surface text-ink-secondary ring-border hover:text-ink'
-          }`}
-        >
-          <Heart className={`h-4 w-4 ${favorite ? 'fill-accent text-accent' : ''}`} />
-          {favorite ? 'Favorited' : 'Favorite'}
-        </button>
+      <div className="mb-5 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            to="/app/library"
+            className="inline-flex min-h-11 items-center gap-1.5 text-sm text-ink-secondary transition hover:text-ink"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Library
+          </Link>
+          <button
+            type="button"
+            onClick={() => toggleFavorite(preset.id)}
+            className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 transition ${
+              favorite
+                ? 'bg-accent-muted text-accent-soft ring-accent/30'
+                : 'bg-surface text-ink-secondary ring-border hover:text-ink'
+            }`}
+          >
+            <Heart className={`h-4 w-4 ${favorite ? 'fill-accent text-accent' : ''}`} />
+            {favorite ? 'Favorited' : 'Favorite'}
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <CameraCta size="md" label="Open Camera" />
+          <Link
+            to="/app/library"
+            className="inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium text-ink-secondary ring-1 ring-border hover:bg-surface hover:text-ink"
+          >
+            Back to library
+          </Link>
+        </div>
       </div>
 
       <div className="mb-2 flex flex-wrap gap-1.5">

@@ -48,10 +48,10 @@ export function FilterBar({ activeTag, onChange, favoritesCount }: FilterBarProp
             role="tab"
             aria-selected={active}
             onClick={() => onChange(id)}
-            className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+            className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
               active
-                ? 'bg-accent text-white'
-                : 'border border-border bg-transparent text-ink-secondary hover:border-border-strong hover:text-ink'
+                ? 'bg-surface-2 text-ink ring-1 ring-border-strong'
+                : 'text-ink-tertiary ring-1 ring-border/60 hover:text-ink-secondary'
             }`}
           >
             {Icon ? <Icon className="h-3.5 w-3.5" strokeWidth={2} /> : null}

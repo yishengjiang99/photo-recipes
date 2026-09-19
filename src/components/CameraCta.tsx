@@ -1,0 +1,44 @@
+import { Camera } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+/** Opens the camera-first /app Field Coach (coach-only; no dial writes). */
+export const CAMERA_HREF = '/app'
+
+type CameraCtaProps = {
+  label?: string
+  className?: string
+  fullWidth?: boolean
+  size?: 'md' | 'lg'
+  to?: string
+  onClick?: () => void
+}
+
+const sizeClass = {
+  md: 'min-h-11 gap-2 px-5 py-2.5 text-sm',
+  lg: 'min-h-12 gap-2.5 px-6 py-3 text-base',
+} as const
+
+/**
+ * Primary camera CTA for landing / marketing surfaces.
+ * Opens web Field Coach live viewfinder — coach-only (no dial writes).
+ */
+export function CameraCta({
+  label = 'Open Camera',
+  className = '',
+  fullWidth = false,
+  size = 'md',
+  to = CAMERA_HREF,
+  onClick,
+}: CameraCtaProps) {
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      aria-label={`${label} — open Field Coach live viewfinder`}
+      className={`inline-flex items-center justify-center rounded-full bg-accent font-semibold text-white shadow-[0_8px_24px_-12px_rgba(244,63,94,0.55)] transition hover:bg-accent-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${sizeClass[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
+    >
+      <Camera className={size === 'lg' ? 'h-5 w-5' : 'h-4 w-4'} strokeWidth={2} aria-hidden />
+      {label}
+    </Link>
+  )
+}
