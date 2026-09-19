@@ -47,6 +47,39 @@
   </head>
   <body class="bg-bg text-ink antialiased">
     <div id="root"></div>
+    <script>
+      (function () {
+        var painted = false;
+        function paint(msg) {
+          if (painted) return;
+          var root = document.getElementById('root');
+          if (!root || root.dataset.booted === '1' || root.childNodes.length) return;
+          painted = true;
+          root.innerHTML =
+            '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:1.5rem;background:#0c0c0f;color:#f4f4f5;font-family:system-ui,sans-serif;text-align:center">' +
+            '<h1 style="font-size:1.25rem;margin:0">Photo Recipes failed to load</h1>' +
+            '<p style="margin:0;opacity:.85;max-width:28rem;font-size:.9rem">' +
+            (msg ? String(msg).slice(0, 280) : 'The app did not start.') +
+            '</p>' +
+            '<p style="margin:0;opacity:.7;max-width:28rem;font-size:.85rem">Clear Safari cache / try Private Tab</p>' +
+            '<a href="/" style="margin-top:.5rem;padding:.5rem 1rem;border-radius:8px;background:#3b82f6;color:#fff;text-decoration:none;font-weight:600">Reload</a>' +
+            '</div>';
+        }
+        window.addEventListener('error', function (e) {
+          paint((e && (e.message || (e.error && e.error.message))) || 'Script error');
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          paint((r && (r.message || String(r))) || 'Unhandled promise rejection');
+        });
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.dataset.booted !== '1' && !root.childNodes.length) {
+            paint('Timed out waiting for the app to start');
+          }
+        }, 2000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
