@@ -50,11 +50,14 @@ export function FieldCoach() {
   const [error, setError] = useState<string | null>(null)
   const [paywalled, setPaywalled] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [captioning, setCaptioning] = useState(false)
 
   const fileInputId = useId()
   const cameraInputId = useId()
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
+  const describeAbortRef = useRef<AbortController | null>(null)
+  const noteRef = useRef(note)
 
   const navigate = useNavigate()
   const { favorites } = useFavorites()
@@ -93,25 +96,77 @@ export function FieldCoach() {
     if (mode === 'describe') noteStopRef.current()
   }, [mode])
 
+  useEffect(() => {
+    noteRef.current = note
+  }, [note])
+
   const voiceError =
     (mode === 'describe' ? describeVoice.error : noteVoice.error) || null
 
 
   const clearImage = useCallback(() => {
+    describeAbortRef.current?.abort()
+    describeAbortRef.current = null
+    setCaptioning(false)
     setPreviewUrl(null)
     setDataUrl(null)
     if (fileRef.current) fileRef.current.value = ''
     if (cameraRef.current) cameraRef.current.value = ''
   }, [])
 
+  /** Non-blocking caption prefill for optional note — failures stay quiet. */
+  function prefillNoteFromScene(imageDataUrl: string) {
+    describeAbortRef.current?.abort()
+    const ac = new AbortController()
+    describeAbortRef.current = ac
+    setCaptioning(true)
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/describe-scene', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: imageDataUrl }),
+          signal: ac.signal,
+        })
+        if (!res.ok) return
+        const data = (await res.json().catch(() => ({}))) as {
+          description?: string
+          text?: string
+        }
+        const caption =
+          (typeof data.description === 'string' && data.description.trim()) ||
+          (typeof data.text === 'string' && data.text.trim()) ||
+          ''
+        if (!caption || ac.signal.aborted) return
+        // Only fill empty note — never clobber typed/dictated text
+        if (noteRef.current.trim()) return
+        setNote(caption)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        // Silent / calm — typing and Recommend from photo still work
+      } finally {
+        if (describeAbortRef.current === ac) {
+          describeAbortRef.current = null
+          setCaptioning(false)
+        }
+      }
+    })()
+  }
+
   async function ingestFile(file: File) {
     setError(null)
     setPaywalled(false)
     setPreparing(true)
+    describeAbortRef.current?.abort()
+    setCaptioning(false)
     try {
       const compressed = await compressImageForUpload(file)
       setDataUrl(compressed.dataUrl)
       setPreviewUrl(compressed.dataUrl)
+      // Prefill optional note from a short vision caption (does not block recommend)
+      prefillNoteFromScene(compressed.dataUrl)
     } catch (err) {
       clearImage()
       setError(err instanceof Error ? err.message : 'Could not prepare image')
@@ -449,6 +504,10 @@ export function FieldCoach() {
           {noteVoice.listening || noteVoice.transcribing ? (
             <p className="text-xs text-ink-secondary" aria-live="polite">
               {noteVoice.transcribing ? 'Transcribing…' : 'Listening…'}
+            </p>
+          ) : captioning ? (
+            <p className="text-xs text-ink-tertiary" aria-live="polite">
+              Captioning scene…
             </p>
           ) : null}
 
