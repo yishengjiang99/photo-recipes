@@ -45,6 +45,7 @@ struct FieldCoachPanel: View {
 
     @EnvironmentObject private var entitlements: EntitlementsStore
     @EnvironmentObject private var api: APIClient
+    @EnvironmentObject private var router: CameraRouter
 
     @State private var mode: FieldCoachMode = .describe
     @State private var message = ""

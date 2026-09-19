@@ -14,7 +14,10 @@ struct PhotoRecipesApp: App {
                 .environmentObject(appModel.cameraRouter)
                 .environmentObject(appModel.push)
                 .preferredColorScheme(.dark)
-                .sheet(isPresented: $appModel.entitlements.showPaywall) {
+                .sheet(isPresented: Binding(
+                    get: { appModel.entitlements.showPaywall },
+                    set: { appModel.entitlements.showPaywall = $0 }
+                )) {
                     PaywallView()
                         .environmentObject(appModel.entitlements)
                         .environmentObject(appModel.storeKit)

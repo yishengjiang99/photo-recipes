@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build-upload:
     name: Archive and upload
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 75
     env:
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -33,15 +33,15 @@ jobs:
       - name: Select Xcode
         run: |
           set -euo pipefail
-          # Prefer Xcode 16 if present (matches newer XcodeGen); else 15.4
-          for app in /Applications/Xcode_16.4.app /Applications/Xcode_16.3.app /Applications/Xcode_16.2.app /Applications/Xcode_16.1.app /Applications/Xcode_16.app /Applications/Xcode_15.4.app /Applications/Xcode.app; do
+          # Prefer Xcode 26 (ASC SDK requirement as of 2026); fall back to 16.x
+          for app in /Applications/Xcode_26.0.app /Applications/Xcode_26.app /Applications/Xcode-26.app /Applications/Xcode_16.4.app /Applications/Xcode_16.3.app /Applications/Xcode_16.2.app /Applications/Xcode_16.app /Applications/Xcode.app; do
             if [[ -d "$app" ]]; then
               sudo xcode-select -s "$app"
               break
             fi
           done
           xcodebuild -version
-          ls /Applications | rg '^Xcode' || true
+          ls /Applications | grep -i Xcode || true
 
       - name: Write ASC API key
         env:
