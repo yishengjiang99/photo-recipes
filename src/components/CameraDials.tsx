@@ -4,6 +4,8 @@ import { MODE_LABELS } from '../types'
 interface CameraDialsProps {
   dials: DialSettings
   label?: string
+  /** When true, show web-coach badge (recommendations are not applied in-browser). */
+  coachOnly?: boolean
 }
 
 function Dial({
@@ -46,7 +48,11 @@ function Dial({
   )
 }
 
-export function CameraDials({ dials, label = 'Recommended dials' }: CameraDialsProps) {
+export function CameraDials({
+  dials,
+  label = 'Recommended dials',
+  coachOnly = false,
+}: CameraDialsProps) {
   const tiles: { label: string; value: string; accent?: boolean }[] = [
     { label: 'Mode', value: shortMode(dials.mode), accent: true },
   ]
@@ -58,11 +64,18 @@ export function CameraDials({ dials, label = 'Recommended dials' }: CameraDialsP
 
   return (
     <section className="rounded-2xl border border-border bg-surface-2 p-5">
-      <div className="mb-4 flex items-baseline justify-between gap-2">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-display text-lg text-ink">{label}</h3>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
-          Educational · simulated
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {coachOnly ? (
+            <span className="rounded-full bg-vision/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-vision ring-1 ring-vision/30">
+              Coach — not applied on web
+            </span>
+          ) : null}
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+            Educational · simulated
+          </span>
+        </div>
       </div>
       <div className="grid grid-cols-2 justify-items-center gap-5 sm:flex sm:flex-wrap sm:justify-center sm:gap-6">
         {tiles.map((t) => (
@@ -75,6 +88,12 @@ export function CameraDials({ dials, label = 'Recommended dials' }: CameraDialsP
       <p className="mt-2 text-center text-xs text-ink-tertiary">
         Full mode: {MODE_LABELS[dials.mode]}
       </p>
+      {coachOnly ? (
+        <p className="mt-2 text-center text-xs text-ink-tertiary">
+          Web recommends dials only. The iOS app applies shutter / ISO / EV / WB / focus via Auto
+          Optimize.
+        </p>
+      ) : null}
     </section>
   )
 }

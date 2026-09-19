@@ -71,11 +71,11 @@ const COACH_ONLY = ['Aperture', 'ND filter', 'Tripod / support'] as const
 const FAQ_ITEMS = [
   {
     q: 'Is this an AI filter app?',
-    a: 'No — field technique coach and camera settings app. Applies real capture settings, not filters after the shot.',
+    a: 'No — not a filter app. The iOS app writes dials via Auto Optimize; this site’s Field Coach recommends dials from your viewfinder or photo. Technique before the shutter, not filters after.',
   },
   {
     q: 'What does Auto Optimize change?',
-    a: 'Shutter / exposure duration, ISO, EV, white balance, focus (zoom when available). Aperture, ND, tripod stay coach-only.',
+    a: 'On iOS: shutter / exposure duration, ISO, EV, white balance, focus (zoom when available). Aperture, ND, and tripod stay coach-only. On this website, Field Coach only recommends dials — it does not apply them in the browser.',
   },
   {
     q: 'What’s free?',
@@ -103,7 +103,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Voice?',
-    a: 'Optional dictate for a scene note — same apply path as Auto Optimize.',
+    a: 'Optional dictate for a scene note on web Field Coach (recommend path). On iOS, voice can feed the same Auto Optimize apply path.',
   },
   {
     q: 'Publisher affiliation?',
@@ -274,14 +274,15 @@ export function Landing() {
           <div className="mx-auto grid max-w-[1120px] items-center gap-10 px-4 pb-14 pt-10 sm:px-6 sm:pt-14 lg:grid-cols-[0.42fr_0.58fr] lg:gap-12 lg:pb-20">
             <div className="text-left">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
-                Field technique · live capture
+                Field technique · iOS dials · web coach
               </p>
-              <h1 className="font-display mt-3 max-w-[14ch] text-[clamp(2.15rem,4.2vw,3.25rem)] leading-[1.12] tracking-tight text-ink">
-                Point your phone at the shot — Auto Optimize shutter, ISO &amp; focus
+              <h1 className="font-display mt-3 max-w-[16ch] text-[clamp(2.15rem,4.2vw,3.25rem)] leading-[1.12] tracking-tight text-ink">
+                Point at the shot — iOS Auto Optimize writes dials; web Field Coach recommends them
               </h1>
               <p className="mt-4 max-w-md text-base leading-relaxed text-ink-secondary sm:text-lg">
-                Photo Recipes writes exposure duration, ISO, EV, white balance, and focus on the live
-                camera — so you capture the technique, not fix it later. Manual override anytime.
+                On iPhone, Auto Optimize writes shutter, ISO, EV, white balance, and focus on the live
+                camera. On this site, Field Coach reads your viewfinder or photo and recommends dials —
+                it does not apply them in the browser. Not a filter app.
               </p>
               <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
               <div className="mt-7 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center">
@@ -399,7 +400,7 @@ export function Landing() {
             <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
               <article className="rounded-2xl border border-border bg-surface p-6 text-left">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-accent-soft">
-                  Agentic — we set on device
+                  Agentic — iOS Auto Optimize sets
                 </h3>
                 <ul className="mt-4 space-y-2.5 text-sm text-ink-secondary">
                   {SETTABLE.map((item) => (
