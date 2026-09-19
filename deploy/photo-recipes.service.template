@@ -1,0 +1,21 @@
+[Unit]
+Description=Photo Recipes API (Grok recommend)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=DEPLOY_PATH_PLACEHOLDER
+ExecStart=/usr/bin/node server-dist/index.js
+Environment=NODE_ENV=production
+Environment=PORT=8787
+EnvironmentFile=-/etc/photo-recipes.env
+Restart=on-failure
+RestartSec=3
+User=www-data
+Group=www-data
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --color-accent: #f43f5e;
+  --color-accent-soft: #fb7185;
+  --color-surface: #141418;
+  --color-surface-2: #1c1c22;
+  --color-ink: #fafafa;
+  --color-muted: #a1a1aa;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(244, 63, 94, 0.12), transparent),
+    #0c0c0f;
+  color: var(--color-ink);
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Subtle card hover sheen */
+.preset-card {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.preset-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px -16px rgba(244, 63, 94, 0.35);
+}
+
+/* Dial ring animation */
+@keyframes dial-in {
+  from { opacity: 0; transform: scale(0.92) rotate(-8deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+.dial-animate {
+  animation: dial-in 0.45s ease-out both;
+}
+
+/* Checklist check */
+.checklist-item:has(input:checked) .checklist-label {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
