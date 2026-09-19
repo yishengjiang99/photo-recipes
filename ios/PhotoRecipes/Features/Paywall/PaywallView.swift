@@ -69,7 +69,10 @@ struct PaywallView: View {
                         }
 
                         Button("Restore purchases") {
-                            Task { await storeKit.restore() }
+                            Task {
+                                Analytics.shared.track("purchase_restore", props: ["source": "ios_paywall"])
+                                await storeKit.restore()
+                            }
                         }
                         .font(AppTheme.bodySmMedium())
                         .foregroundStyle(AppTheme.inkSecondary)
@@ -92,6 +95,7 @@ struct PaywallView: View {
             }
             .navigationTitle("Upgrade")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { Analytics.shared.track("paywall_view", props: ["source": "ios_sheet"]) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
@@ -150,8 +154,16 @@ struct PaywallView: View {
 
             Button {
                 Task {
+                    let plan = product.id.contains("yearly") ? "yearly" : "monthly"
+                    Analytics.shared.track("paywall_plan_select", props: ["plan": plan, "source": "ios_paywall"])
+                    Analytics.shared.track("purchase_start", props: ["plan": plan, "source": "storekit"])
                     let ok = await storeKit.purchase(product)
-                    if ok { dismiss() }
+                    if ok {
+                        Analytics.shared.track("purchase_success", props: ["plan": plan, "source": "storekit"])
+                        dismiss()
+                    } else if storeKit.purchaseError != nil {
+                        Analytics.shared.track("purchase_fail", props: ["plan": plan, "source": "storekit"])
+                    }
                 }
             } label: {
                 HStack {

@@ -120,7 +120,9 @@ final class CameraSession: NSObject, ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized: auth = .authorized
         case .notDetermined:
-            auth = await AVCaptureDevice.requestAccess(for: .video) ? .authorized : .denied
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            Analytics.shared.track(granted ? "camera_permission_granted" : "camera_permission_denied", props: ["source": "camera_session"])
+            auth = granted ? .authorized : .denied
         case .denied: auth = .denied
         case .restricted: auth = .restricted
         @unknown default: auth = .denied

@@ -1,5 +1,6 @@
 import { Camera } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { track } from '../lib/analytics'
 
 /** Opens the camera-first /app Field Coach (coach-only; no dial writes). */
 export const CAMERA_HREF = '/app'
@@ -33,7 +34,10 @@ export function CameraCta({
   return (
     <Link
       to={to}
-      onClick={onClick}
+      onClick={() => {
+        track('landing_cta_camera', { source: 'camera_cta', label })
+        onClick?.()
+      }}
       aria-label={`${label} — open Field Coach live viewfinder`}
       className={`inline-flex items-center justify-center rounded-full bg-accent font-semibold text-white shadow-[0_8px_24px_-12px_rgba(244,63,94,0.55)] transition hover:bg-accent-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${sizeClass[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
     >

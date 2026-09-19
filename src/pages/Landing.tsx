@@ -1,5 +1,5 @@
 import { Camera, Check, ChevronDown, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CameraCta } from '../components/CameraCta'
 import { LandingDialProof } from '../components/LandingDialProof'
@@ -7,6 +7,7 @@ import { LandingEmailCapture } from '../components/LandingEmailCapture'
 import { Seo } from '../components/Seo'
 import { useSubscription } from '../hooks/useSubscription'
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, TESTFLIGHT_URL } from '../lib/site'
+import { track } from '../lib/analytics'
 
 const TRUST_LINE =
   'Free Peek · 1 Auto Optimize/day · Pro $7.99/mo or $59.99/yr · 7-day trial'
@@ -128,6 +129,10 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 export function Landing() {
   const { openPricing } = useSubscription()
+
+  useEffect(() => {
+    track('landing_view', { source: 'marketing' })
+  }, [])
   const [navOpen, setNavOpen] = useState(false)
 
   const jsonLd = useMemo(
@@ -283,12 +288,14 @@ export function Landing() {
                 <CameraCta size="lg" fullWidth className="min-[400px]:!w-auto" />
                 <a
                   href={TESTFLIGHT_URL}
+                  onClick={() => track('landing_cta_testflight', { source: 'hero' })}
                   className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface min-[400px]:w-auto"
                 >
                   Get TestFlight
                 </a>
                 <a
                   href="#notes"
+                  onClick={() => track('landing_cta_waitlist', { source: 'hero' })}
                   className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium text-ink-secondary hover:text-ink min-[400px]:w-auto"
                 >
                   Join waitlist

@@ -1,6 +1,7 @@
 import { Check, Loader2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { CameraCta } from './CameraCta'
+import { track } from '../lib/analytics'
 
 type FormState =
   | 'idle'
@@ -37,6 +38,7 @@ export function LandingEmailCapture({ className = '' }: { className?: string }) 
     }
 
     setState('loading')
+    track('waitlist_submit', { source: 'landing_notes' })
     try {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
@@ -47,17 +49,24 @@ export function LandingEmailCapture({ className = '' }: { className?: string }) 
 
       if (res.status === 400) {
         setState('error_validation')
+        track('waitlist_fail', { source: 'landing_notes', error_code: 'validation' })
         return
       }
 
       if (!res.ok || !('ok' in data) || !data.ok) {
         setState('error_server')
+        track('waitlist_fail', { source: 'landing_notes', error_code: 'server' })
         return
       }
 
       setState(data.duplicate ? 'duplicate' : 'success')
+      track('waitlist_success', {
+        source: 'landing_notes',
+        duplicate: Boolean(data.duplicate),
+      })
     } catch {
       setState('error_server')
+      track('waitlist_fail', { source: 'landing_notes', error_code: 'network' })
     }
   }
 

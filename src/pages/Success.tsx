@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CameraCta } from '../components/CameraCta'
 import { useSubscription } from '../hooks/useSubscription'
+import { track } from '../lib/analytics'
 
 export function Success() {
   const [params] = useSearchParams()
@@ -34,12 +35,23 @@ export function Success() {
         }
         if (cancelled) return
         if (!res.ok) {
+          track('purchase_fail', {
+            source: 'stripe_verify',
+            error_code: String(res.status),
+          })
           setState('fail')
           setDetail(data.error || `Verify failed (${res.status})`)
           return
         }
         if (data.verified) {
           await refresh()
+          track('purchase_success', {
+            plan: data.plan || 'unknown',
+            source: 'stripe',
+          })
+          if (data.status === 'trialing') {
+            track('trial_start', { plan: data.plan || 'unknown', source: 'stripe' })
+          }
           setState('ok')
           setDetail(
             data.status === 'trialing'

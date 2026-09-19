@@ -1,11 +1,17 @@
 import { Camera } from 'lucide-react'
+import { useEffect } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
+import { track } from '../lib/analytics'
 import { AppTabBar } from './AppTabBar'
 
 export function Layout() {
   const location = useLocation()
   const onCamera =
     location.pathname === '/app' || location.pathname === '/app/'
+
+  useEffect(() => {
+    if (onCamera) track('camera_open', { source: 'app_shell', platform: 'web' })
+  }, [onCamera])
 
   return (
     <div
