@@ -21,14 +21,14 @@ import {
 } from './entitlements.ts'
 
 const BUNDLE_ID =
-  process.env.APPLE_IAP_BUNDLE_ID?.trim() || 'com.yishengjiang.photorecipes'
+  process.env.APPLE_IAP_BUNDLE_ID?.trim() || 'com.ragnus.mvp'
 
 const PRODUCT_MONTHLY =
   process.env.APPLE_IAP_PRODUCT_MONTHLY?.trim() ||
-  'com.yishengjiang.photorecipes.pro.monthly'
+  'com.ragnus.mvp.pro.monthly'
 const PRODUCT_YEARLY =
   process.env.APPLE_IAP_PRODUCT_YEARLY?.trim() ||
-  'com.yishengjiang.photorecipes.pro.yearly'
+  'com.ragnus.mvp.pro.yearly'
 
 function planForProduct(productId: string): Plan {
   if (productId === PRODUCT_YEARLY) return 'yearly'

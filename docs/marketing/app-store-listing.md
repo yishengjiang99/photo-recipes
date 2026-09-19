@@ -1,6 +1,6 @@
 # Photo Recipes — iOS App Store Listing
 
-Bundle ID: com.yishengjiang.photorecipes
+Bundle ID: com.ragnus.mvp
 
 ## App Name (30 char max)
 Photo Recipes

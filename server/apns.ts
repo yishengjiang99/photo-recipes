@@ -27,7 +27,7 @@ function apnsConfigured(): boolean {
   const keyId = process.env.APNS_KEY_ID?.trim()
   const teamId = process.env.APNS_TEAM_ID?.trim()
   const bundleId =
-    process.env.APNS_BUNDLE_ID?.trim() || 'com.yishengjiang.photorecipes'
+    process.env.APNS_BUNDLE_ID?.trim() || 'com.ragnus.mvp'
   const p8Path = process.env.APNS_P8_PATH?.trim()
   const p8Contents = process.env.APNS_P8_CONTENTS?.trim()
   return Boolean(keyId && teamId && bundleId && (p8Path || p8Contents))
@@ -91,7 +91,7 @@ export async function sendApns(
       keyId: process.env.APNS_KEY_ID?.trim()?.slice(0, 4) + '…',
       teamIdPresent: Boolean(process.env.APNS_TEAM_ID?.trim()),
       bundleId:
-        process.env.APNS_BUNDLE_ID?.trim() || 'com.yishengjiang.photorecipes',
+        process.env.APNS_BUNDLE_ID?.trim() || 'com.ragnus.mvp',
       type: payload.type,
       deepLink: payload.deepLink,
       chips: payload.recipeChips.map((c) => c.id),

@@ -82,7 +82,7 @@ struct SettingsView: View {
                     }
 
                     Section("About") {
-                        LabeledContent("Bundle ID", value: "com.yishengjiang.photorecipes")
+                        LabeledContent("Bundle ID", value: "com.ragnus.mvp")
                         Text("Field technique assistant — recipes with dials + checklists. Not a filter / AI-magic camera app.")
                             .font(.caption)
                     }
