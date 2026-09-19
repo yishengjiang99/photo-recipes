@@ -1,115 +1,122 @@
-import {
-  Aperture,
-  Camera,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Mic,
-  Sparkles,
-  BookOpen,
-} from 'lucide-react'
+import { Camera, Check, ChevronDown, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Seo } from '../components/Seo'
+import { LandingDialProof } from '../components/LandingDialProof'
 import { LandingEmailCapture } from '../components/LandingEmailCapture'
+import { Seo } from '../components/Seo'
 import { useSubscription } from '../hooks/useSubscription'
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL } from '../lib/site'
+
+const TRUST_LINE =
+  'Free Peek · 1 Auto Optimize/day · Pro $7.99/mo or $59.99/yr · 7-day trial'
 
 const HOW_STEPS = [
   {
     n: '1',
     title: 'Sense',
-    body: 'Light, motion, and your scene note — viewfinder caption, voice, or type. A camera settings app that reads the field, not the feed.',
+    body: 'Light, motion, subject — from the viewfinder note',
+    status: 'Reading light…',
   },
   {
     n: '2',
     title: 'Reason',
-    body: 'Matches a photography recipe and clamps to what your lens can do — landscape, panning, HDR, depth of field.',
+    body: 'Matches a field recipe; clamps to what the phone can set',
+    status: 'Matching a recipe…',
   },
   {
     n: '3',
     title: 'Apply',
-    body: 'Writes MODE / aperture / shutter / ISO — before→after chips you can trust. Auto Optimize camera dials for live capture.',
+    body: 'Writes shutter / ISO / EV / WB / focus',
+    status: 'Applying shutter & ISO…',
   },
   {
     n: '4',
     title: 'Verify',
-    body: 'Soft pan cues if you need to reframe; then you’re ready to capture with a field photography checklist.',
+    body: 'Soft pan ← → if you should reframe',
+    status: 'Checking exposure…',
+  },
+  {
+    n: '5',
+    title: 'Capture',
+    body: 'You still press shutter',
+    status: 'Ready to capture',
   },
 ] as const
 
-const FEATURES = [
+const RECIPE_CARDS = [
   {
-    overline: 'Live capture',
-    title: 'Auto Optimize',
-    body: 'One CTA runs the agent loop on the live viewfinder — auto optimize camera settings before you shoot.',
+    title: 'Panning',
+    body: 'Slow shutter + tracking cues — subject sharp, world streaks.',
   },
   {
-    overline: 'Craft',
-    title: 'Recipe dials',
-    body: 'Educational + live photography recipes — aperture rings you can override anytime.',
+    title: 'Depth of field',
+    body: 'Focus strategy for front-to-back sharpness.',
   },
   {
-    overline: 'Framing',
-    title: 'Direction cues',
-    body: 'Quiet left/right chevrons when you should pan — not a game HUD. Built for panning photography settings in the field.',
+    title: 'HDR / high contrast',
+    body: 'Protect highlights; disciplined exposure targets.',
   },
   {
-    overline: 'Input',
-    title: 'Voice + viewfinder note',
-    body: 'Dictate or prefill From viewfinder; always editable. Ask “what settings for landscape” without leaving the shot.',
-  },
-  {
-    overline: 'Coach',
-    title: 'Ask / Photo Vision',
-    body: 'Coach into a recipe when you’re stuck — HDR camera settings, depth of field settings, or motion. Free Peek quota applies.',
-  },
-  {
-    overline: 'Funnel',
-    title: 'Soft Pro funnel',
-    body: 'Browse free; unlock unlimited optimize, manuals, and field photography checklists with Pro.',
+    title: 'Motion control',
+    body: 'Freeze or blur on purpose — ISO and shutter paired.',
   },
 ] as const
+
+const SETTABLE = [
+  'Shutter / exposure duration',
+  'ISO',
+  'EV bias',
+  'White balance',
+  'Focus lock / POI',
+  'Zoom / lens when available',
+] as const
+
+const COACH_ONLY = ['Aperture', 'ND filter', 'Tripod / support'] as const
 
 const FAQ_ITEMS = [
   {
     q: 'Is this an AI filter app?',
-    a: 'No — Photo Recipes is a field technique coach and camera settings app. It applies real camera settings and photography recipes for capture, not filters or edits after the shot.',
+    a: 'No — field technique coach and camera settings app. Applies real capture settings, not filters after the shot.',
   },
   {
-    q: 'What does Auto Optimize do?',
-    a: 'Sense → match a recipe → apply dials → verify (with optional pan cues) → you shoot. It sets exposure / focus / white-balance guidance for live capture — it does not paint filters onto a finished photo.',
+    q: 'What does Auto Optimize change?',
+    a: 'Shutter / exposure duration, ISO, EV, white balance, focus (zoom when available). Aperture, ND, tripod stay coach-only.',
   },
   {
     q: 'What’s free?',
-    a: 'Free Peek lets you browse the recipe library. Agent / Ask runs and advanced manuals are limited (about 1 Auto Optimize or Ask per day) until Pro.',
+    a: 'Free Peek: browse recipes · ~1 Auto Optimize/day until Pro.',
   },
   {
-    q: 'What’s included in Pro?',
-    a: 'Unlimited Auto Optimize, Ask / Photo Vision, manual dials, and field checklists. $59.99/yr (best value) or $7.99/mo, with a 7-day trial.',
-  },
-  {
-    q: 'Does it cover panning, HDR, and depth of field?',
-    a: 'Yes — the skill library includes panning photography settings, HDR camera settings, depth of field settings, motion, and composition recipes with dials, steps, and teach-why tips.',
+    q: 'What’s in Pro?',
+    a: 'Unlimited Auto Optimize, manual dials, Teach, checklists. $59.99/yr or $7.99/mo · 7-day trial.',
   },
   {
     q: 'iPhone and Android?',
-    a: 'Designed for both. The marketing duo shows Auto Optimize on camera with recipe dials side by side.',
+    a: 'Designed for both; duo art shows Auto Optimize + dials.',
   },
   {
     q: 'Can I override the agent?',
-    a: 'Yes — manual dials drawer (Pro). Teach mode explains why a recipe chose those settings so you learn for next time.',
+    a: 'Yes — manual dials (Pro). Teach explains why.',
   },
   {
     q: 'Do I need an account?',
-    a: 'You can browse Free Peek without buying. Checkout for Pro trial uses Stripe; billing portal is available after you subscribe.',
+    a: 'Browse Free Peek without buying; Pro via Stripe (web) / IAP (iOS).',
   },
   {
-    q: 'Is it affiliated with the book publisher?',
+    q: 'What are field notes?',
+    a: 'Occasional craft emails — not a daily blast. Join via Get field notes.',
+  },
+  {
+    q: 'Voice?',
+    a: 'Optional dictate for a scene note — same apply path as Auto Optimize.',
+  },
+  {
+    q: 'Publisher affiliation?',
     a: 'Educational presets inspired by field recipes — not affiliated with the publisher.',
   },
 ] as const
+
+const PROOF_CHIPS = ['Shutter', 'ISO', 'EV', 'WB', 'Focus'] as const
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   return (
@@ -172,10 +179,15 @@ export function Landing() {
     openPricing()
   }
 
+  function closeNav() {
+    setNavOpen(false)
+  }
+
   return (
     <div className="min-h-dvh bg-bg text-ink">
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={jsonLd} />
 
+      {/* Nav */}
       <header className="sticky top-0 z-30 border-b border-border/60 bg-bg/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link to="/" className="group flex items-center gap-2.5">
@@ -186,17 +198,17 @@ export function Landing() {
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-ink-secondary md:flex" aria-label="Primary">
-            <Link to="/app" className="hover:text-ink">
-              Library
-            </Link>
-            <a href="#how-it-works" className="hover:text-ink">
-              How it works
+            <a href="#how" className="hover:text-ink">
+              How
+            </a>
+            <a href="#recipes" className="hover:text-ink">
+              Recipes
             </a>
             <a href="#pricing" className="hover:text-ink">
               Pricing
             </a>
-            <a href="#faq" className="hover:text-ink">
-              FAQ
+            <a href="#notes" className="hover:text-ink">
+              Notes
             </a>
           </nav>
 
@@ -205,7 +217,7 @@ export function Landing() {
               to="/app"
               className="hidden min-h-9 items-center rounded-full px-3 py-1.5 text-sm font-medium text-ink-secondary ring-1 ring-border hover:bg-surface sm:inline-flex"
             >
-              Open app
+              Open Free Peek
             </Link>
             <button
               type="button"
@@ -218,15 +230,18 @@ export function Landing() {
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-secondary ring-1 ring-border md:hidden"
               aria-expanded={navOpen}
-              aria-label="Open menu"
+              aria-label={navOpen ? 'Close menu' : 'Open menu'}
               onClick={() => setNavOpen((v) => !v)}
             >
-              <span className="sr-only">Menu</span>
-              <span className="flex flex-col gap-1" aria-hidden>
-                <span className="block h-0.5 w-4 bg-ink-secondary" />
-                <span className="block h-0.5 w-4 bg-ink-secondary" />
-                <span className="block h-0.5 w-4 bg-ink-secondary" />
-              </span>
+              {navOpen ? (
+                <X className="h-4 w-4" />
+              ) : (
+                <span className="flex flex-col gap-1" aria-hidden>
+                  <span className="block h-0.5 w-4 bg-ink-secondary" />
+                  <span className="block h-0.5 w-4 bg-ink-secondary" />
+                  <span className="block h-0.5 w-4 bg-ink-secondary" />
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -234,18 +249,25 @@ export function Landing() {
         {navOpen ? (
           <div className="border-t border-border px-4 py-3 md:hidden">
             <div className="flex flex-col gap-3 text-sm text-ink-secondary">
-              <Link to="/app" onClick={() => setNavOpen(false)} className="hover:text-ink">
-                Library
-              </Link>
-              <a href="#how-it-works" onClick={() => setNavOpen(false)} className="hover:text-ink">
-                How it works
+              <a href="#how" onClick={closeNav} className="hover:text-ink">
+                How
               </a>
-              <a href="#pricing" onClick={() => setNavOpen(false)} className="hover:text-ink">
+              <a href="#recipes" onClick={closeNav} className="hover:text-ink">
+                Recipes
+              </a>
+              <a href="#pricing" onClick={closeNav} className="hover:text-ink">
                 Pricing
               </a>
-              <a href="#faq" onClick={() => setNavOpen(false)} className="hover:text-ink">
-                FAQ
+              <a href="#notes" onClick={closeNav} className="hover:text-ink">
+                Notes
               </a>
+              <Link
+                to="/app"
+                onClick={closeNav}
+                className="inline-flex min-h-9 w-fit items-center rounded-full px-3 py-1.5 font-medium text-ink ring-1 ring-border"
+              >
+                Open Free Peek
+              </Link>
             </div>
           </div>
         ) : null}
@@ -253,175 +275,202 @@ export function Landing() {
 
       <main>
         {/* Hero */}
-        <section className="mx-auto grid max-w-[1120px] items-center gap-10 px-4 pb-16 pt-10 sm:px-6 sm:pt-14 lg:grid-cols-[0.42fr_0.58fr] lg:gap-12 lg:pb-24">
-          <div className="text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
-              Field technique · live capture
-            </p>
-            <h1 className="font-display mt-3 text-[2.15rem] leading-[1.12] tracking-tight text-ink sm:text-5xl">
-              Recipes that set your camera — not just your mood.
-            </h1>
-            <p className="mt-4 max-w-md text-base leading-relaxed text-ink-secondary sm:text-lg">
-              Photo Recipes senses the scene, picks a field recipe, applies real dials, and coaches
-              you to the shot. Agentic optimize. Manual override anytime.
-            </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={startTrial}
-                className="inline-flex min-h-11 items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-soft"
-              >
-                Start free trial
-              </button>
-              <Link
-                to="/app"
-                className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface"
-              >
-                Browse Free Peek
-              </Link>
+        <section className="landing-hero-glow">
+          <div className="mx-auto grid max-w-[1120px] items-center gap-10 px-4 pb-14 pt-10 sm:px-6 sm:pt-14 lg:grid-cols-[0.42fr_0.58fr] lg:gap-12 lg:pb-20">
+            <div className="text-left">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
+                Field technique · live capture
+              </p>
+              <h1 className="font-display mt-3 max-w-[14ch] text-[clamp(2.15rem,4.2vw,3.25rem)] leading-[1.12] tracking-tight text-ink">
+                Point your phone at the shot — Auto Optimize shutter, ISO &amp; focus
+              </h1>
+              <p className="mt-4 max-w-md text-base leading-relaxed text-ink-secondary sm:text-lg">
+                Photo Recipes writes exposure duration, ISO, EV, white balance, and focus on the live
+                camera — so you capture the technique, not fix it later. Manual override anytime.
+              </p>
+              <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
+              <div className="mt-7 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center">
+                <button
+                  type="button"
+                  onClick={startTrial}
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-soft min-[400px]:w-auto"
+                >
+                  Start free trial
+                </button>
+                <Link
+                  to="/app"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface min-[400px]:w-auto"
+                >
+                  Open Free Peek
+                </Link>
+              </div>
+              <p className="mt-3 text-xs text-ink-tertiary">{TRUST_LINE}</p>
             </div>
-            <p className="mt-3 text-xs text-ink-tertiary">
-              7-day trial · Free Peek to browse · Cancel anytime
-            </p>
-          </div>
 
-          <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
-            <img
-              src="/phones-duo-iphone-android-camera.png"
-              alt="Photo Recipes on iPhone and Android — Auto Optimize camera and recipe dials."
-              width={1200}
-              height={900}
-              className="h-auto w-full object-contain"
-              fetchPriority="high"
-              decoding="async"
-            />
+            <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
+              <img
+                src="/phones-duo-iphone-android-camera.png"
+                alt="Photo Recipes on iPhone and Android — Auto Optimize camera with recipe dials."
+                width={1200}
+                height={900}
+                className="h-auto w-full rounded-xl object-contain shadow-[0_24px_60px_-24px_rgba(0,0,0,0.65)] ring-1 ring-border"
+                fetchPriority="high"
+                decoding="async"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Proof strip */}
+        <section className="border-y border-border/50 py-5" aria-label="Settable dials">
+          <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-start gap-2 px-4 sm:justify-center sm:px-6">
+            {PROOF_CHIPS.map((chip, i) => (
+              <span
+                key={chip}
+                className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-xs text-ink-secondary sm:text-sm"
+              >
+                <span className={i === 0 ? 'font-semibold text-accent-soft' : ''}>{chip}</span>
+              </span>
+            ))}
+            <span className="hidden text-ink-tertiary sm:inline" aria-hidden>
+              ·
+            </span>
+            <span className="text-xs text-ink-tertiary sm:text-sm">zoom when available</span>
+            <span className="basis-full text-left text-xs text-ink-tertiary sm:basis-auto sm:ml-2">
+              Coach-only: aperture · ND · tripod
+            </span>
           </div>
         </section>
 
         {/* How it works */}
-        <section id="how-it-works" className="scroll-mt-20 border-t border-border/50 py-16 sm:py-20">
+        <section id="how" className="scroll-mt-20 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Sense. Apply. Verify. Shoot.
+              Sense. Reason. Apply. Verify. Shoot.
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-ink-secondary sm:text-base">
-              Auto Optimize runs a short field loop so your camera settings match the photography
-              recipe — then you take the frame.
+              One loop on the live viewfinder — status you can trust, dials you can override.
             </p>
-            <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {HOW_STEPS.map((step) => (
-                <li
-                  key={step.n}
-                  className="rounded-2xl border border-border bg-surface p-5 text-left"
-                >
+                <li key={step.n} className="rounded-2xl border border-border bg-surface p-5 text-left">
                   <span className="font-mono text-xs font-semibold text-accent-soft">{step.n}</span>
                   <h3 className="mt-2 font-display text-xl text-ink">{step.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{step.body}</p>
+                  <p className="mt-3 inline-flex rounded-full bg-bg-elevated px-2.5 py-1 font-mono text-[11px] text-ink-tertiary ring-1 ring-border">
+                    {step.status}
+                  </p>
                 </li>
               ))}
             </ol>
           </div>
         </section>
 
-        {/* Features */}
-        <section id="features" className="scroll-mt-20 py-16 sm:py-20">
+        {/* Dial moment */}
+        <section id="dials" className="scroll-mt-20 border-y border-border/50 bg-bg-elevated py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Built for the field, not the feed.
+              Watch the dials move — then take the shot.
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-ink-secondary sm:text-base">
-              A skill library of photography recipes — panning, HDR, depth of field, motion, and
-              composition — with dials, steps, and teach-why tips.
+              Before → after chips show exactly what Auto Optimize wrote. Tap through Teach anytime.
             </p>
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {FEATURES.map((f) => (
-                <article
-                  key={f.title}
-                  className="rounded-2xl border border-border bg-surface p-5 text-left"
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">
-                    {f.overline}
-                  </p>
-                  <h3 className="mt-2 text-base font-semibold text-ink">{f.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{f.body}</p>
-                </article>
-              ))}
+            <div className="mt-10">
+              <LandingDialProof />
+            </div>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="#how"
+                className="inline-flex min-h-10 items-center justify-center rounded-full px-4 py-2 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface"
+              >
+                See how it works
+              </a>
+              <button
+                type="button"
+                onClick={startTrial}
+                className="inline-flex min-h-10 items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-soft"
+              >
+                Start free trial
+              </button>
             </div>
           </div>
         </section>
 
-        {/* Dual-phone deep-dive */}
-        <section className="border-y border-border/50 bg-bg-elevated py-16 sm:py-20">
-          <div className="mx-auto grid max-w-[1120px] items-center gap-10 px-4 sm:px-6 lg:grid-cols-2">
-            <div className="order-2 lg:order-1">
-              <img
-                src="/iphone-duo-hero-web.png"
-                alt="Photo Recipes dual iPhone screens showing recipe dials and Auto Optimize status."
-                width={1100}
-                height={800}
-                className="mx-auto h-auto w-full max-w-md object-contain lg:max-w-none"
-                loading="lazy"
-                decoding="async"
-              />
+        {/* Settable vs coach-only */}
+        <section className="py-14 sm:py-20 lg:py-24">
+          <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
+            <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
+              Honest about what the phone can write.
+            </h2>
+            <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
+              <article className="rounded-2xl border border-border bg-surface p-6 text-left">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-accent-soft">
+                  Agentic — we set on device
+                </h3>
+                <ul className="mt-4 space-y-2.5 text-sm text-ink-secondary">
+                  {SETTABLE.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+              <article className="rounded-2xl border border-dashed border-border bg-bg-elevated p-6 text-left">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-ink-tertiary">
+                  Coach-only guidance
+                </h3>
+                <ul className="mt-4 space-y-2.5 text-sm text-ink-secondary">
+                  {COACH_ONLY.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-0.5 h-4 w-4 shrink-0 text-center text-ink-tertiary" aria-hidden>
+                        ·
+                      </span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </article>
             </div>
-            <div className="order-1 text-left lg:order-2">
-              <h2 className="font-display text-3xl text-ink sm:text-4xl">
-                An agent on your shoulder — dials you still control.
-              </h2>
-              <ul className="mt-6 space-y-4 text-sm text-ink-secondary">
-                <li className="flex gap-3">
-                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent-soft" />
-                  <span>
-                    <strong className="text-ink">Before → after settings</strong> — see MODE,
-                    aperture, shutter, and ISO change as Auto Optimize applies the recipe.
-                  </span>
-                </li>
-                <li className="flex gap-3">
-                  <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-accent-soft" />
-                  <span>
-                    <strong className="text-ink">Teach mode</strong> — why this recipe for landscape,
-                    HDR, or depth of field, so the next shoot sticks.
-                  </span>
-                </li>
-                <li className="flex gap-3">
-                  <Aperture className="mt-0.5 h-4 w-4 shrink-0 text-accent-soft" />
-                  <span>
-                    <strong className="text-ink">Manual override drawer</strong> — keep authorship;
-                    the agent suggests, you decide.
-                  </span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="mt-0.5 flex shrink-0 gap-0.5 text-accent-soft">
-                    <ChevronLeft className="h-4 w-4" />
-                    <ChevronRight className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <strong className="text-ink">Quiet pan L/R cues</strong> — reframe without a loud
-                    HUD when panning photography settings call for it.
-                  </span>
-                </li>
-                <li className="flex gap-3">
-                  <Mic className="mt-0.5 h-4 w-4 shrink-0 text-accent-soft" />
-                  <span>
-                    <strong className="text-ink">Voice + From viewfinder</strong> — dictate the scene
-                    note or pull caption text; always editable.
-                  </span>
-                </li>
-              </ul>
+          </div>
+        </section>
+
+        {/* Recipe teaser */}
+        <section id="recipes" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
+          <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
+            <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
+              Technique recipes, not LUTs.
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-ink-secondary sm:text-base">
+              Panning, HDR, depth of field, motion — dials, steps, and teach-why tips.
+            </p>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {RECIPE_CARDS.map((card) => (
+                <Link
+                  key={card.title}
+                  to="/app"
+                  className="rounded-2xl border border-border bg-surface p-5 text-left transition hover:border-border-strong hover:bg-surface-2"
+                >
+                  <h3 className="font-display text-xl text-ink">{card.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{card.body}</p>
+                </Link>
+              ))}
+            </div>
+            <div className="mt-8 flex justify-center">
+              <Link
+                to="/app"
+                className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface"
+              >
+                Open Free Peek
+              </Link>
             </div>
           </div>
         </section>
 
         {/* Pricing */}
-        <section id="pricing" className="scroll-mt-20 py-16 sm:py-20">
+        <section id="pricing" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
-            <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Free Peek · Pro when you need the field open.
-            </h2>
-            <p className="mx-auto mt-3 max-w-xl text-center text-sm text-ink-secondary">
-              Soft try the camera settings app. Upgrade for unlimited Auto Optimize and checklists.
-            </p>
-
+            <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">Free Peek vs Pro</h2>
             <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
               <article className="rounded-2xl border border-border bg-surface p-6 text-left">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">
@@ -430,42 +479,43 @@ export function Landing() {
                 <p className="mt-2 font-display text-3xl text-ink">$0</p>
                 <ul className="mt-4 space-y-2 text-sm text-ink-secondary">
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> Browse photography recipes
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Browse recipe library
                   </li>
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> 1 Auto Optimize / Ask per day
+                    <Check className="h-4 w-4 shrink-0 text-success" /> 1 Auto Optimize / day
+                  </li>
+                  <li className="flex gap-2">
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Teach mode teaser
                   </li>
                 </ul>
                 <Link
                   to="/app"
                   className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-full text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface-2"
                 >
-                  Browse Free Peek
+                  Open Free Peek
                 </Link>
               </article>
 
-              <article className="rounded-2xl border border-accent/40 bg-surface p-6 text-left ring-1 ring-accent/20">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-soft">
-                    Pro · Best value
-                  </p>
-                  <span className="rounded-full bg-accent-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-soft">
-                    7-day trial
-                  </span>
-                </div>
+              <article className="relative rounded-2xl border border-accent/40 bg-surface p-6 text-left ring-1 ring-accent/20">
+                <span className="absolute -top-2.5 right-4 rounded-full border border-accent/50 bg-accent-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-soft">
+                  Best value
+                </span>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-soft">
+                  Pro
+                </p>
                 <p className="mt-2 font-display text-3xl text-ink">
                   $59.99<span className="text-lg text-ink-tertiary">/yr</span>
                 </p>
                 <p className="mt-1 text-xs text-ink-tertiary">or $7.99/mo</p>
                 <ul className="mt-4 space-y-2 text-sm text-ink-secondary">
                   <li className="flex gap-2">
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Browse + checklists
+                  </li>
+                  <li className="flex gap-2">
                     <Check className="h-4 w-4 shrink-0 text-success" /> Unlimited Auto Optimize
                   </li>
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> Manual dials + field checklists
-                  </li>
-                  <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> Ask / Photo Vision unlocked
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Full manual dials + Teach
                   </li>
                 </ul>
                 <button
@@ -475,13 +525,34 @@ export function Landing() {
                 >
                   Start 7-day trial
                 </button>
+                <p className="mt-3 text-center text-[11px] text-ink-tertiary">
+                  Cancel anytime · Stripe on web · Apple IAP on iOS
+                </p>
               </article>
             </div>
           </div>
         </section>
 
+        {/* Get field notes */}
+        <section id="notes" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
+          <div className="mx-auto grid max-w-[1120px] items-center gap-8 px-4 sm:px-6 lg:grid-cols-[0.45fr_0.55fr] lg:gap-12">
+            <div className="text-left">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
+                Field notes
+              </p>
+              <h2 className="font-display mt-2 text-3xl text-ink sm:text-4xl">Get field notes</h2>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-secondary sm:text-base">
+                Occasional craft notes and launch updates — shutter discipline, not promo blasts.
+                Unsubscribe anytime.
+              </p>
+              <p className="mt-3 text-xs text-ink-tertiary">No spam · No filter tips · Craft only</p>
+            </div>
+            <LandingEmailCapture />
+          </div>
+        </section>
+
         {/* FAQ */}
-        <section id="faq" className="scroll-mt-20 border-t border-border/50 py-16 sm:py-20">
+        <section id="faq" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[720px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
               Questions before you head out.
@@ -495,9 +566,10 @@ export function Landing() {
         </section>
 
         {/* Final CTA */}
-        <section className="py-16 sm:py-24">
+        <section className="py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[720px] px-4 text-center sm:px-6">
             <h2 className="font-display text-3xl text-ink sm:text-4xl">Go make the frame.</h2>
+            <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
@@ -513,12 +585,10 @@ export function Landing() {
                 Open Free Peek
               </Link>
             </div>
-            <div className="mt-10 flex justify-center border-t border-border/60 pt-8">
-              <LandingEmailCapture className="text-left sm:text-center [&_p]:sm:text-center" />
-            </div>
-            <p className="mt-3 text-xs text-ink-tertiary">
-              7-day trial · Free Peek to browse · Cancel anytime
-            </p>
+            <p className="mt-3 text-xs text-ink-tertiary">{TRUST_LINE}</p>
+            <a href="#notes" className="mt-5 inline-block text-sm text-ink-tertiary hover:text-ink">
+              Get field notes
+            </a>
           </div>
         </section>
       </main>
@@ -536,14 +606,17 @@ export function Landing() {
             </p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-ink-tertiary">
-            <Link to="/app" className="hover:text-ink">
-              Library
-            </Link>
+            <a href="#how" className="hover:text-ink">
+              How
+            </a>
+            <a href="#recipes" className="hover:text-ink">
+              Recipes
+            </a>
             <a href="#pricing" className="hover:text-ink">
               Pricing
             </a>
-            <a href="#faq" className="hover:text-ink">
-              FAQ
+            <a href="#notes" className="hover:text-ink">
+              Notes
             </a>
             <span title="Privacy policy placeholder">Privacy</span>
             <span title="Terms placeholder">Terms</span>

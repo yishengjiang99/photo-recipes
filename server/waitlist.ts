@@ -7,8 +7,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const STORE = path.resolve(__dirname, 'data/waitlist.json')
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const SEGMENT_NAMES = ['waitlist', 'field-notes'] as const
 
 type WaitlistEntry = { email: string; at: string; source?: string }
+
+type ResendResult =
+  | { ok: true; duplicate?: boolean }
+  | { ok: false; detail?: string }
 
 function loadStore(): WaitlistEntry[] {
   try {
@@ -40,40 +45,169 @@ function rateLimited(ip: string): boolean {
   return false
 }
 
-async function resendAddContact(email: string): Promise<{ ok: boolean; detail?: string }> {
+function authHeaders(key: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${key}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+/** Cache resolved segment id for process lifetime */
+let cachedSegmentId: string | null | undefined
+
+async function resolveSegmentId(key: string): Promise<string | null> {
+  if (cachedSegmentId !== undefined) return cachedSegmentId
+
+  const pinned = process.env.RESEND_SEGMENT_ID?.trim()
+  if (pinned) {
+    cachedSegmentId = pinned
+    return pinned
+  }
+
+  try {
+    const r = await fetch('https://api.resend.com/segments', {
+      headers: authHeaders(key),
+    })
+    if (!r.ok) {
+      console.warn('[waitlist] list segments', r.status)
+      cachedSegmentId = null
+      return null
+    }
+    const body = (await r.json()) as {
+      data?: Array<{ id: string; name?: string }>
+    }
+    const list = Array.isArray(body.data) ? body.data : []
+    const found = list.find((s) =>
+      SEGMENT_NAMES.includes(
+        (s.name || '').toLowerCase() as (typeof SEGMENT_NAMES)[number],
+      ),
+    )
+    if (found?.id) {
+      cachedSegmentId = found.id
+      return found.id
+    }
+
+    // Create "waitlist" if missing
+    const created = await fetch('https://api.resend.com/segments', {
+      method: 'POST',
+      headers: authHeaders(key),
+      body: JSON.stringify({ name: 'waitlist' }),
+    })
+    if (created.ok) {
+      const seg = (await created.json()) as { id?: string }
+      if (seg.id) {
+        cachedSegmentId = seg.id
+        return seg.id
+      }
+    }
+  } catch (err) {
+    console.warn('[waitlist] resolve segment', (err as Error).message)
+  }
+
+  cachedSegmentId = null
+  return null
+}
+
+async function addToSegment(
+  key: string,
+  email: string,
+  segmentId: string,
+): Promise<boolean> {
+  const r = await fetch(
+    `https://api.resend.com/contacts/${encodeURIComponent(email)}/segments/${segmentId}`,
+    {
+      method: 'POST',
+      headers: authHeaders(key),
+    },
+  )
+  // 409 / already in segment → fine
+  return r.ok || r.status === 409
+}
+
+/**
+ * Prefer Contacts + Segments API.
+ * Falls back to legacy Audiences if RESEND_AUDIENCE_ID is set and no segment.
+ * Never returns raw Resend error bodies to the caller.
+ */
+async function resendAddContact(email: string): Promise<ResendResult> {
   const key = process.env.RESEND_API_KEY?.trim()
   if (!key) return { ok: false, detail: 'RESEND_API_KEY missing' }
 
-  const audienceId = process.env.RESEND_AUDIENCE_ID?.trim()
-  const from = process.env.RESEND_FROM?.trim() || 'Photo Recipes <onboarding@resend.dev>'
+  const from =
+    process.env.RESEND_FROM?.trim() || 'Photo Recipes <onboarding@resend.dev>'
   const notifyTo = process.env.WAITLIST_NOTIFY_TO?.trim()
+  const audienceId = process.env.RESEND_AUDIENCE_ID?.trim()
 
-  // Prefer Audiences contacts when configured
+  const segmentId = await resolveSegmentId(key)
+
+  if (segmentId) {
+    const create = await fetch('https://api.resend.com/contacts', {
+      method: 'POST',
+      headers: authHeaders(key),
+      body: JSON.stringify({
+        email,
+        unsubscribed: false,
+        segments: [{ id: segmentId }],
+      }),
+    })
+
+    if (create.ok) {
+      // optional notify
+      if (notifyTo) {
+        void fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: authHeaders(key),
+          body: JSON.stringify({
+            from,
+            to: [notifyTo],
+            subject: 'Photo Recipes waitlist signup',
+            text: `New waitlist email: ${email}`,
+          }),
+        }).catch(() => undefined)
+      }
+      return { ok: true }
+    }
+
+    // Duplicate contact — ensure segment membership, treat as soft success
+    if (create.status === 409) {
+      await addToSegment(key, email, segmentId)
+      return { ok: true, duplicate: true }
+    }
+
+    // Some Resend responses use 422 for existing email
+    const text = await create.text().catch(() => '')
+    const lower = text.toLowerCase()
+    if (
+      create.status === 422 &&
+      (lower.includes('already') || lower.includes('exist'))
+    ) {
+      await addToSegment(key, email, segmentId)
+      return { ok: true, duplicate: true }
+    }
+
+    console.warn('[waitlist] Resend contacts', create.status, text.slice(0, 120))
+    return { ok: false, detail: `contacts ${create.status}` }
+  }
+
+  // Legacy Audiences path
   if (audienceId) {
     const r = await fetch(`https://api.resend.com/audiences/${audienceId}/contacts`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(key),
       body: JSON.stringify({ email, unsubscribed: false }),
     })
-    if (!r.ok) {
-      const text = await r.text()
-      // 409 conflict = already exists → treat as success
-      if (r.status === 409) return { ok: true, detail: 'already_subscribed' }
-      return { ok: false, detail: `audience ${r.status}: ${text.slice(0, 200)}` }
-    }
+    if (r.ok) return { ok: true }
+    if (r.status === 409) return { ok: true, duplicate: true }
+    const text = await r.text().catch(() => '')
+    console.warn('[waitlist] Resend audience', r.status, text.slice(0, 120))
+    return { ok: false, detail: `audience ${r.status}` }
   }
 
-  // Optional notify email to operator
+  // Key present but no segment/audience — still accept locally
   if (notifyTo) {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(key),
       body: JSON.stringify({
         from,
         to: [notifyTo],
@@ -81,17 +215,12 @@ async function resendAddContact(email: string): Promise<{ ok: boolean; detail?: 
         text: `New waitlist email: ${email}`,
       }),
     })
-    if (!r.ok && !audienceId) {
-      const text = await r.text()
-      return { ok: false, detail: `notify ${r.status}: ${text.slice(0, 200)}` }
+    if (!r.ok) {
+      console.warn('[waitlist] notify', r.status)
+      return { ok: false, detail: `notify ${r.status}` }
     }
   }
 
-  // If neither audience nor notify configured, still ok if we have the key —
-  // local JSON store is the fallback ledger.
-  if (!audienceId && !notifyTo) {
-    return { ok: true, detail: 'stored_local_only' }
-  }
   return { ok: true }
 }
 
@@ -106,34 +235,47 @@ export function mountWaitlistRoutes(app: Express) {
       return
     }
 
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
-    const source = typeof req.body?.source === 'string' ? req.body.source.trim().slice(0, 64) : 'landing'
+    const email =
+      typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
 
     if (!email || !EMAIL_RE.test(email) || email.length > 254) {
       res.status(400).json({ ok: false, error: 'Enter a valid email.' })
       return
     }
 
-    const entries = loadStore()
-    if (!entries.some((e) => e.email === email)) {
-      entries.push({ email, at: new Date().toISOString(), source })
-      saveStore(entries)
-    }
-
-    const remote = await resendAddContact(email)
-    if (!remote.ok && process.env.RESEND_API_KEY?.trim()) {
-      // Still accepted locally; surface soft failure for ops
-      console.warn('[waitlist] Resend:', remote.detail)
-    }
-
     if (!process.env.RESEND_API_KEY?.trim()) {
       res.status(503).json({
         ok: false,
-        error: 'Email capture isn’t configured yet (missing RESEND_API_KEY).',
+        error: 'Couldn’t join right now. Try again.',
       })
       return
     }
 
-    res.json({ ok: true })
+    const entries = loadStore()
+    const alreadyLocal = entries.some((e) => e.email === email)
+    if (!alreadyLocal) {
+      entries.push({
+        email,
+        at: new Date().toISOString(),
+        source: 'landing',
+      })
+      saveStore(entries)
+    }
+
+    const remote = await resendAddContact(email)
+    if (!remote.ok) {
+      console.warn('[waitlist] Resend failed:', remote.detail)
+      // Local ledger kept; still fail closed so client can retry when Resend is up
+      res.status(502).json({
+        ok: false,
+        error: 'Couldn’t join right now. Try again.',
+      })
+      return
+    }
+
+    res.json({
+      ok: true,
+      ...(remote.duplicate || alreadyLocal ? { duplicate: true } : {}),
+    })
   })
 }
