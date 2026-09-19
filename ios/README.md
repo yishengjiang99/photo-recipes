@@ -70,6 +70,23 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 
 UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
 
+### Viewfinder pan / point cues
+
+Quiet edge chevrons (`ViewfinderPanCuesView`) cue reframing from the active recipe + optional agent status:
+
+| Cue | When |
+|---|---|
+| Left + right | Motion / panning recipes (or status mentioning pan / motion) |
+| Down | Composition / get-low recipes (or status mentioning low / kneel) |
+| Up | Optional — only from agent status hooks (`look up` / `raise`) |
+
+Hide when no recipe and Auto Optimize is idle; clear with recipe clear. Ink/white @ ~0.7; soft pulse unless Reduce Motion.
+
+### Small-phone layout
+
+Camera chrome is compact-aware (`GeometryReader` + `horizontalSizeClass`): on ~320–375pt widths / short heights (SE, 375×667), Auto Optimize CTA shrinks to 44pt, shutter row uses tighter side frames, and horizontal padding drops so bottom chrome + status fit without overflowing Pro Max–only spacing. Mentally target 375×667 and 390×844.
+
+
 ### Device fallbacks
 
 - Ultra-wide / some formats: custom exposure unavailable → guidance + clamp banner  
@@ -87,7 +104,7 @@ UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agen
 ### Architecture (new)
 
 ```
-Features/Camera/   CameraView, preview, dials, agent chips, teach sheet
+Features/Camera/   CameraView, preview, pan cues, dials, agent chips, teach sheet
 Services/          CameraSession, RecipeCameraMapper, AutoOptimizeController,
                    CameraRouter, HorizonMonitor, PhotoLibrarySaver
 ```

@@ -33,6 +33,7 @@
 		A718C6DEAF0647C9B2765E3C /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D9C072A787B4A918EFD3486 /* CameraView.swift */; };
 		A9BFCDE361A14C518ECF3CAA /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83143D0A1CCA48399790FB73 /* CameraPreviewView.swift */; };
 		A6D85F76905E4AC8BE1C5411 /* AgentStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B96A071DB134CB5A6EE2000 /* AgentStatusPill.swift */; };
+		B1C4E8A29F0D4C6E8A1B3D5F /* ViewfinderPanCuesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D5F9B30A1E4D7F9B2C4E6A /* ViewfinderPanCuesView.swift */; };
 		468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */; };
 		F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */; };
 		7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18387B310F694F1F91524975 /* ManualDialsSheet.swift */; };
@@ -69,6 +70,7 @@
 		7D9C072A787B4A918EFD3486 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
 		83143D0A1CCA48399790FB73 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		9B96A071DB134CB5A6EE2000 /* AgentStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusPill.swift; sourceTree = "<group>"; };
+		C2D5F9B30A1E4D7F9B2C4E6A /* ViewfinderPanCuesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewfinderPanCuesView.swift; sourceTree = "<group>"; };
 		80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeforeAfterChip.swift; sourceTree = "<group>"; };
 		995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeachModeSheet.swift; sourceTree = "<group>"; };
 		18387B310F694F1F91524975 /* ManualDialsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDialsSheet.swift; sourceTree = "<group>"; };
@@ -203,6 +205,7 @@
 				7D9C072A787B4A918EFD3486 /* CameraView.swift */,
 				83143D0A1CCA48399790FB73 /* CameraPreviewView.swift */,
 				9B96A071DB134CB5A6EE2000 /* AgentStatusPill.swift */,
+				C2D5F9B30A1E4D7F9B2C4E6A /* ViewfinderPanCuesView.swift */,
 				80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */,
 				995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */,
 				18387B310F694F1F91524975 /* ManualDialsSheet.swift */,
@@ -311,6 +314,7 @@
 				A718C6DEAF0647C9B2765E3C /* CameraView.swift in Sources */,
 				A9BFCDE361A14C518ECF3CAA /* CameraPreviewView.swift in Sources */,
 				A6D85F76905E4AC8BE1C5411 /* AgentStatusPill.swift in Sources */,
+				B1C4E8A29F0D4C6E8A1B3D5F /* ViewfinderPanCuesView.swift in Sources */,
 				468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */,
 				F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */,
 				7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */,);
