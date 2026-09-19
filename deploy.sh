@@ -186,6 +186,13 @@ sudo ln -sfn /etc/nginx/sites-available/photo-recipes /etc/nginx/sites-enabled/p
 if [[ -L /etc/nginx/sites-enabled/default ]]; then
   sudo rm -f /etc/nginx/sites-enabled/default
 fi
+# Re-attach Let's Encrypt TLS if a cert already exists for this server_name
+# (HTTP-only template would otherwise wipe certbot-managed 443 blocks)
+if [[ -d "/etc/letsencrypt/live/\${SERVER_NAME}" ]] && command -v certbot >/dev/null 2>&1; then
+  echo '--> Reinstalling TLS via certbot for '"\${SERVER_NAME}"'…'
+  sudo certbot --nginx -d "\${SERVER_NAME}" --redirect --non-interactive --reinstall || \
+    echo "WARNING: certbot reinstall failed; HTTPS may need manual fix"
+fi
 
 echo '--> Permissions for www-data…'
 sudo chown -R www-data:www-data "\${DEPLOY_PATH}"
