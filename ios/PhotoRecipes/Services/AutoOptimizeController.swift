@@ -179,6 +179,21 @@ Photographer scene note: \(note)"
         try? await Task.sleep(nanoseconds: 280_000_000)
 
         let applied = session.apply(recipe: recipe, asPro: entitlements.isPro)
+        // Same apply path for button + Camera voice: overlay agentic phoneTargets when present.
+        if let targets = response.phoneTargets {
+            _ = session.applyPhoneTargets(targets, asPro: entitlements.isPro)
+        }
+        if let teach = response.teachWhy, !teach.isEmpty {
+            reasonNote = [reasonNote, teach].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+        }
+        if let coach = response.coachOnly {
+            var coachTips: [String] = []
+            if let a = coach.aperture { coachTips.append("Aperture guidance: \(a)") }
+            if let nd = coach.nd { coachTips.append("ND: \(nd)") }
+            if coach.tripod == true { coachTips.append("Tripod recommended") }
+            if let n = coach.notes, !n.isEmpty { coachTips.append(n) }
+            if !coachTips.isEmpty { tips = Array((tips + coachTips).prefix(5)) }
+        }
         session.optimizeReason = reasonNote
 
         if !applied && !entitlements.isPro {

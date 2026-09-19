@@ -493,9 +493,8 @@ struct CameraView: View {
         let cur = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
         sceneNote = cur.isEmpty ? t : cur + " " + t
         sceneFromViewfinder = false
-        if VoiceSettings.autoOptimizeAfterVoice {
-            Task { await runOptimize() }
-        }
+        // Camera mic shares Auto Optimize → apply path (phoneTargets included); not text-only.
+        Task { await runOptimize() }
     }
 
     private func refreshSceneFromViewfinder() async {
