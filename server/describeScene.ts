@@ -11,15 +11,16 @@ import {
   parseDataUrl,
   toDataUrl,
 } from './image.ts'
+import { checkAssistQuota } from './entitlements.ts'
+import { fetchWithTimeout } from './fetchTimeout.ts'
 
 const XAI_BASE = 'https://api.x.ai/v1'
 const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
 
-const SYSTEM_PROMPT = `You are the Photo Recipes field assistant (Auto Optimize / scene prefill). Write a short status-ready scene note a photographer would type into Ask or Auto Optimize.
+const SYSTEM_PROMPT = `You are a concise field photography coach. Look at the photo and write a short scene description a photographer would type into a recipe ask box.
 
-Include: subject, lighting quality/direction, motion (if any), and one composition or exposure cue.
-Keep it to 1–2 sentences, under 40 words. Plain text only — no bullet lists, no recipe names, no chatty filler, no camera dial numbers unless clearly readable in the scene.
-Tone: darkroom field notes — quiet and concrete (e.g. "Cyclist left→right in soft side light; keep shutter for panning.").`
+Include: subject, lighting, motion (if any), and one composition or exposure hint.
+Keep it to 1–2 sentences, under 40 words. Plain text only — no bullet lists, no recipe names, no camera dial numbers unless clearly readable in the scene.`
 
 type ContentPart =
   | { type: 'text'; text: string }
@@ -61,24 +62,41 @@ export async function describeSceneWithGrok(
   let model: string = VISION_MODELS[0]!
 
   for (;;) {
-    const res = await fetch(`${XAI_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        max_tokens: 120,
-        messages,
-      }),
-    })
+    let xaiRes: globalThis.Response
+    try {
+      xaiRes = await fetchWithTimeout(
+        `${XAI_BASE}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0.3,
+            max_tokens: 120,
+            messages,
+          }),
+        },
+        25_000,
+      )
+    } catch (e) {
+      const ex = e as Error & { status?: number }
+      if (ex.status === 504 || (e instanceof Error && e.name === 'AbortError')) {
+        const err = new Error(
+          'Scene description unavailable — try again or type your scene',
+        ) as Error & { status?: number }
+        err.status = 504
+        throw err
+      }
+      throw e
+    }
 
-    const bodyText = await res.text()
+    const bodyText = await xaiRes.text()
     if (
-      !res.ok &&
-      isModelMissing(res.status, bodyText) &&
+      !xaiRes.ok &&
+      isModelMissing(xaiRes.status, bodyText) &&
       modelIndex < VISION_MODELS.length - 1
     ) {
       modelIndex += 1
@@ -87,11 +105,11 @@ export async function describeSceneWithGrok(
       continue
     }
 
-    if (!res.ok) {
+    if (!xaiRes.ok) {
       const err = new Error(
-        `xAI API error (${res.status}). Check model availability and API key.`,
+        'Scene description unavailable — try again or type your scene',
       ) as Error & { status?: number; details?: string }
-      err.status = res.status >= 400 && res.status < 600 ? res.status : 502
+      err.status = xaiRes.status >= 400 && xaiRes.status < 600 ? xaiRes.status : 502
       err.details = bodyText.slice(0, 500)
       throw err
     }
@@ -102,15 +120,18 @@ export async function describeSceneWithGrok(
     try {
       data = JSON.parse(bodyText) as typeof data
     } catch {
-      throw Object.assign(new Error('Invalid JSON from Grok'), { status: 502 })
+      throw Object.assign(new Error('Scene description unavailable — try again'), {
+        status: 502,
+      })
     }
 
     const raw = data.choices?.[0]?.message?.content
     const description = typeof raw === 'string' ? raw.trim() : ''
     if (!description) {
-      throw Object.assign(new Error('Empty description from Grok'), {
-        status: 502,
-      })
+      throw Object.assign(
+        new Error('Scene description unavailable — try again'),
+        { status: 502 },
+      )
     }
 
     return { description, model }
@@ -163,7 +184,7 @@ function parseImageFromJson(
 
 /**
  * Mount POST /api/describe-scene — short vision caption for Ask/Camera prefill.
- * Does not consume Ask quota.
+ * Consumes assist quota (shared with STT) after a successful caption.
  */
 export function mountDescribeSceneRoutes(app: Express) {
   app.post('/api/describe-scene', (req: Request, res: Response, next: NextFunction) => {
@@ -191,6 +212,12 @@ export function mountDescribeSceneRoutes(app: Express) {
     }
     next()
   }, (req: Request, res: Response) => {
+    const quota = checkAssistQuota(req, res)
+    if (!quota.allowed) {
+      res.status(402).json(quota.body)
+      return
+    }
+
     const apiKey = process.env.XAI_API_KEY?.trim()
     if (!apiKey) {
       res.status(503).json({
@@ -227,6 +254,7 @@ export function mountDescribeSceneRoutes(app: Express) {
     void (async () => {
       try {
         const result = await describeSceneWithGrok(apiKey, imageDataUrl!)
+        quota.consume()
         res.json({
           description: result.description,
           text: result.description,
@@ -238,7 +266,7 @@ export function mountDescribeSceneRoutes(app: Express) {
           ex.status && ex.status >= 400 && ex.status < 600 ? ex.status : 502
         console.error('[describe-scene]', ex.message)
         res.status(status).json({
-          error: ex.message || 'Scene description failed',
+          error: ex.message || 'Scene description unavailable — try again',
         })
       }
     })()

@@ -11,6 +11,8 @@ const STORE_PATH = path.join(DATA_DIR, 'entitlements.json')
 const GUEST_COOKIE = 'pr_guest'
 const SUB_COOKIE = 'pr_sub'
 const FREE_ASKS_PER_DAY = 1
+/** Combined daily free-tier cap for STT + describe-scene (short FieldCoach clips / captions). */
+const FREE_ASSIST_PER_DAY = 20
 
 export type Plan = 'monthly' | 'yearly' | null
 
@@ -31,6 +33,8 @@ type Store = {
   entitlements: Record<string, Entitlement>
   /** guestId or entitlement id → daily Ask Grok usage */
   askQuota: Record<string, QuotaEntry>
+  /** guestId → daily STT + describe-scene (FieldCoach assist) usage */
+  assistQuota: Record<string, QuotaEntry>
   /** stripe customer id → entitlement id */
   byCustomer: Record<string, string>
   /** stripe subscription id → entitlement id */
@@ -53,7 +57,7 @@ function ensureDataDir() {
 }
 
 function emptyStore(): Store {
-  return { entitlements: {}, askQuota: {}, byCustomer: {}, bySubscription: {} }
+  return { entitlements: {}, askQuota: {}, assistQuota: {}, byCustomer: {}, bySubscription: {} }
 }
 
 function readStore(): Store {
@@ -65,6 +69,7 @@ function readStore(): Store {
     return {
       entitlements: parsed.entitlements ?? {},
       askQuota: parsed.askQuota ?? {},
+      assistQuota: parsed.assistQuota ?? {},
       byCustomer: parsed.byCustomer ?? {},
       bySubscription: parsed.bySubscription ?? {},
     }
@@ -211,10 +216,13 @@ export function getSubscriptionStatus(req: Request, res: Response) {
   const pro = ent ? isProStatus(ent.status) : false
   const quotaKey = pro && ent ? ent.id : guestId
   const store = readStore()
-  const q = store.askQuota[quotaKey]
   const day = todayUtc()
+  const q = store.askQuota[quotaKey]
   const used = q && q.date === day ? q.count : 0
   const limit = pro ? null : FREE_ASKS_PER_DAY
+  // Assist quota is always keyed by guestId (free-tier voice/scene combined)
+  const aq = store.assistQuota[guestId]
+  const assistUsed = aq && aq.date === day ? aq.count : 0
   return {
     pro,
     status: ent?.status ?? 'inactive',
@@ -223,6 +231,9 @@ export function getSubscriptionStatus(req: Request, res: Response) {
     asksUsedToday: used,
     asksLimit: limit,
     asksRemaining: pro ? null : Math.max(0, FREE_ASKS_PER_DAY - used),
+    assistUsedToday: assistUsed,
+    assistLimit: pro ? null : FREE_ASSIST_PER_DAY,
+    assistRemaining: pro ? null : Math.max(0, FREE_ASSIST_PER_DAY - assistUsed),
     stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
   }
 }
@@ -267,10 +278,52 @@ export function checkAskGrokQuota(
   }
 }
 
+
+/** Returns null-style gate for STT + describe-scene combined daily quota. */
+export function checkAssistQuota(
+  req: Request,
+  res: Response,
+): { allowed: true; consume: () => void } | { allowed: false; body: Record<string, unknown> } {
+  const status = getSubscriptionStatus(req, res)
+  if (status.pro) {
+    return { allowed: true, consume: () => {} }
+  }
+  if ((status.assistRemaining ?? 0) > 0) {
+    const guestId = getGuestId(req, res)
+    return {
+      allowed: true,
+      consume: () => {
+        const store = readStore()
+        const day = todayUtc()
+        const prev = store.assistQuota[guestId]
+        const count = prev && prev.date === day ? prev.count + 1 : 1
+        store.assistQuota[guestId] = { date: day, count }
+        writeStore(store)
+      },
+    }
+  }
+  return {
+    allowed: false,
+    body: {
+      error:
+        'Free assist limit reached (voice + scene captions for today). Upgrade to Photo Recipes Pro for unlimited FieldCoach assist.',
+      code: 'paywall',
+      assistUsedToday: status.assistUsedToday,
+      assistLimit: FREE_ASSIST_PER_DAY,
+      upgrade: {
+        product: 'Photo Recipes Pro',
+        monthlyCents: 799,
+        yearlyCents: 5999,
+        trialDays: 7,
+      },
+    },
+  }
+}
+
 /** Soft identity middleware — always ensure guest cookie exists. */
 export function identityMiddleware(req: Request, res: Response, next: NextFunction) {
   getGuestId(req, res)
   next()
 }
 
-export { GUEST_COOKIE, SUB_COOKIE, FREE_ASKS_PER_DAY }
+export { GUEST_COOKIE, SUB_COOKIE, FREE_ASKS_PER_DAY, FREE_ASSIST_PER_DAY }
