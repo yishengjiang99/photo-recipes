@@ -21,7 +21,7 @@ LOOP (strict):
 1. SENSE — {vision | text}
 2. REASON — Call list_presets. Optionally get_preset_details. Pick exactly ONE catalog id.
 3. ACT / FINALIZE — Call select_preset with phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY — Targets match technique + control asks; ranges phone-plausible; aperture/ND/tripod in coachOnly; previewLUT never a capture filter; panCue only for panning/motion.
+4. VERIFY — Targets match technique + control asks; ranges phone-plausible; aperture/ND/tripod in coachOnly; previewLUT / creativeLook never capture filters (default omit look); panCue only for panning/motion.
 
 ALTERNATE INPUT (spoken / STT — secondary):
 - Same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
@@ -93,7 +93,31 @@ All keys **additive optional**. Older iOS builds **ignore unknown keys**. Never 
 | Key | Type | Notes |
 |-----|------|--------|
 | `previewLUT` | `string` | **Preview-only** LUT id. MUST NOT be sold as a capture magic filter. Capture settings remain primary. |
+| `creativeLook` | `{ id: CreativeLookId, intensity: number }` | Optional P1 grade / preview look. **Default: omit** (none / identity). `intensity` **0–1**. `id` must be a V1 pack id (see §3a). Capture settings remain **PRIMARY**. |
 | `simulatedAperture` | `number` | Only if OS supports; otherwise use **`coachOnly.aperture`**. Never fake hardware aperture. |
+
+### 3a. V1 creative look pack (ORIGINAL ids)
+
+**Legal:** Do **not** copy proprietary LUT binaries or use trademarked Instagram / CapCut filter names as product brands. Ship **ORIGINAL** look ids with our names. Docs may note “inspired by category” (e.g. cool crisp contrast) — **never** brand as “Clarendon” etc. in user-facing / product strings.
+
+| id | What it does | Inspired-by category (docs only) |
+|----|--------------|----------------------------------|
+| `crispCool` | Cooler WB bias, lifted mid contrast, clean edges | Cool crisp contrast (IG-classics class) |
+| `warmGlow` | Soft warm lift, gentle highlight roll-off | Warm soft glow (IG-classics class) |
+| `warmPop` | Warmer saturation pop, punchy midtones | Warm vivid pop (IG-classics class) |
+| `editorialRed` | Slight magenta/red accent, magazine contrast | Editorial red accent (IG-classics class) |
+| `softVintage` | Muted saturation, soft lift in blacks | Soft vintage fade (IG-classics class) |
+| `monoInk` | High-contrast monochrome ink look | Bold mono ink (IG-classics class) |
+| `goldenHour` | Golden warmth, soft sky lift | Golden-hour warmth (IG-classics class) |
+| `loFiPunch` | Slight vignette feel, punchy lo-fi contrast | Lo-fi punch (IG-classics class) |
+| `tealOrange` | Complementary teal shadows / orange skin bias | Teal–orange grade (CapCut-class) |
+| `blockbuster` | Wide cinematic contrast, cool shadows | Blockbuster cinema grade (CapCut-class) |
+| `moodyFilm` | Lower mid key, filmic curve, restrained chroma | Moody film still (CapCut-class) |
+| `coolBlue` | Cool blue cast, crisp shadows | Cool blue grade (CapCut-class) |
+| `softDream` | Soft bloom-ish lift, dreamy low contrast | Soft dream haze (CapCut-class) |
+| `filmGrain` | Subtle grain texture overlay + mild film curve | Film grain texture (CapCut-class) |
+
+**Agent behavior:** Auto Optimize **MAY** suggest a look when it improves the story; default **omit / none / identity**. Voice can request e.g. “warm film look” → map to `warmGlow` / `moodyFilm` etc. Capture settings (shutter/ISO/…) remain primary; `creativeLook` is optional grade / preview intensity. Server rejects unknown `id` and out-of-range `intensity` in `parsePhoneTargets`.
 
 ### coachOnly (not applied)
 
@@ -122,6 +146,7 @@ All keys **additive optional**. Older iOS builds **ignore unknown keys**. Never 
 | `bracket` | Burst / bracket capture path available |
 | `maxPhotoDimensions` | PhotoOutput max photo dimensions API |
 | `previewLUT` | Preview pipeline only — never mutate captured file as “filter” |
+| `creativeLook` | Preview / grade pipeline (CIFilter or **original** small LUTs); blend by `intensity`; never trademarked brand strings in UI |
 | `simulatedAperture` | OS cinematic / simulated aperture APIs; else coachOnly |
 
 iOS must **skip unsupported keys** without failing the whole apply.
@@ -149,7 +174,8 @@ Example (subset):
     "cameraDevice": "wide",
     "zoom": 1,
     "bracket": { "stops": [-2, 0, 2] },
-    "monitorSubjectAreaChange": true
+    "monitorSubjectAreaChange": true,
+    "creativeLook": { "id": "warmGlow", "intensity": 0.55 }
   },
   "coachOnly": { "aperture": "f/8", "tripod": false },
   "teachWhy": "Panning keeps the subject sharp while the background streaks."
@@ -180,6 +206,7 @@ Example (subset):
 | "bracket for HDR" | `bracket: { stops: [-2,0,2] }` |
 | "re-optimize if subject moves" | `monitorSubjectAreaChange: true` |
 | "daylight WB" / locked Kelvin | `whiteBalance` string or `{ temperature, tint }` |
+| "warm film look" / "teal orange grade" | `creativeLook: { id, intensity }` (V1 pack; default omit) |
 
 ---
 
@@ -190,8 +217,9 @@ Example (subset):
 3. Shared apply helper for Auto Optimize button **and** spoken follow-ups.
 4. `monitorSubjectAreaChange: true` → enable monitoring → re-trigger optimize on change.
 5. `previewLUT` → preview pipeline only; never market as magic capture filter.
-6. `simulatedAperture` → OS-gated; else show `coachOnly.aperture`.
-7. Do **not** apply `coachOnly` to the session.
+6. `creativeLook` → optional grade/preview: map `id` to **original** CIFilter stack or small original LUT; blend with `intensity` (0 = identity, 1 = full). Default omit = none. Never show trademarked filter brand names in UI.
+7. `simulatedAperture` → OS-gated; else show `coachOnly.aperture`.
+8. Do **not** apply `coachOnly` to the session.
 
 ---
 
@@ -208,7 +236,7 @@ Example (subset):
 | Tier | Keys |
 |------|------|
 | **P0 (this PR)** | exposureDurationSec, iso/ev union, lensPosition, whiteBalance unions, torch, flash, lowLightBoost, videoHDR, cameraDevice, frameRate, preferFormatHint, bracket, monitorSubjectAreaChange, maxPhotoDimensions (+ existing shutter/focus/zoom/focusPoint) |
-| **P1 / gated** | previewLUT, simulatedAperture |
+| **P1 / gated** | previewLUT, **creativeLook** (V1 pack + intensity), simulatedAperture |
 | **Document only / future** | Broader cinematic tracking, richer picture styles — do not block P0 |
 
 ---

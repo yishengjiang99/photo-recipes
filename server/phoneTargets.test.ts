@@ -49,6 +49,7 @@ describe('parsePhoneTargets', () => {
       monitorSubjectAreaChange: true,
       maxPhotoDimensions: { width: 4032, height: 3024 },
       previewLUT: 'neutral',
+      creativeLook: { id: 'warmGlow', intensity: 0.65 },
       simulatedAperture: 1.8,
     })
     assert.equal(isError(r), false)
@@ -66,6 +67,7 @@ describe('parsePhoneTargets', () => {
     assert.equal(r.monitorSubjectAreaChange, true)
     assert.deepEqual(r.maxPhotoDimensions, { width: 4032, height: 3024 })
     assert.equal(r.previewLUT, 'neutral')
+    assert.deepEqual(r.creativeLook, { id: 'warmGlow', intensity: 0.65 })
     assert.equal(r.simulatedAperture, 1.8)
   })
 
@@ -138,4 +140,43 @@ describe('parsePhoneTargets', () => {
     assert.equal(r.shutter, '1/60')
     assert.equal(r.cameraDevice, 'ultraWide')
   })
+
+  it('accepts creativeLook with intensity 0 and 1', () => {
+    const zero = parsePhoneTargets({ creativeLook: { id: 'monoInk', intensity: 0 } })
+    assert.equal(isError(zero), false)
+    if (isError(zero)) return
+    assert.deepEqual(zero.creativeLook, { id: 'monoInk', intensity: 0 })
+
+    const one = parsePhoneTargets({ creativeLook: { id: 'filmGrain', intensity: 1 } })
+    assert.equal(isError(one), false)
+    if (isError(one)) return
+    assert.deepEqual(one.creativeLook, { id: 'filmGrain', intensity: 1 })
+  })
+
+  it('rejects unknown creativeLook.id', () => {
+    const r = parsePhoneTargets({ creativeLook: { id: 'Clarendon', intensity: 0.5 } })
+    assert.equal(isError(r), true)
+    if (!isError(r)) return
+    assert.match(r.error, /creativeLook\.id/)
+  })
+
+  it('rejects creativeLook.intensity out of range', () => {
+    const high = parsePhoneTargets({ creativeLook: { id: 'tealOrange', intensity: 1.2 } })
+    assert.equal(isError(high), true)
+    if (!isError(high)) return
+    assert.match(high.error, /creativeLook\.intensity/)
+
+    const neg = parsePhoneTargets({ creativeLook: { id: 'tealOrange', intensity: -0.1 } })
+    assert.equal(isError(neg), true)
+    if (!isError(neg)) return
+    assert.match(neg.error, /creativeLook\.intensity/)
+  })
+
+  it('omits creativeLook when absent (default none)', () => {
+    const r = parsePhoneTargets({ shutter: '1/60' })
+    assert.equal(isError(r), false)
+    if (isError(r)) return
+    assert.equal('creativeLook' in r, false)
+  })
 })
+

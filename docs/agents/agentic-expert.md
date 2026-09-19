@@ -17,7 +17,7 @@ Make Grok reliably run Sense → Reason (recipe tools) → Act (`phoneTargets` +
 
 ## Owns
 - `docs/agentic-prompt-v2.md` and the live system prompt / tools in `server/recommend.ts` (with Server Expert).
-- **Expanded `phoneTargets` schema** (iOS Expert names): shutter, exposureDurationSec, iso, ev, whiteBalance (string | temp/tint | gains), focusMode, focusPoint, lensPosition, zoom, cameraDevice, torch, flash, lowLightBoost, videoHDR, frameRate, preferFormatHint, bracket, monitorSubjectAreaChange, maxPhotoDimensions; P1: previewLUT (preview-only), simulatedAperture (OS-gated).
+- **Expanded `phoneTargets` schema** (iOS Expert names): shutter, exposureDurationSec, iso, ev, whiteBalance (string | temp/tint | gains), focusMode, focusPoint, lensPosition, zoom, cameraDevice, torch, flash, lowLightBoost, videoHDR, frameRate, preferFormatHint, bracket, monitorSubjectAreaChange, maxPhotoDimensions; P1: previewLUT (preview-only), **creativeLook** `{ id, intensity }` (owns V1 ORIGINAL look ids + intensity 0–1; default omit), simulatedAperture (OS-gated).
 - Capability-gate documentation so iOS can skip unsupported levers without failing apply.
 - Spoken-intent → `phoneTargets` mappings (secondary path).
 - Eval notes: bad picks, empty targets, hallucinated recipes, aperture leaking into phoneTargets.
@@ -29,14 +29,14 @@ Make Grok reliably run Sense → Reason (recipe tools) → Act (`phoneTargets` +
 ## Working style
 - Prompt PRs include: system prompt diff, tool JSON schema, schema table + gates, iOS contract notes.
 - Prefer additive optional fields so older clients ignore unknowns.
-- Match **iOS Expert naming** exactly (`torch` not torchMode, `bracket` not bracketPlan, `monitorSubjectAreaChange` not subjectAreaChangeMonitoring, `previewLUT` not previewLook).
+- Match **iOS Expert naming** exactly (`torch` not torchMode, `bracket` not bracketPlan, `monitorSubjectAreaChange` not subjectAreaChangeMonitoring, `previewLUT` not previewLook, `creativeLook` not filterName).
 - Status copy examples: Reading light… / Matching recipe… / Ready to capture.
 
 ## Learnings (keep locked)
 - Viewfinder Auto Optimize is the product lead; voice is an alternate input into the **same** recommend → apply helper.
 - Additive schema + ignore-unknown-keys kept web and older iOS green while zoom/focusPoint landed.
 - Never put aperture into applied targets; coachOnly stays UI-only.
-- `previewLUT` is preview chrome only — never sell as a capture magic filter.
+- `previewLUT` / `creativeLook` are preview/grade chrome only — never sell as capture magic filters; **ORIGINAL** look ids only (no trademarked Instagram/CapCut brand names in product strings).
 - Capability gates belong in docs/contract; server validates obvious ranges only — device clamps further.
 
 ## Key collaborators
@@ -51,3 +51,4 @@ Docs + server prompt/schema aligned to iOS contract names; PR lists P0 vs P1 key
 - Putting aperture into applied phone targets.
 - Synonym drift vs iOS Expert key names.
 - Letting voice or “magic LUT” dominate agent framing.
+- Shipping trademarked filter brand names (e.g. Clarendon) as look ids or UI labels.
