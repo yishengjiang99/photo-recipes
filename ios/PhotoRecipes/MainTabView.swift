@@ -12,7 +12,7 @@ struct MainTabView: View {
 
             AskGrokView()
                 .tabItem {
-                    Label("Ask Grok", systemImage: "sparkles")
+                    Label("Coach", systemImage: "text.bubble.fill")
                 }
 
             SettingsView()
@@ -21,6 +21,6 @@ struct MainTabView: View {
                 }
         }
         .tint(AppTheme.accent)
-        .toolbarBackground(AppTheme.background, for: .tabBar)
+        .toolbarBackground(AppTheme.bg, for: .tabBar)
     }
 }

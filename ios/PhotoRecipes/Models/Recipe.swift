@@ -98,3 +98,14 @@ struct Recipe: Codable, Identifiable, Hashable {
     var phoneTip: String?
     var advancedTip: String?
 }
+
+extension Recipe {
+    /// Large “key setting” for library cards — prefer shutter / aperture / mode.
+    var keySetting: String {
+        if let shutter = dials.shutter, !shutter.isEmpty { return shutter }
+        if let aperture = dials.aperture, !aperture.isEmpty { return aperture }
+        if let iso = dials.iso, !iso.isEmpty { return "ISO \(iso)" }
+        if let ev = dials.evBracket, !ev.isEmpty { return ev }
+        return dials.mode.label
+    }
+}

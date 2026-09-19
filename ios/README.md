@@ -1,6 +1,8 @@
 # Photo Recipes — iOS (SwiftUI)
 
-Native field-technique assistant for iOS 17+. Browse the same five book recipes offline, Ask Grok (text + Photo Vision), and unlock **Photo Recipes Pro** via **StoreKit 2 In-App Purchase only**.
+Native field-technique assistant for iOS 17+.
+
+**Design handoff v1 aligned** — tokens, Library card hierarchy, Field Coach (segmented Describe | From photo), Detail SoftGate, and Paywall match `docs/design-handoff-v1.md` (“Darkroom field notes”). Browse the same five book recipes offline, Ask Grok (text + Photo Vision), and unlock **Photo Recipes Pro** via **StoreKit 2 In-App Purchase only**.
 
 > **Monetization lock:** On iOS, Pro is unlocked **only** through App Store subscriptions. Do **not** offer Stripe web checkout inside the iOS app to unlock digital Pro features (App Review risk). Web Stripe remains for the web app only.
 
@@ -48,7 +50,7 @@ ios/
   PhotoRecipes.xcodeproj/              # hand-written; opens in Xcode
   PhotoRecipes/
     PhotoRecipesApp.swift              # App + AppModel bootstrap
-    MainTabView.swift                  # Library | Ask Grok | Settings
+    MainTabView.swift                  # Library | Field Coach | Settings
     Theme.swift
     Models/                            # Recipe, dials, API DTOs
     Data/BundledPresets.swift          # all 5 presets from src/data/presets.ts
@@ -72,7 +74,7 @@ ios/
 |---------|--------|
 | Library | Cards, tag filter, favorites (UserDefaults), offline bundled presets |
 | Detail | Steps, tips, dials UI, variants, gear checklist (Pro toggles; steps always readable) |
-| Ask Grok | Text + `PhotosPicker` → `POST /api/recommend` (JPEG base64 vision). Handles **402** paywall + **503** missing key |
+| Field Coach | Segmented Describe / From photo + `PhotosPicker` → `POST /api/recommend` (JPEG base64 vision). Handles **402** paywall + **503** missing key |
 | Session | Cookie session; subscription-status on launch; Free Peek / Pro badge |
 | Paywall | **Yearly primary**, monthly secondary, 7-day trial badge; StoreKit 2 only |
 | Settings | API URL, health check, restore purchases, billing note (Apple subscriptions) |
@@ -131,6 +133,7 @@ APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your s
 - StoreKit 2 scaffolding + Products.storekit (7-day trial offers)
 - Server IAP routes + env documentation
 - README monetization decision (IAP-only on iOS)
+- Design handoff v1 aligned (Theme tokens, Library, Field Coach, SoftGate, Paywall)
 
 **Next (your Mac / ASC)**
 

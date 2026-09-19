@@ -11,7 +11,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.background.ignoresSafeArea()
+                AppTheme.bg.ignoresSafeArea()
                 Form {
                     Section("Account") {
                         HStack {
