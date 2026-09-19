@@ -258,3 +258,10 @@ iOS can present viewfinder chrome, permission covers, manual dials (Pro), apply/
 ---
 
 *Designer · Camera UI handoff v1 · extends design-handoff-v1.md*
+
+
+---
+
+## Addendum — Agentic Auto Optimize
+
+North star loop (sense → reason/tools → apply → verify → capture) and UI (Auto Optimize CTA, status, before/after chip, override, teach mode): **[`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)**.

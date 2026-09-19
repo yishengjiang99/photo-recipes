@@ -327,3 +327,10 @@ Web matches §3 layouts at mobile + desktop breakpoints; tokens live in one plac
 ## Addendum — Camera (product pivot)
 
 Live capture UI (viewfinder, dials overlay, apply recipe, permissions, Pro gate) lives in **[`design-handoff-camera-v1.md`](./design-handoff-camera-v1.md)**. Library/Detail/Ask/Paywall in this doc still apply; Camera is now the home surface and recipes drive the live session.
+
+
+---
+
+## Addendum — Agentic Auto Optimize
+
+See **[`design-handoff-agentic-v1.md`](./design-handoff-agentic-v1.md)** and the Camera addendum. Auto Optimize is the primary Camera CTA; Library/Ask become agent tools + coach surfaces.
