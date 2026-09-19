@@ -160,11 +160,15 @@ final class APIClient: ObservableObject {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.http(-1, "No HTTP response")
         }
-        let decoded = try? decoder.decode(IAPVerifyResponse.self, from: data)
         if !(200..<300).contains(http.statusCode) {
+            let decoded = try? decoder.decode(IAPVerifyResponse.self, from: data)
             throw APIError.http(http.statusCode, decoded?.error ?? String(data: data, encoding: .utf8))
         }
-        return decoded ?? IAPVerifyResponse(ok: true, pro: true, status: "active", plan: plan.rawValue, error: nil)
+        do {
+            return try decoder.decode(IAPVerifyResponse.self, from: data)
+        } catch {
+            throw APIError.decoding(error)
+        }
     }
 
 

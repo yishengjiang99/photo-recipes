@@ -39,8 +39,9 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
-        await entitlements.refresh()
-        await storeKit.loadProducts()
-        await storeKit.refreshEntitlementsFromCurrentEntitlements()
+        async let entitlementsRefresh: () = entitlements.refresh()
+        async let loadProducts: () = storeKit.loadProducts()
+        async let refreshEntitlements: () = storeKit.refreshEntitlementsFromCurrentEntitlements()
+        _ = await (entitlementsRefresh, loadProducts, refreshEntitlements)
     }
 }

@@ -7,7 +7,6 @@
 
 /* Begin PBXBuildFile section */
 		AF65C954A073AF6004DC26D4 /* VoiceDictateButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */; };
-		BA70D176DD3B9AE4EE569928 /* VoiceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451526D2CB732D16AA2F0FC2 /* VoiceSettings.swift */; };
 		80552D953A3F71D2A9EC918F /* VoiceCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E3AAA2455783C2B657CAF3 /* VoiceCaptureController.swift */; };
 		D892B022C67A4EDCBB3D0AE4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B5463543CF4748AA949557 /* ContentView.swift */; };
 		AF360AAE19C04806B6EB9DFE /* BundledPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858C7773A1F640ADBF505713 /* BundledPresets.swift */; };
@@ -44,7 +43,6 @@
 
 /* Begin PBXFileReference section */
 		2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictateButton.swift; sourceTree = "<group>"; };
-		451526D2CB732D16AA2F0FC2 /* VoiceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSettings.swift; sourceTree = "<group>"; };
 		A6E3AAA2455783C2B657CAF3 /* VoiceCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCaptureController.swift; sourceTree = "<group>"; };
 		892AA67F63154D80834A869D /* Photo Recipes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Photo Recipes.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0B5463543CF4748AA949557 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -303,7 +301,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				AF65C954A073AF6004DC26D4 /* VoiceDictateButton.swift in Sources */,
-				BA70D176DD3B9AE4EE569928 /* VoiceSettings.swift in Sources */,
 				80552D953A3F71D2A9EC918F /* VoiceCaptureController.swift in Sources */,
 				D892B022C67A4EDCBB3D0AE4 /* ContentView.swift in Sources */,
 				AF360AAE19C04806B6EB9DFE /* BundledPresets.swift in Sources */,

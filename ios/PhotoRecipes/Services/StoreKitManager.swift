@@ -31,7 +31,9 @@ final class StoreKitManager: ObservableObject {
     init(api: APIClient = .shared, entitlements: EntitlementsStore) {
         self.api = api
         self.entitlements = entitlements
-        updatesTask = Task { await listenForTransactions() }
+        updatesTask = Task { [weak self] in
+            await self?.listenForTransactions()
+        }
     }
 
     deinit {
