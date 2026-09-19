@@ -24,7 +24,7 @@ xcodegen generate   # reads project.yml
 open PhotoRecipes.xcodeproj
 ```
 
-- **Bundle ID:** `com.ragnus.mvp`
+- **Bundle ID:** `com.ragnus.mvp` (Team `83D36RPMUM`)
 - **Deployment:** iOS 17+
 - Select the **PhotoRecipes** scheme → run on a simulator or device.
 - For StoreKit local testing: Scheme → Edit Scheme → Run → Options → StoreKit Configuration → `PhotoRecipes/Resources/Products.storekit`
@@ -223,95 +223,41 @@ APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your s
 
 **Next for production:** wire `verifyWithAppleServerAPI` to [App Store Server API](https://developer.apple.com/documentation/appstoreserverapi) Get Transaction Info using the `.p8` key.
 
-## App Store Connect + TestFlight checklist (decisions for you)
+## TestFlight soft-launch path
 
-1. **Apple Developer Program** membership active.
-2. Create App ID `com.ragnus.mvp` with In-App Purchase capability.
-3. Create app record in App Store Connect; attach subscription group **Photo Recipes Pro**.
-4. Create the two auto-renewable products with the exact IDs above; add 7-day free trial introductory offers.
-5. Paid Apps Agreement + banking/tax complete (subscriptions won’t clear otherwise).
-6. Sandbox testers: Users and Access → Sandbox → Testers.
-7. Xcode: StoreKit Configuration file for local; or sandbox Apple ID on device.
-8. Archive → Upload → TestFlight external/internal. Soft launch: no Stripe Adaptive Sheet for unlock — IAP only.
-9. Privacy nutrition labels: photo library (Ask Vision), purchase history; **Product Interaction / Analytics** — anonymized in-house funnel events only (no session replay; no camera frames to analytics). See `docs/telemetry.md`.
-10. Optional later: Server Notifications V2 URL for subscription lifecycle → same entitlements store.
+### App Store Connect setup
 
-## Soft TestFlight path
+- [ ] App record exists for bundle ID `com.ragnus.mvp`.
+- [ ] Create the **Photo Recipes Pro** subscription group and these StoreKit 2 products:
+  - Yearly: `com.ragnus.mvp.pro.yearly`
+  - Monthly: `com.ragnus.mvp.pro.monthly`
+- [ ] Add a **7-day free introductory offer** to both products.
+- [ ] Set the Xcode signing team to **83D36RPMUM** and enable In-App Purchase + Push Notifications for App ID `com.ragnus.mvp`.
+- [ ] Add the 1024×1024 App Store icon before uploading the archive.
+- [ ] Finish Paid Apps Agreement, banking/tax, and sandbox tester setup.
 
-1. Run API with `SESSION_SECRET` + `XAI_API_KEY` (recommend); IAP env optional for sandbox UX.
-2. Set Settings → API base URL to your HTTPS API (ATS: localhost allowed via `NSAllowsLocalNetworking`).
-3. Use `Products.storekit` in the Run scheme for simulator purchases without ASC products.
-4. On device TestFlight: real sandbox IAP once products are Created/Ready to Submit.
-5. After purchase, app calls `/api/iap/verify` then refreshes `/api/subscription-status` — checklists + unlimited Ask unlock when `pro: true`.
+For local/sandbox StoreKit testing, use `ios/PhotoRecipes/Resources/Products.storekit` in the Xcode Run scheme (Edit Scheme → Run → Options → StoreKit Configuration). Keep its product IDs identical to `StoreKitManager.swift` and App Store Connect. TestFlight uses ASC sandbox products, not the local configuration file.
 
+### Build and API
 
+1. Archive the Release build with the signing team above, upload it, and add an internal TestFlight tester.
+2. In the app, set **Settings → API base URL** to the deployed HTTPS API (or a simulator-reachable local URL). Do not ship the placeholder URL.
+3. For push Experiment 1, configure the server with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID=com.ragnus.mvp`, and `APNS_P8_PATH` (or `APNS_P8_CONTENTS`), then set `PUSH_EXP1_ENABLED=true`. Keep the `.p8` key out of git.
 
-## Push notifications (Experiment 1 — pre-alarm shoot brief)
+### Push and deep-link path
 
-iOS client for Biz Dev Experiment 1. Weather / streaks / web push are **out of scope**.
+- Debug/device builds use the `aps-environment` entitlement **sandbox**; TestFlight/App Store Release builds use **production**. Register the matching environment with `POST /api/push/register`.
+- Do not ask on install or launch. After the first successful **Auto Optimize** reaches Apply/ready, show the notification permission prompt once; only register the APNs token after permission is granted (or if permission was already granted).
+- The notification deep link is `photo-recipes://auto-optimize`; a tap opens Camera and stages Auto Optimize.
+- Push is fail-soft when the server flag or `APNS_*` credentials are absent; verify the server flag and APNs credentials before testing delivery.
 
-### When permission is asked
+### Device test plan
 
-**Not on install or launch.** After the **first successful Auto Optimize** (phase `.ready`), the app sets UserDefaults `hasCompletedFirstAutoOptimize` and, if `didAskPushPermission` is false, presents the system notification prompt once. Soft/hard deny paths set the ask flag so we do not re-prompt on every Optimize (Settings deep link only if the user opts in later).
-
-### URL scheme
-
-| Scheme | Action |
-|--------|--------|
-| `photo-recipes://auto-optimize` | Switch to Camera tab and stage/trigger Auto Optimize via `CameraRouter.openAutoOptimize()` |
-
-Declared in `Info.plist` (`CFBundleURLTypes`). Notification taps and foreground presentation use `UNUserNotificationCenter` delegate → same deep link path. Analytics: `push_opened` on tap.
-
-### Token registration
-
-`POST /api/push/register` (cookie session / `pr_guest` via shared `URLSession` cookie storage — no bearer):
-
-```json
-{
-  "token": "<apns hex>",
-  "platform": "ios",
-  "bundleId": "com.ragnus.mvp",
-  "environment": "sandbox" | "production",
-  "appVersion": "1.0"
-}
-```
-
-200 `{ ok, guestId }` — `guestId` is never shown in UI. **404 / 503 fail soft** (server Exp 1 may land later).
-
-Also stubbed: `GET`/`PUT` `/api/push/prefs` (`shootWindow`, `quietHours`, `weeklyCap`, `pushOptIn`, `timezone`) and `POST` `/api/push/events`.
-
-### Sandbox vs production (`aps-environment`)
-
-| Build | Entitlements / register `environment` |
-|-------|----------------------------------------|
-| Debug (local / Xcode) | `PhotoRecipes.entitlements` → `aps-environment` = **development**; register sends **`sandbox`** |
-| Release (TestFlight / App Store) | Xcode capability / provisioning sets **production**; register sends **`production`** |
-
-Checked-in entitlements file uses **development** so local device builds work. For App Store / TestFlight archives, enable Push Notifications in the Apple Developer App ID and let Xcode rewrite `aps-environment` to `production` for Release (or maintain a Release entitlements override). Override register env for testing: UserDefaults `push.apnsEnvironment` = `sandbox`|`production`.
-
-### Analytics events
-
-Posted to `POST /api/push/events` when available; always mirrored in UserDefaults (`push.analytics.events`):
-
-| Event | When |
-|-------|------|
-| `push_permission_prompt_shown` | System prompt about to show |
-| `push_permission_accepted` | User grants |
-| `push_permission_denied` | User denies / error |
-| `push_opened` | Notification tap → Auto Optimize deep link |
-| `auto_optimize_started` | Optimize run begins; `attributedToPush=true` if within **2h** of `push_opened` |
-
-### Entitlements / monetization (unchanged)
-
-Free Peek / trial / Pro remain from `EntitlementsStore` + StoreKit 2 only. Push copy and deep links must **never** send users to Stripe web checkout for digital unlock.
-
-### Key types
-
-- `PushNotificationManager` — permission, token, UN delegate, deep link
-- `PushAnalytics` — allowlisted events + 2h attribution
-- `APIClient` — `registerPushToken`, `getPushPrefs` / `updatePushPrefs`, `postPushEvent`
-- `CameraRouter.pendingAutoOptimize` / `openAutoOptimize()`
-
+- [ ] **Auto Optimize:** capture a probe, run AO, confirm Apply changes the live camera settings, then capture.
+- [ ] **Recommend CTA:** test both text and photo paths; confirm the CTA reaches the recommendation result and handles the API base URL.
+- [ ] **Look chip:** when a look is suggested, confirm Apply bakes it into preview + still; Dismiss leaves capture neutral.
+- [ ] **Push timing:** no prompt on install/launch; first successful AO triggers one prompt; accept/deny is not repeated on later AO runs.
+- [ ] **Push deep link:** tap a delivered notification and confirm `photo-recipes://auto-optimize` opens the Camera AO flow.
 
 ## Done vs next
 
