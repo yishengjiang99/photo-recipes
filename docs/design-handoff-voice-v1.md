@@ -95,3 +95,9 @@ When Camera can produce a short **viewfinder caption** (on-device / vision one-l
 - If captioning fails: leave field empty; no error toast unless user tapped Refresh.
 
 Same field is the one voice transcript fills (§2). Prefills → then mic appends unless user selects-all.
+
+---
+
+## 7. Full-bleed Camera placement
+
+On Camera, mic + scene/transcript sit as **compact overlays** on the edge-to-edge preview (chip + mic icon), not a tall textarea panel. Expand chip or open a short sheet to edit longer dictation. See [`design-handoff-camera-v1.md`](./design-handoff-camera-v1.md) §3.
