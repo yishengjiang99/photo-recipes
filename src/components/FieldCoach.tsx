@@ -2,12 +2,15 @@ import {
   Camera,
   ImagePlus,
   Loader2,
+  Mic,
+  Square,
   Sparkles,
   Wand2,
   X,
 } from 'lucide-react'
 import {
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -16,6 +19,7 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useFavorites } from '../hooks/useFavorites'
+import { useVoiceInput, type VoiceInputApi } from '../hooks/useVoiceInput'
 import { useSubscription } from '../hooks/useSubscription'
 import { compressImageForUpload } from '../lib/compressImage'
 
@@ -58,6 +62,40 @@ export function FieldCoach() {
 
   const remaining = status?.pro ? null : (status?.asksRemaining ?? null)
   const busy = loading || preparing
+
+  const describeVoice = useVoiceInput({
+    value: message,
+    onChange: setMessage,
+    disabled: busy,
+  })
+  const noteVoice = useVoiceInput({
+    value: note,
+    onChange: setNote,
+    disabled: busy,
+  })
+
+  const describeStopRef = useRef(describeVoice.stop)
+  const noteStopRef = useRef(noteVoice.stop)
+  describeStopRef.current = describeVoice.stop
+  noteStopRef.current = noteVoice.stop
+
+  // One session at a time
+  useEffect(() => {
+    if (describeVoice.listening) noteStopRef.current()
+  }, [describeVoice.listening])
+
+  useEffect(() => {
+    if (noteVoice.listening) describeStopRef.current()
+  }, [noteVoice.listening])
+
+  useEffect(() => {
+    if (mode === 'photo') describeStopRef.current()
+    if (mode === 'describe') noteStopRef.current()
+  }, [mode])
+
+  const voiceError =
+    (mode === 'describe' ? describeVoice.error : noteVoice.error) || null
+
 
   const clearImage = useCallback(() => {
     setPreviewUrl(null)
@@ -257,15 +295,31 @@ export function FieldCoach() {
           <label htmlFor="field-coach-scene" className="sr-only">
             Scene description
           </label>
-          <textarea
-            id="field-coach-scene"
-            rows={3}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            disabled={busy}
-            placeholder='e.g. "sunset canyon with dark foreground"'
-            className="min-h-[88px] w-full resize-none rounded-xl border border-border bg-bg-elevated px-4 py-3 text-sm text-ink placeholder:text-ink-tertiary outline-none transition focus:border-border-strong focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
-          />
+          <div className="relative">
+            <textarea
+              id="field-coach-scene"
+              rows={3}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              disabled={busy}
+              placeholder='e.g. "sunset canyon with dark foreground"'
+              className="min-h-[88px] w-full resize-none rounded-xl border border-border bg-bg-elevated py-3 pl-4 pr-14 text-sm text-ink placeholder:text-ink-tertiary outline-none transition focus:border-border-strong focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
+            />
+            <VoiceMicButton
+              voice={describeVoice}
+              disabled={busy}
+              labelIdle="Dictate scene"
+            />
+          </div>
+          {describeVoice.listening || describeVoice.transcribing ? (
+            <p className="text-xs text-ink-secondary" aria-live="polite">
+              {describeVoice.transcribing ? 'Transcribing…' : 'Listening…'}
+            </p>
+          ) : describeVoice.status === 'unsupported' ? (
+            <p className="text-xs text-ink-tertiary">
+              Voice input not supported in this browser
+            </p>
+          ) : null}
 
           <button
             type="submit"
@@ -376,15 +430,27 @@ export function FieldCoach() {
           <label htmlFor="field-coach-note" className="sr-only">
             Optional note
           </label>
-          <input
-            id="field-coach-note"
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            disabled={busy}
-            placeholder='Optional note — e.g. "want silky water"'
-            className="w-full rounded-xl border border-border bg-bg-elevated px-4 py-2.5 text-sm text-ink placeholder:text-ink-tertiary outline-none transition focus:border-border-strong focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
-          />
+          <div className="relative">
+            <input
+              id="field-coach-note"
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              disabled={busy}
+              placeholder='Optional note — e.g. "want silky water"'
+              className="w-full rounded-xl border border-border bg-bg-elevated py-2.5 pl-4 pr-14 text-sm text-ink placeholder:text-ink-tertiary outline-none transition focus:border-border-strong focus:ring-2 focus:ring-accent/30 disabled:opacity-60"
+            />
+            <VoiceMicButton
+              voice={noteVoice}
+              disabled={busy}
+              labelIdle="Dictate note"
+            />
+          </div>
+          {noteVoice.listening || noteVoice.transcribing ? (
+            <p className="text-xs text-ink-secondary" aria-live="polite">
+              {noteVoice.transcribing ? 'Transcribing…' : 'Listening…'}
+            </p>
+          ) : null}
 
           <button
             type="submit"
@@ -411,6 +477,12 @@ export function FieldCoach() {
         </form>
       )}
 
+      {voiceError && !error ? (
+        <p role="status" className="mt-3 text-sm text-ink-secondary">
+          {voiceError}
+        </p>
+      ) : null}
+
       {error ? (
         <div
           role="alert"
@@ -433,5 +505,61 @@ export function FieldCoach() {
         </div>
       ) : null}
     </section>
+  )
+}
+
+
+type VoiceMicButtonProps = {
+  voice: VoiceInputApi
+  disabled?: boolean
+  labelIdle: string
+}
+
+function VoiceMicButton({ voice, disabled, labelIdle }: VoiceMicButtonProps) {
+  const unsupported = voice.status === 'unsupported'
+  const denied = voice.status === 'denied'
+  const listening = voice.listening
+  const transcribing = voice.transcribing
+  const inactive = disabled || unsupported || denied || transcribing
+
+  return (
+    <button
+      type="button"
+      disabled={inactive && !denied}
+      onClick={() => {
+        if (denied || unsupported) return
+        voice.toggle()
+      }}
+      title={
+        unsupported
+          ? 'Voice input not supported in this browser'
+          : denied
+            ? 'Microphone is off — type instead'
+            : listening
+              ? 'Stop'
+              : transcribing
+                ? 'Transcribing…'
+                : labelIdle
+      }
+      aria-label={
+        listening ? 'Stop dictation' : transcribing ? 'Transcribing' : labelIdle
+      }
+      aria-pressed={listening}
+      className={`absolute bottom-2 right-2 inline-flex h-11 w-11 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+        listening
+          ? 'bg-accent-muted text-accent ring-1 ring-accent/40 voice-mic-pulse'
+          : unsupported || denied
+            ? 'bg-surface text-ink-tertiary ring-1 ring-border opacity-40'
+            : 'bg-surface text-ink-secondary ring-1 ring-border hover:text-ink hover:ring-border-strong'
+      } ${transcribing ? 'opacity-60' : ''}`}
+    >
+      {transcribing ? (
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      ) : listening ? (
+        <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+      ) : (
+        <Mic className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+      )}
+    </button>
   )
 }

@@ -21,6 +21,8 @@ import {
   mountStripeWebhook,
 } from './stripe.ts'
 import { mountIapRoutes } from './iap.ts'
+import { mountSttRoutes } from './stt.ts'
+import { mountDescribeSceneRoutes } from './describeScene.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -46,6 +48,8 @@ app.use(identityMiddleware)
 
 mountStripeRoutes(app)
 mountIapRoutes(app)
+mountSttRoutes(app)
+mountDescribeSceneRoutes(app)
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -67,6 +71,7 @@ app.get('/api/health', (_req, res) => {
     hasKey: Boolean(process.env.XAI_API_KEY?.trim()),
     stripe: Boolean(getStripe()),
     vision: true,
+    stt: Boolean(process.env.XAI_API_KEY?.trim()),
   })
 })
 
@@ -266,7 +271,7 @@ async function start() {
     console.log(
       process.env.XAI_API_KEY?.trim()
         ? 'XAI_API_KEY: present'
-        : 'XAI_API_KEY: missing (POST /api/recommend will return 503)',
+        : 'XAI_API_KEY: missing (POST /api/recommend, /api/stt, /api/describe-scene will return 503)',
     )
     console.log(
       process.env.SESSION_SECRET?.trim()

@@ -101,3 +101,16 @@ body {
   background: var(--color-border-strong);
   border-radius: 4px;
 }
+
+@keyframes voice-mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.voice-mic-pulse {
+  animation: voice-mic-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-mic-pulse {
+    animation: none;
+  }
+}
