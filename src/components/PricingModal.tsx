@@ -1,6 +1,7 @@
 import { Check, Loader2, Sparkles, X, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { useSubscription } from '../hooks/useSubscription'
+import { track } from '../lib/analytics'
 
 const FEATURES_FREE = [
   'Browse all recipe presets',
@@ -26,6 +27,7 @@ export function PricingModal() {
   async function checkout(plan: 'monthly' | 'yearly') {
     setError(null)
     setPending(plan)
+    track('paywall_plan_select', { plan, source: 'pricing_modal' })
     try {
       await startCheckout(plan)
     } catch (err) {

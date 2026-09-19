@@ -21,6 +21,7 @@ import { useFavorites } from '../hooks/useFavorites'
 import { useVoiceInput, type VoiceInputApi } from '../hooks/useVoiceInput'
 import { useSubscription } from '../hooks/useSubscription'
 import { compressImageForUpload } from '../lib/compressImage'
+import { track } from '../lib/analytics'
 import { SHUTTER_EVENT } from './AppTabBar'
 
 const EXAMPLES = [
@@ -131,16 +132,25 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         await video.play().catch(() => {})
       }
       setCameraActive(true)
+      track('camera_permission_granted', { source: 'field_coach' })
+      track('camera_start_ok', { source: 'field_coach' })
     } catch (err) {
       stopCamera()
       const name = err instanceof DOMException ? err.name : ''
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        track('camera_permission_denied', { source: 'field_coach', error_code: name })
+        track('camera_start_fail', { source: 'field_coach', error_code: name })
         setCameraError(
           'Camera permission denied. Allow camera access, or upload a photo.',
         )
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        track('camera_start_fail', { source: 'field_coach', error_code: name })
         setCameraError('No camera found. Upload a photo instead.')
       } else {
+        track('camera_start_fail', {
+          source: 'field_coach',
+          error_code: name || 'unknown',
+        })
         setCameraError(
           err instanceof Error
             ? err.message
@@ -298,6 +308,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
       if (!blob) throw new Error('Could not capture frame')
       const file = new File([blob], 'viewfinder.jpg', { type: 'image/jpeg' })
       await ingestFile(file)
+      track('capture_success', { source: 'field_coach' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not capture frame')
     }
@@ -305,6 +316,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
 
   const handleShutter = useCallback(() => {
     if (busy) return
+    track('shutter_tap', { source: 'field_coach' })
     setDescribeOpen(false)
     setMode('photo')
     if (previewUrl) {
@@ -335,6 +347,10 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     setLoading(true)
     setError(null)
     setPaywalled(false)
+    track('auto_optimize_start', {
+      source: 'field_coach',
+      has_image: Boolean(opts.image),
+    })
 
     try {
       const res = await fetch('/api/recommend', {
@@ -362,15 +378,23 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
           data.error ||
             'Free Peek limit reached (1 Ask / Photo Vision per day). Upgrade for unlimited.',
         )
+        track('auto_optimize_fail', { source: 'field_coach', error_code: 'paywall' })
+        track('paywall_view', { source: 'auto_optimize_limit' })
+        openPricing()
         void refresh()
         return
       }
 
       if (!res.ok) {
+        track('auto_optimize_fail', {
+          source: 'field_coach',
+          error_code: String(res.status),
+        })
         throw new Error(data.error || `Request failed (${res.status})`)
       }
 
       if (!data.presetId) {
+        track('auto_optimize_fail', { source: 'field_coach', error_code: 'no_preset' })
         throw new Error('No preset returned from Grok')
       }
 
@@ -384,10 +408,18 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         fromAsk: true,
       }
 
+      track('auto_optimize_success', {
+        source: 'field_coach',
+        recipe_id: data.presetId,
+      })
       void refresh()
       stopCamera()
       navigate(`/app/preset/${data.presetId}`, { state })
     } catch (err) {
+      track('auto_optimize_fail', {
+        source: 'field_coach',
+        error_code: 'exception',
+      })
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)

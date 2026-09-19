@@ -5,6 +5,9 @@ import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SubscriptionProvider } from './hooks/useSubscription'
 import './index.css'
+import { initAnalytics } from './lib/analytics'
+
+initAnalytics()
 
 const rootEl = document.getElementById('root')!
 

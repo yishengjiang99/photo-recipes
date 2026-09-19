@@ -6,7 +6,7 @@ import {
   Smartphone,
   Sparkles,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { CameraCta } from '../components/CameraCta'
 import type { AiRecommendState } from '../components/FieldCoach'
@@ -14,6 +14,7 @@ import { CameraDials } from '../components/CameraDials'
 import { ChecklistMode } from '../components/ChecklistMode'
 import { presets } from '../data/presets'
 import { useFavorites } from '../hooks/useFavorites'
+import { track } from '../lib/analytics'
 import type { TechniqueTag } from '../types'
 import { GEAR_LABELS, MODE_LABELS, TAG_LABELS } from '../types'
 
@@ -33,6 +34,10 @@ export function PresetDetail() {
   const preset = presets.find((p) => p.id === id)
   const { isFavorite, toggleFavorite } = useFavorites()
   const [variantId, setVariantId] = useState<string | 'base'>('base')
+
+  useEffect(() => {
+    if (preset) track('recipe_open', { recipe_id: preset.id, source: 'web' })
+  }, [preset?.id])
 
   const activeDials = useMemo(() => {
     if (!preset) return null

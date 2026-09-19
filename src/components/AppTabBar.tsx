@@ -1,6 +1,7 @@
 import { BookOpen, Camera, Crown, Sparkles, User } from 'lucide-react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useSubscription } from '../hooks/useSubscription'
+import { track } from '../lib/analytics'
 
 /** Dispatched when the center shutter is tapped while already on /app. */
 export const SHUTTER_EVENT = 'photo-recipes:shutter'
@@ -19,9 +20,11 @@ export function AppTabBar() {
 
   function onShutter() {
     if (onCamera) {
+      track('shutter_tap', { source: 'tab_bar' })
       window.dispatchEvent(new CustomEvent(SHUTTER_EVENT))
       return
     }
+    track('tab_camera', { source: 'tab_bar' })
     navigate('/app')
   }
 
@@ -34,6 +37,7 @@ export function AppTabBar() {
       <div className="mx-auto grid h-[4.25rem] max-w-[960px] grid-cols-3 items-end px-2 sm:px-4 xl:max-w-[1040px]">
         <NavLink
           to="/app/library"
+          onClick={() => track('tab_library', { source: 'tab_bar' })}
           className={({ isActive }) =>
             `flex min-h-11 flex-col items-center justify-center gap-0.5 pb-2 text-[10px] font-medium transition ${
               isActive ? 'text-ink' : 'text-ink-tertiary hover:text-ink-secondary'
@@ -68,6 +72,7 @@ export function AppTabBar() {
         {pro ? (
           <NavLink
             to="/app/library"
+            onClick={() => track('tab_pro', { source: 'tab_bar', pro: true })}
             className="flex min-h-11 flex-col items-center justify-center gap-0.5 pb-2 text-[10px] font-medium text-ink-tertiary hover:text-ink-secondary"
             aria-label="Pro account"
           >
@@ -77,7 +82,10 @@ export function AppTabBar() {
         ) : (
           <button
             type="button"
-            onClick={openPricing}
+            onClick={() => {
+              track('tab_pro', { source: 'tab_bar' })
+              openPricing()
+            }}
             className="flex min-h-11 flex-col items-center justify-center gap-0.5 pb-2 text-[10px] font-medium text-ink-tertiary transition hover:text-ink-secondary"
             aria-label="Upgrade to Pro"
           >

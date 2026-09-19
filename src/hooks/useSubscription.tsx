@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { track } from '../lib/analytics'
 
 export type SubscriptionStatus = {
   pro: boolean
@@ -75,6 +76,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const startCheckout = useCallback(async (plan: 'monthly' | 'yearly') => {
     setCheckoutLoading(true)
+    track('paywall_plan_select', { plan, source: 'web_pricing' })
+    track('purchase_start', { plan, source: 'stripe' })
     try {
       const res = await fetch('/api/create-checkout-session', {
         method: 'POST',
@@ -84,9 +87,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       })
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
       if (!res.ok || !data.url) {
+        track('purchase_fail', {
+          plan,
+          source: 'stripe',
+          error_code: String(res.status),
+        })
         throw new Error(data.error || `Checkout failed (${res.status})`)
       }
+      track('checkout_redirect', { plan, source: 'stripe' })
       window.location.href = data.url
+    } catch (err) {
+      track('purchase_fail', {
+        plan,
+        source: 'stripe',
+        error_code: 'exception',
+      })
+      throw err
     } finally {
       setCheckoutLoading(false)
     }
@@ -111,7 +127,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       status,
       loading,
       refresh,
-      openPricing: () => setPricingOpen(true),
+      openPricing: () => {
+        track('paywall_view', { source: 'web_pricing' })
+        setPricingOpen(true)
+      },
       closePricing: () => setPricingOpen(false),
       pricingOpen,
       startCheckout,
