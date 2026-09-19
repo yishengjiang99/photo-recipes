@@ -32,8 +32,16 @@ jobs:
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode.app
+          set -euo pipefail
+          # Prefer Xcode 16 if present (matches newer XcodeGen); else 15.4
+          for app in /Applications/Xcode_16.4.app /Applications/Xcode_16.3.app /Applications/Xcode_16.2.app /Applications/Xcode_16.1.app /Applications/Xcode_16.app /Applications/Xcode_15.4.app /Applications/Xcode.app; do
+            if [[ -d "$app" ]]; then
+              sudo xcode-select -s "$app"
+              break
+            fi
+          done
           xcodebuild -version
+          ls /Applications | rg '^Xcode' || true
 
       - name: Write ASC API key
         env:
@@ -57,6 +65,8 @@ jobs:
           # Checked-in .xcodeproj drifts; always regenerate from project.yml
           brew install xcodegen
           xcodegen generate
+          test -f PhotoRecipes.xcodeproj/project.pbxproj
+          # Prefer -list; if format mismatch, fail clearly with objectVersion hint
           xcodebuild -list -project PhotoRecipes.xcodeproj
 
       - name: Write ExportOptions.plist
