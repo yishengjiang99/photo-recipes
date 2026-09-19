@@ -73,7 +73,7 @@ struct LibraryView: View {
                     Text("Upgrade")
                         .font(AppTheme.caption())
                         .fontWeight(.semibold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.accentOnAccent)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(Capsule().fill(AppTheme.accent))

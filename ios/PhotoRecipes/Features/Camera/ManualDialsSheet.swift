@@ -96,7 +96,7 @@ struct ManualDialsSheet: View {
                     } label: {
                         Text(mode.shortLabel)
                             .font(AppTheme.monoSm())
-                            .foregroundStyle(session.captureMode == mode ? .white : AppTheme.inkSecondary)
+                            .foregroundStyle(session.captureMode == mode ? AppTheme.accentOnAccent : AppTheme.inkSecondary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 40)
                             .background(
