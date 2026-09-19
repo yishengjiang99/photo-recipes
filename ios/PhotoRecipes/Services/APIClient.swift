@@ -374,6 +374,46 @@ final class APIClient: ObservableObject {
         }
     }
 
+    struct TelemetryRequest: Encodable {
+        var event: String
+        var anon_id: String
+        var session_id: String?
+        var platform: String
+        var app: String
+        var props: [String: String]?
+    }
+
+    /// POST /api/telemetry — allowlisted funnel events. Soft-fail on transport.
+    func postTelemetry(
+        event: String,
+        anonId: String,
+        sessionId: String,
+        props: [String: String] = [:]
+    ) async throws {
+        var req = URLRequest(url: try url("/api/telemetry"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = TelemetryRequest(
+            event: event,
+            anon_id: anonId,
+            session_id: sessionId,
+            platform: "ios",
+            app: "photo-recipes",
+            props: props.isEmpty ? nil : props
+        )
+        req.httpBody = try encoder.encode(body)
+        let (data, response) = try await perform(req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        if http.statusCode == 404 || http.statusCode == 503 {
+            throw APIError.http(http.statusCode, "telemetry unavailable")
+        }
+        if !(200..<300).contains(http.statusCode) {
+            throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+        }
+    }
+
     // MARK: - Helpers
 
     private func get<T: Decodable>(_ req: URLRequest) async throws -> T {

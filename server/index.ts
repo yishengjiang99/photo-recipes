@@ -25,6 +25,8 @@ import { mountSttRoutes } from './stt.ts'
 import { mountDescribeSceneRoutes } from './describeScene.ts'
 import { mountWaitlistRoutes } from './waitlist.ts'
 import { mountPushRoutes, pushHealthSnippet } from './push.ts'
+import { mountTelemetryRoutes, telemetryHealthSnippet } from './telemetry.ts'
+import { getMysqlPool } from './mysql.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -54,6 +56,7 @@ mountSttRoutes(app)
 mountDescribeSceneRoutes(app)
 mountWaitlistRoutes(app)
 mountPushRoutes(app)
+mountTelemetryRoutes(app)
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -79,6 +82,7 @@ app.get('/api/health', (_req, res) => {
     describeScene: Boolean(process.env.XAI_API_KEY?.trim()),
     waitlist: Boolean(process.env.RESEND_API_KEY?.trim()),
     ...pushHealthSnippet(),
+    ...telemetryHealthSnippet(),
   })
 })
 
@@ -274,6 +278,12 @@ app.post('/api/recommend', (req, res) => {
 })
 
 async function start() {
+  const mysqlPool = getMysqlPool()
+  console.log(
+    mysqlPool
+      ? 'MySQL: pool ready (telemetry persistence on)'
+      : 'MySQL: unset — telemetry accepts events but does not persist',
+  )
   if (getStripe()) {
     await ensureStripePrices()
   } else {
