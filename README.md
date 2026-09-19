@@ -252,3 +252,17 @@ npm start   # API on :8787; use vite preview or any static server for dist/
 ## License / attribution
 
 Educational personal-use transcription of book recipes. Not affiliated with the book’s publisher or author.
+
+## iOS app (SwiftUI)
+
+Native iOS 17+ client lives in [`ios/`](./ios/). **Camera-first field camera**: live AVFoundation viewfinder, recipe→settings apply, and **Auto Optimize** (vision recommend → settable exposure/focus/WB). Soft TestFlight: Free Peek browse + 1 Auto Optimize/day; Pro unlocks manual dials, apply-to-live, unlimited optimize via **StoreKit 2 IAP only** (not Stripe-in-app). See `ios/README.md` and `docs/design-handoff-camera-v1.md` / `docs/design-handoff-agentic-v1.md`.md` / `docs/design-handoff-agentic-v1.md`.
+
+| | |
+|--|--|
+| Open | `cd ios && open PhotoRecipes.xcodeproj` |
+| Bundle ID | `com.yishengjiang.photorecipes` |
+| IAP yearly (primary) | `com.yishengjiang.photorecipes.pro.yearly` ($59.99/yr, 7-day trial) |
+| IAP monthly | `com.yishengjiang.photorecipes.pro.monthly` ($7.99/mo, 7-day trial) |
+| Verify | `POST /api/iap/verify` (see `server/iap.ts`) |
+
+Full setup, ASC checklist, and TestFlight steps: **[ios/README.md](./ios/README.md)**.
