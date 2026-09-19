@@ -8,6 +8,12 @@ struct CameraView: View {
 
     @StateObject private var session = CameraSession()
     @StateObject private var optimizer = AutoOptimizeController()
+    @StateObject private var voice = VoiceCaptureController()
+    @State private var sceneNote = ""
+    @State private var sceneFromViewfinder = false
+    @State private var isDescribingScene = false
+    @State private var showMicDenied = false
+    @State private var describeTask: Task<Void, Never>?
     @StateObject private var horizon = HorizonMonitor()
 
     @State private var showDials = false
@@ -64,7 +70,27 @@ struct CameraView: View {
             applyStagingIfNeeded()
         }
         .onChange(of: router.stagedRecipeId) { _, _ in applyStagingIfNeeded() }
+        .onAppear {
+            describeTask?.cancel()
+            describeTask = Task { await refreshSceneFromViewfinder() }
+        }
+        .alert("Microphone is off", isPresented: $showMicDenied) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Type instead", role: .cancel) {}
+        } message: {
+            Text("Enable the microphone to dictate a scene for Auto Optimize.")
+        }
+        .onChange(of: voice.phase) { _, phase in
+            if case .error = phase, voice.permission == .denied { showMicDenied = true }
+        }
         .onDisappear {
+            voice.cancel()
+            describeTask?.cancel()
+
             session.stop()
             horizon.stop()
         }
@@ -242,6 +268,53 @@ struct CameraView: View {
             recipeBadge
                 .padding(.horizontal, hPad)
 
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: AppTheme.space2) {
+                    TextField("Describe the scene…", text: $sceneNote, axis: .vertical)
+                        .lineLimit(1...3)
+                        .font(AppTheme.bodySm())
+                        .foregroundStyle(AppTheme.ink)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusSm)
+                                .fill(AppTheme.bgElevated.opacity(0.92))
+                                .overlay(RoundedRectangle(cornerRadius: AppTheme.radiusSm).stroke(AppTheme.border, lineWidth: 1))
+                        )
+                    VoiceDictateButton(controller: voice, enabled: !optimizer.phase.isRunning && !isDescribingScene) { text in
+                        appendCameraVoice(text)
+                    }
+                }
+                HStack(spacing: 8) {
+                    if sceneFromViewfinder {
+                        Text("From viewfinder")
+                            .font(AppTheme.caption())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().stroke(AppTheme.border, lineWidth: 1))
+                    }
+                    if isDescribingScene {
+                        ProgressView().scaleEffect(0.7)
+                        Text("Reading scene…")
+                            .font(AppTheme.caption())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                    } else {
+                        Button {
+                            Task { await refreshSceneFromViewfinder() }
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                                .font(AppTheme.caption())
+                                .foregroundStyle(AppTheme.inkSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
+                }
+                VoiceStatusCaption(controller: voice)
+            }
+            .padding(.horizontal, AppTheme.space4)
+
             Button {
                 Task { await runOptimize() }
             } label: {
@@ -413,16 +486,57 @@ struct CameraView: View {
 
     // MARK: - Actions
 
+    
+    private func appendCameraVoice(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        let cur = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        sceneNote = cur.isEmpty ? t : cur + " " + t
+        sceneFromViewfinder = false
+        if VoiceSettings.autoOptimizeAfterVoice {
+            Task { await runOptimize() }
+        }
+    }
+
+    private func refreshSceneFromViewfinder() async {
+        describeTask?.cancel()
+        let task = Task { @MainActor in
+            isDescribingScene = true
+            defer { isDescribingScene = false }
+            do {
+                let raw = try await session.captureProbeFrame()
+                let jpeg: Data
+                if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
+                    jpeg = c
+                } else {
+                    jpeg = raw
+                }
+                try Task.checkCancellation()
+                let caption = try await APIClient.shared.describeScene(imageJPEGData: jpeg)
+                try Task.checkCancellation()
+                let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                if sceneNote.isEmpty || sceneFromViewfinder {
+                    sceneNote = trimmed
+                    sceneFromViewfinder = true
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                // Soft fail — keep placeholder
+            }
+        }
+        describeTask = task
+        await task.value
+    }
+
     private func runOptimize() async {
         guard canOptimize else {
             entitlements.showPaywall = true
             return
         }
-        await optimizer.run(
-            session: session,
-            entitlements: entitlements,
-            preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId
-        )
+        await optimizer.run(session: session, entitlements: entitlements, preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId
+        , sceneNote: sceneNote)
     }
 
     private func takePhoto() async {

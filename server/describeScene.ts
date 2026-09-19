@@ -1,0 +1,245 @@
+/**
+ * Lightweight Grok vision caption for iOS scene prefill.
+ * Single chat completion — no catalog tools / no recommendWithGrok.
+ */
+import type { Express, Request, Response, NextFunction } from 'express'
+import multer from 'multer'
+import {
+  MAX_IMAGE_BYTES,
+  mimeFromFilename,
+  normalizeMime,
+  parseDataUrl,
+  toDataUrl,
+} from './image.ts'
+
+const XAI_BASE = 'https://api.x.ai/v1'
+const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
+
+const SYSTEM_PROMPT = `You are a concise field photography coach. Look at the photo and write a short scene description a photographer would type into a recipe ask box.
+
+Include: subject, lighting, motion (if any), and one composition or exposure hint.
+Keep it to 1–2 sentences, under 40 words. Plain text only — no bullet lists, no recipe names, no camera dial numbers unless clearly readable in the scene.`
+
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+
+function isModelMissing(status: number, body: string): boolean {
+  if (status === 404) return true
+  const lower = body.toLowerCase()
+  return (
+    status === 400 &&
+    (lower.includes('model') ||
+      lower.includes('not found') ||
+      lower.includes('does not exist'))
+  )
+}
+
+export async function describeSceneWithGrok(
+  apiKey: string,
+  imageDataUrl: string,
+): Promise<{ description: string; model: string }> {
+  const messages = [
+    { role: 'system' as const, content: SYSTEM_PROMPT },
+    {
+      role: 'user' as const,
+      content: [
+        {
+          type: 'text' as const,
+          text: 'Describe this photography scene briefly for recipe matching.',
+        },
+        {
+          type: 'image_url' as const,
+          image_url: { url: imageDataUrl, detail: 'low' as const },
+        },
+      ] satisfies ContentPart[],
+    },
+  ]
+
+  let modelIndex = 0
+  let model: string = VISION_MODELS[0]!
+
+  for (;;) {
+    const res = await fetch(`${XAI_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        max_tokens: 120,
+        messages,
+      }),
+    })
+
+    const bodyText = await res.text()
+    if (
+      !res.ok &&
+      isModelMissing(res.status, bodyText) &&
+      modelIndex < VISION_MODELS.length - 1
+    ) {
+      modelIndex += 1
+      model = VISION_MODELS[modelIndex]!
+      console.warn(`[describe-scene] model unavailable, falling back to ${model}`)
+      continue
+    }
+
+    if (!res.ok) {
+      const err = new Error(
+        `xAI API error (${res.status}). Check model availability and API key.`,
+      ) as Error & { status?: number; details?: string }
+      err.status = res.status >= 400 && res.status < 600 ? res.status : 502
+      err.details = bodyText.slice(0, 500)
+      throw err
+    }
+
+    let data: {
+      choices?: Array<{ message?: { content?: string | null } }>
+    }
+    try {
+      data = JSON.parse(bodyText) as typeof data
+    } catch {
+      throw Object.assign(new Error('Invalid JSON from Grok'), { status: 502 })
+    }
+
+    const raw = data.choices?.[0]?.message?.content
+    const description = typeof raw === 'string' ? raw.trim() : ''
+    if (!description) {
+      throw Object.assign(new Error('Empty description from Grok'), {
+        status: 502,
+      })
+    }
+
+    return { description, model }
+  }
+}
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const mime =
+      normalizeMime(file.mimetype) || mimeFromFilename(file.originalname)
+    if (!mime) {
+      cb(new Error('Unsupported image type. Use JPEG, PNG, or WebP.'))
+      return
+    }
+    cb(null, true)
+  },
+})
+
+function parseImageFromJson(
+  body: Record<string, unknown>,
+): { imageDataUrl: string } | { error: string } {
+  const imageField = body.image ?? body.imageBase64 ?? body.imageDataUrl
+  if (typeof imageField !== 'string' || !imageField.trim()) {
+    return { error: 'Provide an image (multipart field "image", or JSON image data URL / base64).' }
+  }
+  const raw = imageField.trim()
+  if (raw.startsWith('data:')) {
+    const parsed = parseDataUrl(raw)
+    if ('error' in parsed) return { error: parsed.error }
+    return { imageDataUrl: toDataUrl(parsed.mime, parsed.buffer) }
+  }
+  const mime =
+    normalizeMime(typeof body.mime === 'string' ? body.mime : 'image/jpeg') ||
+    'image/jpeg'
+  try {
+    const buffer = Buffer.from(raw.replace(/\s+/g, ''), 'base64')
+    if (!buffer.length) return { error: 'Empty image data' }
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      return {
+        error: `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`,
+      }
+    }
+    return { imageDataUrl: toDataUrl(mime, buffer) }
+  } catch {
+    return { error: 'Invalid base64 image data' }
+  }
+}
+
+/**
+ * Mount POST /api/describe-scene — short vision caption for Ask/Camera prefill.
+ * Does not consume Ask quota.
+ */
+export function mountDescribeSceneRoutes(app: Express) {
+  app.post('/api/describe-scene', (req: Request, res: Response, next: NextFunction) => {
+    const ct = (req.headers['content-type'] || '').toLowerCase()
+    if (ct.includes('multipart/form-data')) {
+      imageUpload.single('image')(req, res, (err: unknown) => {
+        if (err) {
+          const msg =
+            err instanceof Error ? err.message : 'Invalid multipart upload'
+          const isSize =
+            typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code?: string }).code === 'LIMIT_FILE_SIZE'
+          res.status(400).json({
+            error: isSize
+              ? `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`
+              : msg,
+          })
+          return
+        }
+        next()
+      })
+      return
+    }
+    next()
+  }, (req: Request, res: Response) => {
+    const apiKey = process.env.XAI_API_KEY?.trim()
+    if (!apiKey) {
+      res.status(503).json({
+        error:
+          'XAI_API_KEY is not set. Add it to .env (see .env.example) and restart the API server.',
+      })
+      return
+    }
+
+    let imageDataUrl: string | undefined
+
+    if (req.file) {
+      const mime =
+        normalizeMime(req.file.mimetype) ||
+        mimeFromFilename(req.file.originalname)
+      if (!mime) {
+        res.status(400).json({
+          error: 'Unsupported image type. Use JPEG, PNG, or WebP.',
+        })
+        return
+      }
+      imageDataUrl = toDataUrl(mime, req.file.buffer)
+    } else {
+      const parsed = parseImageFromJson(
+        (req.body ?? {}) as Record<string, unknown>,
+      )
+      if ('error' in parsed) {
+        res.status(400).json({ error: parsed.error })
+        return
+      }
+      imageDataUrl = parsed.imageDataUrl
+    }
+
+    void (async () => {
+      try {
+        const result = await describeSceneWithGrok(apiKey, imageDataUrl!)
+        res.json({
+          description: result.description,
+          text: result.description,
+          model: result.model,
+        })
+      } catch (e) {
+        const ex = e as Error & { status?: number }
+        const status =
+          ex.status && ex.status >= 400 && ex.status < 600 ? ex.status : 502
+        console.error('[describe-scene]', ex.message)
+        res.status(status).json({
+          error: ex.message || 'Scene description failed',
+        })
+      }
+    })()
+  })
+}
