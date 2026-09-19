@@ -30,6 +30,12 @@ struct CameraView: View {
     @State private var coachStep = 0
     @State private var lookToast: String?
 
+    /// Coach Recommend (outline secondary — never merges with Auto Optimize)
+    @State private var isRecommending = false
+    @State private var recommendResult: RecommendResponse?
+    @State private var recommendError: String?
+    @State private var showRecommendResult = false
+
     var body: some View {
         ZStack {
             AppTheme.bg.ignoresSafeArea()
@@ -193,6 +199,29 @@ struct CameraView: View {
             }
             Button("Keep", role: .cancel) {}
         }
+        .sheet(isPresented: $showRecommendResult) {
+            CameraRecommendResultSheet(
+                result: recommendResult,
+                errorText: recommendError,
+                onApply: { recipe in
+                    showRecommendResult = false
+                    let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
+                    if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+                },
+                onDismiss: {
+                    showRecommendResult = false
+                    recommendResult = nil
+                    recommendError = nil
+                },
+                onUpgrade: {
+                    showRecommendResult = false
+                    entitlements.showPaywall = true
+                }
+            )
+            .environmentObject(entitlements)
+            .environmentObject(router)
+            .presentationDetents([.medium, .large])
+        }
     }
 
     // MARK: - Full-bleed viewfinder
@@ -200,7 +229,7 @@ struct CameraView: View {
     private var viewfinder: some View {
         GeometryReader { geo in
             let compact = isCompactChrome(width: geo.size.width, height: geo.size.height)
-            let bottomScrim: CGFloat = compact ? 96 : 120
+            let bottomScrim: CGFloat = compact ? 112 : 136
             ZStack {
                 CameraPreviewView(
                     session: session.session,
@@ -407,6 +436,40 @@ struct CameraView: View {
             }
             .disabled(!canOptimize || optimizer.phase.isRunning)
             .accessibilityLabel("Auto Optimize")
+
+            // Always-visible outline secondary — viewfinder / scene note → coach recommend
+            Button {
+                Task { await runRecommend() }
+            } label: {
+                HStack(spacing: 6) {
+                    if isRecommending {
+                        ProgressView().tint(AppTheme.ink).scaleEffect(0.8)
+                        Text("Matching…")
+                    } else {
+                        Image(systemName: "sparkles")
+                        Text("Recommend")
+                    }
+                }
+                .font(AppTheme.bodySmMedium())
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal, 16)
+                .frame(height: compact ? 34 : 36)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.agentStatusBg)
+                        .overlay(Capsule().stroke(AppTheme.borderStrong, lineWidth: 1.5))
+                )
+            }
+            .disabled(isRecommending || optimizer.phase.isRunning)
+            .accessibilityLabel("Recommend recipe")
+
+            if let recommendError, !showRecommendResult {
+                Text(recommendError)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, hPad)
+            }
 
             if case .ready = optimizer.phase {
                 BeforeAfterChip(
@@ -637,6 +700,66 @@ struct CameraView: View {
         )
     }
 
+    /// Coach recommend from viewfinder frame and/or scene note. Does not write dials (AO does).
+    private func runRecommend() async {
+        recommendError = nil
+        recommendResult = nil
+        isRecommending = true
+        defer { isRecommending = false }
+
+        let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        var jpeg: Data?
+        do {
+            let raw = try await session.captureProbeFrame()
+            if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
+                jpeg = c
+            } else if !raw.isEmpty {
+                jpeg = raw
+            }
+        } catch {
+            // Soft-fail probe; may still recommend from scene note alone.
+        }
+
+        let hadHeldFrame = jpeg != nil
+        Analytics.shared.track("recommend_cta_tap", props: [
+            "surface": "camera",
+            "had_held_frame": hadHeldFrame ? "true" : "false",
+        ])
+
+        let message: String
+        if !note.isEmpty {
+            message = note
+        } else if jpeg != nil {
+            message = "From viewfinder"
+        } else {
+            recommendError = "Add a scene note or enable the camera"
+            return
+        }
+
+        do {
+            let response = try await APIClient.shared.recommend(
+                message: message,
+                favorites: Array(entitlements.favoriteIds),
+                imageJPEGData: jpeg
+            )
+            recommendResult = response
+            recommendError = nil
+            showRecommendResult = true
+            await entitlements.refresh()
+        } catch let APIError.paywall(payload) {
+            recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
+            showRecommendResult = true
+            entitlements.showPaywall = true
+            await entitlements.refresh()
+        } catch let APIError.missingKey(msg) {
+            recommendError = msg
+            showRecommendResult = true
+        } catch {
+            recommendError = error.localizedDescription
+            showRecommendResult = true
+        }
+    }
+
     private func takePhoto() async {
         isCapturing = true
         captureError = nil
@@ -780,5 +903,128 @@ struct RecipePickerSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+
+/// Coach recommend result from Camera secondary CTA (does not auto-apply dials).
+struct CameraRecommendResultSheet: View {
+    let result: RecommendResponse?
+    let errorText: String?
+    var onApply: (Recipe) -> Void
+    var onDismiss: () -> Void
+    var onUpgrade: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var navigateRecipe: Recipe?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.space4) {
+                    if let errorText, !errorText.isEmpty {
+                        VStack(alignment: .leading, spacing: AppTheme.space2) {
+                            Text(errorText)
+                                .font(AppTheme.bodySm())
+                                .foregroundStyle(AppTheme.inkSecondary)
+                            if errorText.lowercased().contains("limit") || errorText.lowercased().contains("upgrade") {
+                                Button("Upgrade · 7-day trial", action: onUpgrade)
+                                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                            }
+                        }
+                        .padding(AppTheme.space3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                                .fill(AppTheme.surface2)
+                        )
+                    }
+
+                    if let r = result {
+                        resultCard(r)
+                    }
+                }
+                .padding(AppTheme.space4)
+            }
+            .background(AppTheme.bg.ignoresSafeArea())
+            .navigationTitle("Recommendation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        onDismiss()
+                        dismiss()
+                    }
+                }
+            }
+            .navigationDestination(item: $navigateRecipe) { recipe in
+                RecipeDetailView(recipe: recipe)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func resultCard(_ r: RecommendResponse) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.space3) {
+            HStack(spacing: 6) {
+                if r.vision == true {
+                    Circle().fill(AppTheme.vision).frame(width: 6, height: 6)
+                }
+                Text(r.vision == true ? "From viewfinder" : "Recommendation")
+                    .font(AppTheme.overline())
+                    .tracking(0.8)
+                    .foregroundStyle(AppTheme.inkTertiary)
+            }
+
+            let recipe = r.preset ?? BundledPresets.recipe(id: r.presetId ?? "")
+            if let recipe {
+                Text(recipe.title)
+                    .font(AppTheme.displayTitle())
+                    .foregroundStyle(AppTheme.ink)
+            }
+
+            if let reason = r.reason {
+                Text(reason)
+                    .font(AppTheme.bodySm())
+                    .foregroundStyle(AppTheme.inkSecondary)
+            }
+
+            HStack(spacing: AppTheme.space2) {
+                if let recipe {
+                    Button {
+                        navigateRecipe = recipe
+                    } label: {
+                        Text("Open recipe")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+
+                    Button {
+                        onApply(recipe)
+                        dismiss()
+                    } label: {
+                        Label("Apply to Camera", systemImage: "camera.fill")
+                    }
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                }
+                Button {
+                    onDismiss()
+                    dismiss()
+                } label: {
+                    Text("Try another")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle(filled: false))
+            }
+        }
+        .padding(AppTheme.space4)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                .fill(AppTheme.surface2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                        .stroke(AppTheme.border, lineWidth: 1)
+                )
+        )
     }
 }
