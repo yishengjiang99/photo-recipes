@@ -54,7 +54,7 @@ export function PresetDetail() {
     <div className="text-left">
       <div className="mb-6 flex items-center justify-between gap-3">
         <Link
-          to="/"
+          to="/app"
           className="inline-flex min-h-11 items-center gap-1.5 text-sm text-ink-secondary transition hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />

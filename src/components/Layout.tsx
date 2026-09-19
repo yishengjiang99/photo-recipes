@@ -2,7 +2,6 @@ import { Camera, CreditCard, Crown, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { useSubscription } from '../hooks/useSubscription'
-import { PricingModal } from './PricingModal'
 
 export function Layout() {
   const { status, loading, openPricing, openBillingPortal } = useSubscription()
@@ -21,7 +20,7 @@ export function Layout() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-4 pb-10 pt-6 sm:px-6 lg:max-w-[960px] xl:max-w-[1040px] xl:px-8">
       <header className="sticky top-0 z-20 -mx-4 mb-8 flex items-center justify-between gap-4 bg-bg/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
-        <Link to="/" className="group flex items-center gap-3">
+        <Link to="/app" className="group flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-muted ring-1 ring-accent/30 transition group-hover:bg-accent/20">
             <Camera className="h-5 w-5 text-accent-soft" strokeWidth={1.75} />
           </span>
@@ -81,9 +80,14 @@ export function Layout() {
         <Outlet />
       </main>
       <footer className="mt-12 border-t border-border pt-6 text-center text-xs text-ink-tertiary">
-        Educational presets from book pages · Not affiliated with the publisher
+        <p>
+          <Link to="/" className="text-ink-secondary underline-offset-2 hover:text-ink hover:underline">
+            Photo Recipes home
+          </Link>
+          {' · '}
+          Educational presets from book pages · Not affiliated with the publisher
+        </p>
       </footer>
-      <PricingModal />
     </div>
   )
 }

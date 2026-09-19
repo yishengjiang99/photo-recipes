@@ -107,3 +107,17 @@ A: High-end photography enthusiasts — serious hobbyists with real cameras who 
 
 ## Out of scope for v1 landing
 - Fake testimonials, App Store badge walls before listing is live, Lightroom comparison tables that read as competitor ads, beauty/filter positioning, implying on-device aperture writes, voice-led hero or section headlines.
+
+---
+
+## Implementer note (feat/seo-marketing-landing)
+
+Web Engineer followed **Designer** [`docs/design-handoff-landing-v1.md`](../design-handoff-landing-v1.md) for locked hero (H1 / eyebrow / CTAs), page structure, and FAQ skeleton.
+
+Marketing keywords from this brief are woven into **meta title/description**, feature bodies, how-it-works, and FAQ answers — without replacing Designer’s locked H1.
+
+**Shipped routes:** `/` landing · `/app` library · `/app/preset/:id` · `/app/success`  
+**TestFlight / store URL:** placeholder `#testflight` in `src/lib/site.ts` (`TESTFLIGHT_URL`) until a real link exists.  
+**Canonical domain:** `import.meta.env.VITE_SITE_URL` or default in `src/lib/site.ts`.
+
+Marketing may replace body/FAQ/meta later; coordinate with Design before changing locked H1.

@@ -306,8 +306,8 @@ export function mountStripeRoutes(app: Express) {
         payment_method_types: ['card'],
         line_items: [{ price: priceId, quantity: 1 }],
         subscription_data: { trial_period_days: TRIAL_DAYS },
-        success_url: `${base}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${base}/?checkout=canceled`,
+        success_url: `${base}/app/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${base}/app?checkout=canceled`,
         client_reference_id: guestId,
         allow_promotion_codes: true,
       })
