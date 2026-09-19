@@ -1,5 +1,7 @@
 # Photo Recipes — Unconventional Growth Ideas
 
+> **Growth surface (2026-09-19):** iOS / TestFlight / App Store — treat ideas below as experiments that drive installs or first Auto Optimize, not deep web-app usage.
+
 60 ideas deliberately **not** “post more on Reddit” or “tweak Meta interests.” Use for experiments after foundations are live.
 
 ---
@@ -93,4 +95,4 @@
 
 ---
 
-*Note: Deliberately not more Reddit/Meta bid tweaks — see [ad-plan.md](./ad-plan.md) and [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md) for those.*
+*Note: Deliberately not more Reddit/Meta bid tweaks — see [ad-copy-v2.md](./ad-copy-v2.md) and [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md) for those.*

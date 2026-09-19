@@ -1,6 +1,6 @@
 # Photo Recipes — How to Spend $300
 
-Tight test budget for the first paid + creator push. Do this **only after** organic Asks are flowing (≥30/14d preferred) and Ask is above the fold.
+Tight test budget for the first paid + creator push. Do this **only after** organic Auto Optimizes are flowing (≥30/14d preferred) and Auto Optimize is the clear primary action on iOS. Copy + creative pairing: [ad-copy-v2.md](./ad-copy-v2.md).
 
 ---
 
@@ -8,9 +8,9 @@ Tight test budget for the first paid + creator push. Do this **only after** orga
 
 | Amount | Channel | Job |
 | ---: | --- | --- |
-| **$150** | Meta | Prospecting Ask — creative **C3** + **landscape/travel interest stack** |
+| **$150** | Meta | Prospecting **install / Auto Optimize** — creatives **ios-hero** + **looks-strip** + landscape/travel interest stack |
 | **$100** | Micro-creators | **2 creators × $50** (5k–80k, landscape/travel/technique) |
-| **$50** | Tools / magnet **or** Reddit | PDF polish + tiny tool stack **or** small Reddit promo test |
+| **$50** | Tools / magnet **or** Reddit | PDF polish + tiny tool stack **or** small Reddit promo → TestFlight |
 
 **Total: $300**
 
@@ -20,18 +20,20 @@ Tight test budget for the first paid + creator push. Do this **only after** orga
 
 | Setting | Choice |
 | --- | --- |
-| Campaign | Prospecting — Ask |
-| Creative | **C3** (Sunset / dark foreground / kids / wind → “What’s the recipe?”) |
-| Audience | Landscape / travel interest stack (see ad-plan) |
-| Copy starters | PT3 + H2 or H3 |
-| Optimization | Ask (or landing-page views → Ask if events thin) |
+| Campaign | Prospecting — App Store / TestFlight installs **or** Auto Optimize events |
+| Creative | **ios-hero** (viewfinder → Auto Optimize → dials move → Ready) + **looks-strip** (field looks as capture grades, intensity 0–1) |
+| Audience | Landscape / travel / photography-enthusiast interest stack |
+| Copy starters | From [ad-copy-v2.md](./ad-copy-v2.md): PT3 + H2/H3 (or PT1 + H1); CTAs **Get on TestFlight** / **Download — App Store** |
+| Optimization | Install (preferred) or Auto Optimize event if pixel/SKAN volume allows |
 | Daily | ~$10–15/day over ~10–14 days |
+
+**Landing:** App Store product page or TestFlight invite — **not** a deep web app.
 
 ### Kill rule
 
-**CPA-Ask ≤ $3** — if CPA-Ask stays **above $3 after 50 clicks**, kill the ad set. Do not “just give it more budget.”
+**CPA-install ≤ $3** (or **CPA-AO ≤ $3** if optimizing to Auto Optimize) — if CPA stays **above $3 after 50 clicks**, kill the ad set. Do not “just give it more budget.”
 
-Good: CPA-Ask ≤ $2 → duplicate winner, test one new PT/H.
+Good: CPA-install (or CPA-AO) ≤ $2 → duplicate winner, test one new PT/H from ad-copy-v2.
 
 ---
 
@@ -41,11 +43,11 @@ Good: CPA-Ask ≤ $2 → duplicate winner, test one new PT/H.
 | --- | --- |
 | Size | 5k–80k followers |
 | Niche | Landscape, travel, workshop-style technique |
-| Deliverable | 1 authentic Story or short + honest Free Peek/Pro trial mention |
-| Brief | “Not filters — field recipes. Show Ask once.” |
-| Tracking | Unique UTM or trial code per creator |
+| Deliverable | 1 authentic Story or short + honest Free Peek / Pro trial + TestFlight or App Store CTA |
+| Brief | “Field looks = capture grades on the viewfinder, not beauty filters. Show **Auto Optimize** writing shutter/ISO/EV/WB/focus — not Ask. Slogan: Set the shot. Then take it.” |
+| Tracking | Unique UTM or TestFlight / trial code per creator |
 
-Pay on delivery. Prefer creators who already shoot with real cameras.
+Pay on delivery. Prefer creators who already shoot with real cameras (phone as companion).
 
 ---
 
@@ -55,12 +57,12 @@ Pay on delivery. Prefer creators who already shoot with real cameras.
 
 - Finish **5 Field Recipes** PDF (design pass)
 - Lightweight email/form tool trial if needed
-- QR cards for one club night
+- QR cards for one club night → TestFlight
 
 **Option B — Reddit**
 
 - Small promo/conversation ads to technique-friendly subs
-- Same kill mindset: if no Asks cheaply, stop
+- Same kill mindset: if no installs / Auto Optimizes cheaply, stop
 
 Pick **one** — don’t split $50 into noise.
 
@@ -70,29 +72,29 @@ Pick **one** — don’t split $50 into noise.
 
 | Day | Action |
 | --- | --- |
-| **1** | Confirm analytics + UTMs; finalize C3 static/video |
-| **2** | Launch Meta $10–15/day; send 2 creator briefs |
+| **1** | Confirm analytics + UTMs; finalize ios-hero + looks-strip; copy from ad-copy-v2 |
+| **2** | Launch Meta $10–15/day → App Store / TestFlight; send 2 creator briefs |
 | **3–4** | Spend magnet/$50 bucket (PDF or Reddit setup) |
 | **5** | First Meta read: CTR + clicks; don’t panic-edit yet |
-| **6–7** | Creators post; boost monitoring of Ask + UTMs |
-| **8** | Kill/iterate Meta if CPA-Ask >$3 and ≥50 clicks |
+| **6–7** | Creators post; monitor installs + Auto Optimize + UTMs |
+| **8** | Kill/iterate Meta if CPA-install (or CPA-AO) >$3 and ≥50 clicks |
 | **9–10** | Scale only winners; pause losers |
 | **11–12** | Collect creator learnings; request raw posts for organic reuse |
 | **13** | Decide: extend Meta with leftover vs stop |
-| **14** | Write 1-page readout: spend, Asks, trials, CPA-Ask, next bet |
+| **14** | Write 1-page readout: spend, installs, Auto Optimizes, trials, CPA, next bet |
 
 ---
 
 ## What **not** to buy with $300
 
-- App Store featuring / ASO packages
-- Google Search ads (wait for SEO pages)
+- Google Search ads (wait for SEO → TestFlight bridge)
 - TikTok Spark Ads before organic hooks work
 - Fancy brand film / agency retainers
-- Broad “awareness” campaigns with no Ask event
+- Broad “awareness” campaigns with no install or Auto Optimize event
 - More than 2 creators at this budget (dilutes learning)
 - Tool stacks you won’t use in 14 days
-- Boosting random FB posts without UTM + Ask tracking
+- Boosting random FB posts without UTM + install/AO tracking
+- Paid traffic to paused deep web-app features
 
 ---
 
@@ -100,10 +102,10 @@ Pick **one** — don’t split $50 into noise.
 
 | Result | Meaning |
 | --- | --- |
-| CPA-Ask ≤ $2 and ≥20 Asks | Repeatable Meta angle — consider next $500 |
-| Creators drove ≥10 Asks combined | Keep creator channel; raise to $75–100 next |
-| Neither | Stop paid; fix offer/landing/Ask UX; lean on outreach playbook |
+| CPA-install (or CPA-AO) ≤ $2 and ≥20 Auto Optimizes | Repeatable Meta angle — consider next $500 |
+| Creators drove ≥10 Auto Optimizes combined | Keep creator channel; raise to $75–100 next |
+| Neither | Stop paid; fix offer / onboarding / AO UX; lean on outreach playbook |
 
 ---
 
-*Related: [ad-plan.md](./ad-plan.md) · [gtm-plan.md](./gtm-plan.md) · [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md)*
+*Related: [ad-copy-v2.md](./ad-copy-v2.md) · [gtm-plan.md](./gtm-plan.md) · [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md)*
