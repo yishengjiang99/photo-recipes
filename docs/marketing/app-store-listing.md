@@ -10,14 +10,16 @@ Photo Recipes
 Alts: Sets Shutter ISO Focus | Auto Optimize Camera Settings | Field Settings for Enthusiasts
 
 ## Promotional Text (170 char) — rotatable without resubmit
-New: Agentic Auto Optimize sets shutter, ISO, EV, WB & focus on the live camera. Coach-only: aperture/ND/tripod. For serious enthusiasts. 1 free/day. Pro trial 7 days.
+Point at the shot — Auto Optimize sets shutter, ISO & focus from the viewfinder. Capture the technique, not fix later. For serious enthusiasts. 1 free/day. Pro trial 7 days.
 
 ## Description (full — App Store; use line breaks)
 
 Photo Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the phone as a companion tool. Better settings in the field, not filters afterward.
 
-AUTO OPTIMIZE
-Tap Auto Optimize on the live viewfinder. The agent runs Sense → Reason → Apply → Verify → Capture: it senses light and motion, matches a photography recipe from your skill library, writes camera settings you can see (before → after), verifies exposure, and tells you when you’re Ready to capture. Optional pan left/right cues help you reframe.
+Point your phone at the shot — Photo Recipes Auto Optimizes shutter, ISO, and focus so you capture the technique, not fix it later.
+
+AUTO OPTIMIZE — FROM VIEWFINDER
+Point at the scene and tap Auto Optimize on the live viewfinder. The agent runs Sense → Reason → Apply → Verify → Capture: it senses light and motion, matches a photography recipe from your skill library, writes camera settings you can see (before → after), verifies exposure, and tells you when you’re Ready to capture. Optional pan left/right cues help you reframe. Set the shot. Then take it.
 
 CONTROLS WE SET (ON DEVICE)
 Auto Optimize agentically sets what the phone camera can actually change:
@@ -34,8 +36,8 @@ Aperture, ND filters, and tripod/support stay guidance — we don’t fake apert
 PHOTOGRAPHY SKILL LIBRARY
 Classic field techniques — panning, motion control, HDR, focus discipline, low angle, and more — as recipes with dials, steps, and checklists. Browse free anytime.
 
-VOICE + FROM VIEWFINDER
-Dictate the scene or use a From viewfinder note. Hands stay on the camera; the agent uses your note while optimizing.
+FROM VIEWFINDER
+Use a From viewfinder note so the agent sees what you’re aiming at while optimizing. (Optional: dictate a short scene note if you prefer.)
 
 TEACH MODE
 Ask “Why this?” after a run. See the recipe choice, which dials moved (shutter, ISO, EV, WB, focus), and what to watch for — instructor-at-your-shoulder, not a chat wall.
@@ -62,20 +64,21 @@ Suggested exact string (count in editor):
 
 (Verify character count when pasting; if over, drop “landscape” then “optimize”.)
 
-## What’s New (for Auto Optimize / controls revision)
-Auto Optimize now highlights agentic device controls — shutter, ISO, EV bias, WB, focus lock/POI (zoom/lens when available). Aperture, ND, tripod stay coach guidance. Voice + From viewfinder. Teach mode. Free Peek: 1 optimize/day.
+## What’s New (for Auto Optimize / viewfinder-first revision)
+Point at the shot — Auto Optimize from the viewfinder sets shutter, ISO, EV bias, WB, focus lock/POI (zoom/lens when available). Aperture, ND, tripod stay coach guidance. Teach mode. Free Peek: 1 optimize/day. Set the shot. Then take it.
 
 ## Screenshot captions (6)
-1. Auto Optimize sets shutter, ISO, EV, WB, focus
-2. Before → after dials on the live camera
+1. Point. Auto Optimize. Sets shutter, ISO, focus
+2. From viewfinder — before → after dials on the live camera
 3. Pan cues when you need to reframe
 4. Skill library for serious enthusiasts
-5. Voice it — or From viewfinder
+5. Set the shot. Then take it.
 6. Teach mode: why these settings moved
 
 ## ASO notes
 - Subtitle options lead with “Agentic Camera Settings” or “Sets Shutter ISO Focus” for enthusiast/settings search.
 - First 3 screenshots must show viewfinder + Auto Optimize CTA + real dials (shutter/ISO/EV/WB/focus) — not Library alone; never fake aperture writes.
+- Lead creative with From viewfinder Auto Optimize; voice is not a caption or promo lead.
 - One coach-only disclaimer in description is enough.
 - Category: Photo & Video; secondary Education optional.
 - Custom product page later: “Landscape” vs “Motion/Panning”.
