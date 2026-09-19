@@ -161,7 +161,12 @@ function runRecommend(
       res.json({
         presetId: result.presetId,
         reason: result.reason,
+        teachWhy: result.teachWhy,
         tips: result.tips,
+        phoneTargets: result.phoneTargets,
+        coachOnly: result.coachOnly,
+        panCue: result.panCue,
+        senseSummary: result.senseSummary,
         preset: result.preset,
         model: result.model,
         vision: Boolean(parsed.imageDataUrl),

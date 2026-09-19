@@ -2,6 +2,9 @@
  * Grok speech-to-text proxy.
  * Client uploads audio → we forward to xAI with XAI_API_KEY (never on device).
  * Batch REST for v1; live WSS (interim_results / smart_turn) is a v1.1 follow-up.
+ *
+ * Transcripts feed Auto Optimize / Ask scene notes — keyterms bias toward field-coach
+ * vocabulary (exposure, panning, HDR) so STT matches agentic prompt v2 tone.
  */
 import type { Express, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
@@ -42,6 +45,9 @@ export const PHOTO_STT_KEYTERMS = [
   'foreground',
   'landscape',
   'cyclist',
+  'pan left',
+  'pan right',
+  'Auto Optimize',
 ] as const
 
 export const ALLOWED_AUDIO_MIMES = new Set([
