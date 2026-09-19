@@ -76,6 +76,32 @@ Live preview is **edge-to-edge**; chrome is ZStack overlays only (`design-handof
 
 Shared `CameraSession.applyPhoneTargets` (PR #11) applies shutter/ISO/EV/WB/focusMode plus optional **`zoom`** (`videoZoomFactor`) and **`focusPoint` {x,y}** (0–1). `panCue` → chevrons; `teachWhy` / `coachOnly` → Teach sheet.
 
+### phoneTargets capability matrix (apply v2 · wire #21)
+
+All keys optional; unsupported keys are **skipped** (clamp/coach banners). Never pretends aperture was set.
+
+| Key | AVFoundation API | Fallback |
+|-----|------------------|----------|
+| `shutter` / `exposureDurationSec` + `iso` | `setExposureModeCustom(duration:iso:)` | Guidance + clamp banner |
+| `ev` | `setExposureTargetBias` | Skip if unsupported |
+| `focusMode` / `focusPoint` | POI + locked / continuous / auto | Guidance |
+| `lensPosition` | `setFocusModeLocked(lensPosition:)` | Guidance if unsupported |
+| `whiteBalance` string / `{temperature,tint}` / `{redGain,greenGain,blueGain}` | Locked WB gains / temp–tint helper | Guidance |
+| `zoom` | `videoZoomFactor` | Clamped to device min/max |
+| `cameraDevice` `ultraWide`\|`wide`\|`tele` | DiscoverySession optical switch | Prefer over zoom-only; banner if missing |
+| `torch` `{mode,level}` | `setTorchModeOn(level:)` / off / auto | Skip if no torch |
+| `flash` | `AVCapturePhotoSettings.flashMode` | Skip if unsupported |
+| `lowLightBoost` | `automaticallyEnablesLowLightBoostWhenAvailable` | Skip if unsupported |
+| `videoHDR` | `automaticallyAdjustsVideoHDREnabled` / format HDR | Skip if format lacks HDR |
+| `frameRate` / `preferFormatHint` | `activeFormat` + min/max frame duration | Soft skip |
+| `bracket.stops` | Sequential EV-bias burst (HW bracket when available) | Best-effort; limits in apply notes |
+| `monitorSubjectAreaChange` | `isSubjectAreaChangeMonitoringEnabled` + observer → debounced Auto Optimize (~1.5s) | Off when false/absent |
+| `maxPhotoDimensions` | `AVCapturePhotoOutput.maxPhotoDimensions` (iOS 16+) | Skip on older OS |
+| `previewLUT` | Preview overlay only (`CameraPreviewView`) | **Never** baked into JPEG |
+| `simulatedAperture` | OS-gated if API exists | Else coach / `coachOnly.aperture` |
+| `coachOnly.aperture` / `nd` / `tripod` | — | UI guidance only |
+
+
 ### Viewfinder pan / point cues
 
 Quiet edge chevrons (`ViewfinderPanCuesView`) cue reframing from the active recipe + optional agent status:
