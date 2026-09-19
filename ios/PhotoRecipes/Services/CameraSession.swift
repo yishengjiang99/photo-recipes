@@ -68,6 +68,8 @@ final class CameraSession: NSObject, ObservableObject {
     @Published var optimizeReason: String?
 
     private var configured = false
+    private var interruptionObserver: NSObjectProtocol?
+    private var interruptionEndedObserver: NSObjectProtocol?
 
     func checkAuth() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -85,6 +87,9 @@ final class CameraSession: NSObject, ObservableObject {
         guard auth == .authorized else { return }
         do {
             try await configureIfNeeded()
+            // Re-start safe: drop any prior observers before attaching new ones.
+            unregisterInterruptionObservers()
+            registerInterruptionObservers()
             await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
                 queue.async { [weak self] in
                     self?.session.startRunning()
@@ -99,9 +104,56 @@ final class CameraSession: NSObject, ObservableObject {
     }
 
     func stop() {
+        unregisterInterruptionObservers()
         queue.async { [weak self] in
             self?.session.stopRunning()
             Task { @MainActor in self?.isRunning = false }
+        }
+    }
+
+    private func registerInterruptionObservers() {
+        let center = NotificationCenter.default
+        interruptionObserver = center.addObserver(
+            forName: AVCaptureSession.wasInterruptedNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] notification in
+            guard let self else { return }
+            let reason = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int)
+                .flatMap(AVCaptureSession.InterruptionReason.init(rawValue:))
+            let message: String = {
+                switch reason {
+                case .audioDeviceInUseByAnotherClient, .videoDeviceInUseByAnotherClient:
+                    return "Camera is being used by another app."
+                case .videoDeviceNotAvailableDueToSystemPressure:
+                    return "Camera paused due to system pressure."
+                case .videoDeviceNotAvailableWithMultipleForegroundApps:
+                    return "Camera unavailable while multitasking."
+                default:
+                    return "Camera interrupted — tap to resume."
+                }
+            }()
+            Task { @MainActor in self.errorMessage = message }
+        }
+        interruptionEndedObserver = center.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in self.errorMessage = nil }
+        }
+    }
+
+    private func unregisterInterruptionObservers() {
+        let center = NotificationCenter.default
+        if let observer = interruptionObserver {
+            center.removeObserver(observer)
+            interruptionObserver = nil
+        }
+        if let observer = interruptionEndedObserver {
+            center.removeObserver(observer)
+            interruptionEndedObserver = nil
         }
     }
 
@@ -248,10 +300,11 @@ final class CameraSession: NSObject, ObservableObject {
 
     func focus(at norm: CGPoint, lock: Bool) {
         guard let device = input?.device else { return }
-        focusPoint = norm
+        let clamped = CGPoint(x: min(max(norm.x, 0), 1), y: min(max(norm.y, 0), 1))
+        focusPoint = clamped
         configure(device) {
-            if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = norm }
-            if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = norm }
+            if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = clamped }
+            if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = clamped }
             if lock, device.isFocusModeSupported(.locked) {
                 device.focusMode = .locked
             } else if device.isFocusModeSupported(.autoFocus) {

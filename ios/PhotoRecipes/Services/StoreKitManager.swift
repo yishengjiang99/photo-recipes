@@ -31,7 +31,9 @@ final class StoreKitManager: ObservableObject {
     init(api: APIClient = .shared, entitlements: EntitlementsStore) {
         self.api = api
         self.entitlements = entitlements
-        updatesTask = Task { await listenForTransactions() }
+        updatesTask = Task { [weak self] in
+            await self?.listenForTransactions()
+        }
     }
 
     deinit {
@@ -155,7 +157,8 @@ final class StoreKitManager: ObservableObject {
                 productId: productId,
                 plan: plan
             )
-            if res.pro == true || res.ok == true {
+            // Fail closed: only trust explicit pro from verified server payload.
+            if res.pro == true {
                 entitlements.applyVerifiedPro(plan: plan)
             }
             await entitlements.refresh()
