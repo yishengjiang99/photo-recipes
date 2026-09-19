@@ -42,12 +42,6 @@ export type WhiteBalanceTarget =
   | WhiteBalanceTemperatureTint
   | WhiteBalanceGains
 
-export type TorchTarget = {
-  mode: 'off' | 'on' | 'auto'
-  /** Torch intensity 0…1 when mode is on (device-clamped). */
-  level?: number
-}
-
 export type BracketTarget = {
   /** EV offsets for multi-capture / HDR burst, e.g. [-2, 0, 2]. */
   stops: number[]
@@ -59,12 +53,16 @@ export type MaxPhotoDimensions = {
   height: number
 }
 
+/**
+ * Phone-settable targets — key names aligned with iOS `PhoneTargets` CodingKeys
+ * (ios/PhotoRecipes/Models/RecommendResponse.swift). All optional/additive.
+ */
 export interface PhoneTargets {
-  /** Human / recipe shutter string, e.g. "1/60", "1/500". Keep alongside exposureDurationSec. */
+  /** Human / recipe shutter string, e.g. "1/60". Keep alongside exposureDurationSec. */
   shutter?: string
   /**
    * Numeric exposure duration in seconds for setExposureModeCustom (e.g. 1/60 → 0.01667).
-   * Prefer with iso when locking a custom pair; shutter string may still be present for UI.
+   * Prefer with iso when locking a custom pair.
    */
   exposureDurationSec?: number
   /** ISO as string ("100", "auto") or number. */
@@ -74,41 +72,55 @@ export interface PhoneTargets {
   whiteBalance?: WhiteBalanceTarget
   focusMode?: string
   /**
-   * Multiplicative zoom factor for AVCaptureDevice.videoZoomFactor (1 = 1×, 2 = 2×).
-   * Prefer cameraDevice for optical lens switch; zoom is digital / within-lens factor.
-   * String forms like "2x" are accepted by the server and normalized to a number.
+   * videoZoomFactor (1 = 1×). Prefer cameraDevice for optical lens switch.
+   * String forms like "2x" accepted and normalized.
    */
   zoom?: number
-  /**
-   * Normalized viewfinder tap-to-focus point (0–1). Omit when focusMode alone is enough.
-   * Spoken e.g. "lock focus on the rider" → focusMode locked + optional focusPoint.
-   */
+  /** Normalized focus POI 0–1. */
   focusPoint?: { x: number; y: number }
   /** Locked lens position 0…1 (setFocusModeLocked). */
   lensPosition?: number
-  torch?: TorchTarget
-  /** Photo output flash when supported. */
-  flash?: 'off' | 'on' | 'auto'
-  lowLightBoost?: boolean
+  /** Torch: off | on | auto. Gate: hasTorch. */
+  torchMode?: 'off' | 'on' | 'auto'
+  /** Torch intensity 0…1 when torchMode is on. */
+  torchLevel?: number
+  /** Stills flash: off | on | auto. Gate: isFlashAvailable. */
+  flashMode?: 'off' | 'on' | 'auto'
+  /** Low-light boost. Gate: isLowLightBoostSupported. iOS key: lowLightBoostEnabled. */
+  lowLightBoostEnabled?: boolean
+  /** Video HDR when format supports. */
   videoHDR?: boolean
-  /** Optical camera switch vs digital zoom only. */
-  cameraDevice?: 'ultraWide' | 'wide' | 'tele'
-  /** Target fps; pair with preferFormatHint when useful. */
+  /** Auto-adjust video HDR when available (additive; iOS may ignore until decoded). */
+  automaticallyAdjustsVideoHDREnabled?: boolean
+  /**
+   * Optical camera switch vs digital zoom.
+   * Short names ultraWide|wide|tele|dual|triple — iOS maps to builtIn* / virtual devices.
+   */
+  cameraDevice?: 'ultraWide' | 'wide' | 'tele' | 'dual' | 'triple'
+  /** Target fps; iOS maps to activeVideoMin/MaxFrameDuration. */
   frameRate?: number
+  /** Soft activeFormat hint e.g. "high-fps", "4k60", "cinematic". */
   preferFormatHint?: string
-  /** Multi-capture HDR / AE bracket plan for iOS burst. */
+  /** Explicit min frame duration string e.g. "1/120" (optional alternate to frameRate). */
+  minFrameDuration?: string
+  /** Explicit max frame duration string e.g. "1/24". */
+  maxFrameDuration?: string
+  /** Multi-capture HDR / AE bracket — iOS executes burst. */
   bracket?: BracketTarget
-  /** When true, iOS should re-trigger Auto Optimize on subject-area change. */
-  monitorSubjectAreaChange?: boolean
+  /** When true, iOS enables subject-area monitoring → re-trigger Auto Optimize. */
+  subjectAreaChangeMonitoringEnabled?: boolean
+  /** AVCapturePhotoOutput.photoQualityPrioritization. */
+  photoQualityPrioritization?: 'speed' | 'balanced' | 'quality'
+  /** Max photo pixel dimensions when supported (iOS 16+). */
   maxPhotoDimensions?: MaxPhotoDimensions
   /**
-   * Preview-only LUT id. MUST NOT be sold as a capture magic filter —
-   * capture settings (exposure/WB/focus/…) remain primary.
+   * Preview-only LUT id. MUST NOT be sold as a capture magic filter.
+   * Additive — iOS may ignore until preview pipeline wires it.
    */
   previewLUT?: string
   /**
-   * P1 / OS-gated simulated aperture. If the device cannot apply it, put f-stop in coachOnly.aperture.
-   * Never invent hardware aperture on fixed-aperture phones.
+   * P1 / OS-gated simulated aperture. Else coachOnly.aperture.
+   * Documented; do not block P0 if unsupported.
    */
   simulatedAperture?: number
 }
@@ -207,7 +219,7 @@ const tools = [
     function: {
       name: 'select_preset',
       description:
-        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (AVFoundation levers: shutter/exposureDurationSec/iso/ev/WB/focus/lensPosition/zoom/cameraDevice/torch/flash/HDR/bracket/…), coach-only guidance, optional pan cue, and teachWhy. Aperture stays coachOnly (or simulatedAperture only if OS-gated). previewLUT is preview-only. If the user message includes a control tweak (typed or spoken transcript), phoneTargets MUST reflect that ask. This ends the loop.',
+        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (AVFoundation levers: shutter/exposureDurationSec/iso/ev/WB/focus/lensPosition/zoom/cameraDevice/torchMode/flashMode/HDR/bracket/…), coach-only guidance, optional pan cue, and teachWhy. Aperture stays coachOnly (or simulatedAperture only if OS-gated). previewLUT is preview-only. If the user message includes a control tweak (typed or spoken transcript), phoneTargets MUST reflect that ask. This ends the loop.',
       parameters: {
         type: 'object',
         properties: {
@@ -307,47 +319,53 @@ const tools = [
                 type: 'number',
                 description: 'Locked lens position 0…1 (setFocusModeLocked)',
               },
-              torch: {
-                type: 'object',
-                description: 'Torch / continuous light when device supports it',
-                properties: {
-                  mode: {
-                    type: 'string',
-                    enum: ['off', 'on', 'auto'],
-                  },
-                  level: {
-                    type: 'number',
-                    description: 'Intensity 0…1 when mode is on',
-                  },
-                },
-                required: ['mode'],
-                additionalProperties: false,
-              },
-              flash: {
+              torchMode: {
                 type: 'string',
                 enum: ['off', 'on', 'auto'],
-                description: 'Still-photo flash mode when PhotoOutput allows',
+                description: 'Torch / fill / night assist. Gate: hasTorch. (iOS CodingKey torchMode)',
               },
-              lowLightBoost: {
+              torchLevel: {
+                type: 'number',
+                description: 'Torch intensity 0…1 when torchMode is on',
+              },
+              flashMode: {
+                type: 'string',
+                enum: ['off', 'on', 'auto'],
+                description: 'Still-photo flash when PhotoOutput allows (iOS CodingKey flashMode)',
+              },
+              lowLightBoostEnabled: {
                 type: 'boolean',
-                description: 'Enable low-light boost when device supports it',
+                description: 'Low-light boost. Gate: isLowLightBoostSupported. (iOS: lowLightBoostEnabled)',
               },
               videoHDR: {
                 type: 'boolean',
                 description: 'Video HDR on/off when format supports it',
               },
+              automaticallyAdjustsVideoHDREnabled: {
+                type: 'boolean',
+                description: 'Let device auto-adjust video HDR when available',
+              },
               cameraDevice: {
                 type: 'string',
-                enum: ['ultraWide', 'wide', 'tele'],
-                description: 'Optical camera switch (vs digital zoom only)',
+                enum: ['ultraWide', 'wide', 'tele', 'dual', 'triple'],
+                description:
+                  'Optical / multi-cam switch vs digital zoom. iOS maps to builtInUltraWideCamera / wide / tele / virtual.',
               },
               frameRate: {
                 type: 'number',
-                description: 'Target fps (maps to min/max frame duration on active format)',
+                description: 'Target fps (maps to activeVideoMin/MaxFrameDuration)',
               },
               preferFormatHint: {
                 type: 'string',
-                description: 'Soft hint for activeFormat selection (e.g. "4k60", "1080p30")',
+                description: 'Soft activeFormat hint e.g. "high-fps", "4k60", "cinematic", "photo"',
+              },
+              minFrameDuration: {
+                type: 'string',
+                description: 'Optional explicit min frame duration e.g. "1/120"',
+              },
+              maxFrameDuration: {
+                type: 'string',
+                description: 'Optional explicit max frame duration e.g. "1/24"',
               },
               bracket: {
                 type: 'object',
@@ -368,10 +386,15 @@ const tools = [
                 required: ['stops'],
                 additionalProperties: false,
               },
-              monitorSubjectAreaChange: {
+              subjectAreaChangeMonitoringEnabled: {
                 type: 'boolean',
                 description:
-                  'When true, iOS enables subject-area change monitoring and should re-trigger Auto Optimize on change',
+                  'When true, iOS enables subject-area monitoring and should re-trigger Auto Optimize on subjectAreaDidChange',
+              },
+              photoQualityPrioritization: {
+                type: 'string',
+                enum: ['speed', 'balanced', 'quality'],
+                description: 'AVCapturePhotoOutput.photoQualityPrioritization',
               },
               maxPhotoDimensions: {
                 type: 'object',
@@ -584,24 +607,60 @@ function parseWhiteBalance(
   return { error: 'phoneTargets.whiteBalance object needs temperature/tint or redGain/greenGain/blueGain' }
 }
 
-function parseTorch(raw: unknown): TorchTarget | undefined | { error: string } {
+function parseOffOnAuto(
+  raw: unknown,
+  field: string,
+): 'off' | 'on' | 'auto' | undefined | { error: string } {
   if (raw == null) return undefined
-  if (typeof raw !== 'object' || Array.isArray(raw)) {
-    return { error: 'phoneTargets.torch must be an object { mode, level? }' }
+  if (raw !== 'off' && raw !== 'on' && raw !== 'auto') {
+    return { error: `phoneTargets.${field} must be off|on|auto` }
   }
-  const o = raw as Record<string, unknown>
-  const mode = o.mode
-  if (mode !== 'off' && mode !== 'on' && mode !== 'auto') {
-    return { error: 'phoneTargets.torch.mode must be off|on|auto' }
+  return raw
+}
+
+function parseUnit01(
+  raw: unknown,
+  field: string,
+): number | undefined | { error: string } {
+  if (raw == null) return undefined
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return { error: `phoneTargets.${field} must be a finite number` }
   }
-  if (o.level == null) return { mode }
-  if (typeof o.level !== 'number' || !Number.isFinite(o.level)) {
-    return { error: 'phoneTargets.torch.level must be a finite number' }
+  if (raw < 0 || raw > 1) {
+    return { error: `phoneTargets.${field} must be in 0–1` }
   }
-  if (o.level < 0 || o.level > 1) {
-    return { error: 'phoneTargets.torch.level must be in 0–1' }
+  return raw
+}
+
+/** Accept iOS keys torchMode/torchLevel, or legacy { mode, level } object. */
+function parseTorchFields(
+  o: Record<string, unknown>,
+): { torchMode?: 'off' | 'on' | 'auto'; torchLevel?: number } | { error: string } {
+  let torchMode: 'off' | 'on' | 'auto' | undefined
+  let torchLevel: number | undefined
+
+  if (o.torch != null && typeof o.torch === 'object' && !Array.isArray(o.torch)) {
+    const t = o.torch as Record<string, unknown>
+    const mode = parseOffOnAuto(t.mode, 'torchMode')
+    if (mode && typeof mode === 'object' && 'error' in mode) return mode
+    if (typeof mode === 'string') torchMode = mode
+    const level = parseUnit01(t.level, 'torchLevel')
+    if (level && typeof level === 'object' && 'error' in level) return level
+    if (typeof level === 'number') torchLevel = level
   }
-  return { mode, level: o.level }
+
+  const modeDirect = parseOffOnAuto(o.torchMode, 'torchMode')
+  if (modeDirect && typeof modeDirect === 'object' && 'error' in modeDirect) return modeDirect
+  if (typeof modeDirect === 'string') torchMode = modeDirect
+
+  const levelDirect = parseUnit01(o.torchLevel, 'torchLevel')
+  if (levelDirect && typeof levelDirect === 'object' && 'error' in levelDirect) return levelDirect
+  if (typeof levelDirect === 'number') torchLevel = levelDirect
+
+  const out: { torchMode?: 'off' | 'on' | 'auto'; torchLevel?: number } = {}
+  if (torchMode) out.torchMode = torchMode
+  if (torchLevel != null) out.torchLevel = torchLevel
+  return out
 }
 
 function parseBracket(raw: unknown): BracketTarget | undefined | { error: string } {
@@ -707,22 +766,24 @@ function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
     out.lensPosition = o.lensPosition
   }
 
-  const torch = parseTorch(o.torch)
-  if (torch && typeof torch === 'object' && 'error' in torch) return torch
-  if (torch && 'mode' in torch) out.torch = torch
+  const torchFields = parseTorchFields(o)
+  if ('error' in torchFields) return torchFields
+  if (torchFields.torchMode) out.torchMode = torchFields.torchMode
+  if (torchFields.torchLevel != null) out.torchLevel = torchFields.torchLevel
 
-  if (o.flash != null) {
-    if (o.flash !== 'off' && o.flash !== 'on' && o.flash !== 'auto') {
-      return { error: 'phoneTargets.flash must be off|on|auto' }
-    }
-    out.flash = o.flash
-  }
+  // Prefer flashMode (iOS); accept legacy `flash` alias.
+  const flashRaw = o.flashMode ?? o.flash
+  const flashMode = parseOffOnAuto(flashRaw, 'flashMode')
+  if (flashMode && typeof flashMode === 'object' && 'error' in flashMode) return flashMode
+  if (typeof flashMode === 'string') out.flashMode = flashMode
 
-  if (o.lowLightBoost != null) {
-    if (typeof o.lowLightBoost !== 'boolean') {
-      return { error: 'phoneTargets.lowLightBoost must be boolean' }
+  // Prefer lowLightBoostEnabled (iOS); accept legacy lowLightBoost.
+  const llb = o.lowLightBoostEnabled ?? o.lowLightBoost
+  if (llb != null) {
+    if (typeof llb !== 'boolean') {
+      return { error: 'phoneTargets.lowLightBoostEnabled must be boolean' }
     }
-    out.lowLightBoost = o.lowLightBoost
+    out.lowLightBoostEnabled = llb
   }
 
   if (o.videoHDR != null) {
@@ -732,11 +793,19 @@ function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
     out.videoHDR = o.videoHDR
   }
 
-  if (o.cameraDevice != null) {
-    if (o.cameraDevice !== 'ultraWide' && o.cameraDevice !== 'wide' && o.cameraDevice !== 'tele') {
-      return { error: 'phoneTargets.cameraDevice must be ultraWide|wide|tele' }
+  if (o.automaticallyAdjustsVideoHDREnabled != null) {
+    if (typeof o.automaticallyAdjustsVideoHDREnabled !== 'boolean') {
+      return { error: 'phoneTargets.automaticallyAdjustsVideoHDREnabled must be boolean' }
     }
-    out.cameraDevice = o.cameraDevice
+    out.automaticallyAdjustsVideoHDREnabled = o.automaticallyAdjustsVideoHDREnabled
+  }
+
+  if (o.cameraDevice != null) {
+    const allowed = ['ultraWide', 'wide', 'tele', 'dual', 'triple'] as const
+    if (!(allowed as readonly string[]).includes(String(o.cameraDevice))) {
+      return { error: 'phoneTargets.cameraDevice must be ultraWide|wide|tele|dual|triple' }
+    }
+    out.cameraDevice = o.cameraDevice as (typeof allowed)[number]
   }
 
   if (o.frameRate != null) {
@@ -751,16 +820,30 @@ function parsePhoneTargets(raw: unknown): PhoneTargets | { error: string } {
 
   const preferFormatHint = asOptionalString(o.preferFormatHint)
   if (preferFormatHint) out.preferFormatHint = preferFormatHint
+  const minFrameDuration = asOptionalString(o.minFrameDuration)
+  if (minFrameDuration) out.minFrameDuration = minFrameDuration
+  const maxFrameDuration = asOptionalString(o.maxFrameDuration)
+  if (maxFrameDuration) out.maxFrameDuration = maxFrameDuration
 
   const bracket = parseBracket(o.bracket)
   if (bracket && typeof bracket === 'object' && 'error' in bracket) return bracket
   if (bracket && 'stops' in bracket) out.bracket = bracket
 
-  if (o.monitorSubjectAreaChange != null) {
-    if (typeof o.monitorSubjectAreaChange !== 'boolean') {
-      return { error: 'phoneTargets.monitorSubjectAreaChange must be boolean' }
+  // Prefer subjectAreaChangeMonitoringEnabled (iOS); accept legacy monitorSubjectAreaChange.
+  const sac = o.subjectAreaChangeMonitoringEnabled ?? o.monitorSubjectAreaChange
+  if (sac != null) {
+    if (typeof sac !== 'boolean') {
+      return { error: 'phoneTargets.subjectAreaChangeMonitoringEnabled must be boolean' }
     }
-    out.monitorSubjectAreaChange = o.monitorSubjectAreaChange
+    out.subjectAreaChangeMonitoringEnabled = sac
+  }
+
+  if (o.photoQualityPrioritization != null) {
+    const pq = o.photoQualityPrioritization
+    if (pq !== 'speed' && pq !== 'balanced' && pq !== 'quality') {
+      return { error: 'phoneTargets.photoQualityPrioritization must be speed|balanced|quality' }
+    }
+    out.photoQualityPrioritization = pq
   }
 
   const maxPhotoDimensions = parseMaxPhotoDimensions(o.maxPhotoDimensions)
@@ -972,7 +1055,7 @@ export function buildSystemPrompt(favorites?: string[], vision?: boolean): strin
     : `SENSE (text): Infer light, motion, subject, and depth from the photographer's scene note. Status-ready field notes only.`
 
   return `You are the Photo Recipes field assistant for Auto Optimize (Camera) and Ask / Photo Vision (web + iOS).
-Primary job: analyze the scene from the viewfinder (image + optional note) → select one catalog recipe → emit phoneTargets for Auto Optimize to apply (AVFoundation levers: exposure/WB/focus/lens/zoom/cameraDevice/torch/flash/HDR/bracket/…).
+Primary job: analyze the scene from the viewfinder (image + optional note) → select one catalog recipe → emit phoneTargets for Auto Optimize to apply (AVFoundation levers: exposure/WB/focus/lens/zoom/cameraDevice/torchMode/flashMode/HDR/bracket/…).
 Tone: darkroom field notes — quiet, concrete, instructor-at-your-shoulder. Never chatty. Never invent recipes.
 
 LOOP (strict):
@@ -990,14 +1073,14 @@ ALTERNATE INPUT (spoken / STT transcripts — secondary):
   • "zoom in a bit" / "go to 2x" → phoneTargets.zoom (videoZoomFactor number: 1 = 1×, 2 = 2×)
   • "pull EV down" → phoneTargets.ev; "daylight WB" → phoneTargets.whiteBalance
   • "switch to ultra-wide" → phoneTargets.cameraDevice "ultraWide"; "lock lens near" → lensPosition
-  • "torch on low" → torch { mode: "on", level }; "flash off" → flash "off"
-  • "bracket for HDR" → bracket { stops: [-2,0,2] }; "re-optimize if subject moves" → monitorSubjectAreaChange true
+  • "torch on low" → torchMode "on" + torchLevel; "flash off" → flashMode "off"
+  • "bracket for HDR" → bracket { stops: [-2,0,2] }; "re-optimize if subject moves" → subjectAreaChangeMonitoringEnabled true
 - When the intent is a control adjustment, phoneTargets MUST include the relevant keys (do not finalize with empty {} if they asked to change a settable control).
 
 CRITICAL RULES:
 - Catalog only: never invent preset ids, titles, or off-catalog recipes.
 - You MUST use tools. Do not free-form recommend without select_preset.
-- phoneTargets = AVFoundation levers only (all optional; omit if unsupported): shutter, exposureDurationSec, iso, ev, whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint, lensPosition, zoom, cameraDevice (ultraWide|wide|tele), torch {mode,level?}, flash, lowLightBoost, videoHDR, frameRate, preferFormatHint, bracket {stops,count?}, monitorSubjectAreaChange, maxPhotoDimensions, previewLUT (preview-only — NEVER a capture magic filter), simulatedAperture (P1/OS-gated only).
+- phoneTargets = AVFoundation levers only (all optional; omit if unsupported): shutter, exposureDurationSec, iso, ev, whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint, lensPosition, zoom, cameraDevice (ultraWide|wide|tele|dual|triple), torchMode, torchLevel, flashMode, lowLightBoostEnabled, videoHDR, automaticallyAdjustsVideoHDREnabled, frameRate, preferFormatHint, minFrameDuration, maxFrameDuration, bracket {stops,count?}, subjectAreaChangeMonitoringEnabled, photoQualityPrioritization, maxPhotoDimensions, previewLUT (preview-only — NEVER a capture magic filter), simulatedAperture (P1/OS-gated only). Prefer smallest useful set.
 - NEVER put hardware aperture in phoneTargets — use coachOnly.aperture (nd, tripod, notes stay coach-only). Prefer cameraDevice over zoom-only lens hints.
 - coachOnly = aperture, nd, tripod, notes — shown to the photographer, NOT applied on device.
 - teachWhy = 1–2 short sentences for Teach mode ("Why this?").
