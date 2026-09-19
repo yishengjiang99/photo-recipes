@@ -23,6 +23,7 @@ import {
 import { mountIapRoutes } from './iap.ts'
 import { mountSttRoutes } from './stt.ts'
 import { mountDescribeSceneRoutes } from './describeScene.ts'
+import { mountWaitlistRoutes } from './waitlist.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -50,6 +51,7 @@ mountStripeRoutes(app)
 mountIapRoutes(app)
 mountSttRoutes(app)
 mountDescribeSceneRoutes(app)
+mountWaitlistRoutes(app)
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -73,6 +75,7 @@ app.get('/api/health', (_req, res) => {
     vision: true,
     stt: Boolean(process.env.XAI_API_KEY?.trim()),
     describeScene: Boolean(process.env.XAI_API_KEY?.trim()),
+    waitlist: Boolean(process.env.RESEND_API_KEY?.trim()),
   })
 })
 
