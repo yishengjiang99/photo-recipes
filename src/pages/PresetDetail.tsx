@@ -98,9 +98,13 @@ export function PresetDetail() {
         <section className="mt-6 rounded-2xl border border-border bg-surface-2 p-4">
           <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent-soft">
             <Sparkles className="h-3.5 w-3.5" />
-            Grok picked this recipe
+            Recommended (coach)
           </h2>
           <p className="text-sm leading-relaxed text-ink-secondary">{ai.reason}</p>
+          <p className="mt-2 text-xs text-ink-tertiary">
+            Web Field Coach recommends dials from your viewfinder or photo. It does not write shutter,
+            ISO, EV, WB, or focus in the browser — the iOS app does via Auto Optimize.
+          </p>
           {ai.tips.length > 0 ? (
             <ul className="mt-3 space-y-1.5">
               {ai.tips.map((tip) => (
@@ -176,9 +180,12 @@ export function PresetDetail() {
       <div className="mt-8">
         <CameraDials
           dials={activeDials}
+          coachOnly={Boolean(ai)}
           label={
             variantId === 'base'
-              ? 'Recommended dials'
+              ? ai
+                ? 'Recommended (coach)'
+                : 'Recommended dials'
               : `${preset.subVariants?.find((v) => v.id === variantId)?.label ?? ''} dials`
           }
         />
