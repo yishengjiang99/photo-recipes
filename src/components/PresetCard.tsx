@@ -36,7 +36,7 @@ export function PresetCard({ preset, favorite, onToggleFavorite }: PresetCardPro
         aria-hidden
       />
       <Link
-        to={`/preset/${preset.id}`}
+        to={`/app/preset/${preset.id}`}
         className="block p-4 pl-5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 sm:p-5 sm:pl-6"
       >
         <div className="mb-3 flex items-start justify-between gap-3 pr-10">

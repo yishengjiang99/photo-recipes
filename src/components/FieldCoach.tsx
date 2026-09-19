@@ -244,7 +244,7 @@ export function FieldCoach() {
       }
 
       void refresh()
-      navigate(`/preset/${data.presetId}`, { state })
+      navigate(`/app/preset/${data.presetId}`, { state })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {

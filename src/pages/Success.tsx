@@ -77,7 +77,7 @@ export function Success() {
           <h1 className="mt-4 font-display text-2xl text-zinc-50">Welcome to Pro</h1>
           <p className="mt-2 text-sm text-zinc-400">{detail}</p>
           <Link
-            to="/"
+            to="/app"
             className="mt-6 inline-flex rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-400"
           >
             Back to library
@@ -91,7 +91,7 @@ export function Success() {
           <h1 className="mt-4 font-display text-2xl text-zinc-50">Couldn’t verify yet</h1>
           <p className="mt-2 text-sm text-zinc-400">{detail}</p>
           <Link
-            to="/"
+            to="/app"
             className="mt-6 inline-flex rounded-xl bg-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-200 ring-1 ring-zinc-700 hover:bg-zinc-700"
           >
             Back to library
