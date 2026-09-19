@@ -20,6 +20,7 @@ name: Deploy photo.grepawk.com
 on:
   push:
     branches: [main]
+    # Allowlist only — iOS / TestFlight changes (ios/**, ios-testflight.yml) do NOT deploy the site.
     paths:
       - 'src/**'
       - 'server/**'
@@ -33,6 +34,7 @@ on:
       - 'tsconfig*.json'
       - '.github/workflows/deploy-photo-grepawk.yml'
   workflow_dispatch:
+
 
 concurrency:
   group: deploy-photo-grepawk
