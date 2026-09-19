@@ -5,7 +5,7 @@ Ad creatives and briefs for Meta / Reddit / short-form. Field technique position
 ## Layout in repo
 
 - `assets/ads/c3/` — C3 Recipe card UI statics (PNG)
-- `docs/ads/` — briefs, copy pairing, idea dump, production notes
+- `docs/ads/` — briefs, idea dump, production notes
 
 ## C3 variants
 
@@ -18,12 +18,6 @@ Ad creatives and briefs for Meta / Reddit / short-form. Field technique position
 
 Sizes: `1080x1350` (4:5), `1080x1080` (1:1), `1080x1920` (9:16).
 
-## Copy pairing (Marketing §4)
+## Copy source of truth
 
-- C3: PT2 or PT5 + H1–H3 · CTA Learn More
-- C1: PT1 + H2 · Hooks 1/4
-- C2: PT3 + H3 · Hook 3
-- C4 retarget: PT5 + H5 · Sign Up / Get Offer
-- C5 Vision: HOLD
-
-See `docs/ads/copy-pairing.md` and `docs/ads/idea-dump.md`.
+Use [docs/marketing/ad-copy-v2.md](../marketing/ad-copy-v2.md) for current copy and hooks. Pair from ad-copy-v2 until `copy-pairing-v2.md` lands; the pairing matrix should live in `copy-pairing-v2.md` when Ad Designer adds it.
