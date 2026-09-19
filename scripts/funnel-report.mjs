@@ -51,10 +51,10 @@ const FUNNELS = {
 const pool = mysql.createPool(poolConfig())
 try {
   const [[dau]] = await pool.query(
-    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE ts >= (NOW(3) - INTERVAL 1 DAY)`,
+    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
   )
   const [[wau]] = await pool.query(
-    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE ts >= (NOW(3) - INTERVAL 7 DAY)`,
+    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
   )
   console.log(JSON.stringify({ days, dau: dau.n, wau: wau.n }, null, 2))
 
@@ -64,7 +64,7 @@ try {
     const [rows] = await pool.query(
       `SELECT event, COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
        FROM telemetry_events
-       WHERE ts >= (NOW(3) - INTERVAL ? DAY) AND event IN (${ph})${platformFilter}
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY) AND event IN (${ph})${platformFilter}
        GROUP BY event`,
       [days, ...events],
     )
