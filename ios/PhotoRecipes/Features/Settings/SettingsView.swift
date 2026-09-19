@@ -64,14 +64,10 @@ struct SettingsView: View {
                     }
 
                     Section("Voice") {
-                        Toggle("Auto Optimize after voice", isOn: Binding(
-                            get: { VoiceSettings.autoOptimizeAfterVoice },
-                            set: { VoiceSettings.autoOptimizeAfterVoice = $0 }
-                        ))
-                        Text("Off by default. When on, finishing a Camera dictate can start Auto Optimize.")
+                        Text("Camera dictate runs the same Auto Optimize → apply path as the button (including phoneTargets). Uses your Optimize quota.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Voice becomes text for scene matching. We don't keep audio clips.")
+                        Text("Field Coach mic fills the Ask field only — tap Recommend after. Voice becomes text for scene matching; we don't keep audio clips.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
