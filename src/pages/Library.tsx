@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AskGrok } from '../components/AskGrok'
-import { PhotoVision } from '../components/PhotoVision'
+import { FieldCoach } from '../components/FieldCoach'
 import { FilterBar } from '../components/FilterBar'
 import { PresetCard } from '../components/PresetCard'
 import { presets } from '../data/presets'
@@ -24,19 +23,15 @@ export function Library() {
   return (
     <div>
       <div className="mb-6 text-left">
-        <h1 className="font-display text-3xl text-zinc-50 sm:text-4xl">
+        <h1 className="font-display text-[1.75rem] text-ink sm:text-3xl">
           Recipe library
         </h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
-          Five field presets transcribed from the photography recipes book.
-          Tap a card for full steps, dials, and a shoot checklist — or ask Grok
-          which recipe fits your scene — or drop a photo for Photo Vision.
+        <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
+          Shoot checklists + dials. Ask when you’re stuck.
         </p>
       </div>
 
-      <AskGrok />
-
-      <PhotoVision />
+      <FieldCoach />
 
       <FilterBar
         activeTag={filter}
@@ -44,9 +39,9 @@ export function Library() {
         favoritesCount={favorites.length}
       />
 
-      <div className="mt-6 grid gap-4">
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
         {visible.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-zinc-800 px-6 py-12 text-center text-sm text-zinc-500">
+          <p className="rounded-2xl border border-dashed border-border px-6 py-12 text-center text-sm text-ink-tertiary lg:col-span-2">
             {filter === 'favorites'
               ? 'No favorites yet — tap the heart on a recipe card.'
               : 'No presets match this filter.'}

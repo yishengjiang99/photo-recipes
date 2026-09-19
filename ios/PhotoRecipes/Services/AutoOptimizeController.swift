@@ -60,6 +60,16 @@ final class AutoOptimizeController: ObservableObject {
     @Published var verifyWarning: String?
     @Published var agentBaseline: SettingsSnapshot?
     @Published var isDirtyOverride = false
+    @Published var teachWhy: String?
+    @Published var coachOnly: CoachOnly?
+    @Published var panCue: PanCue?
+    @Published var senseSummary: String?
+
+    var teachOneLiner: String? {
+        let tw = teachWhy?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !tw.isEmpty { return tw }
+        return reasonNote
+    }
 
     private let api: APIClient
     private let freeKey = "autoOptimize.freeUses.day"
@@ -108,6 +118,7 @@ final class AutoOptimizeController: ObservableObject {
         beforeSnapshot = nil; afterSnapshot = nil; diffs = []
         reasonNote = nil; tips = []; chosenRecipeId = nil; chosenRecipeTitle = nil
         verifyWarning = nil; agentBaseline = nil; isDirtyOverride = false
+        teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
     }
 
     func run(session: CameraSession, entitlements: EntitlementsStore, preferStagedRecipeId: String?, sceneNote: String = "") async {
@@ -119,6 +130,7 @@ final class AutoOptimizeController: ObservableObject {
         }
 
         verifyWarning = nil; diffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
+        teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         beforeSnapshot = snap(session)
         phase = .sensing("Reading light…")
         try? await Task.sleep(nanoseconds: 350_000_000)
@@ -138,8 +150,7 @@ final class AutoOptimizeController: ObservableObject {
         Auto Optimize for live capture. Prefer a field recipe from the book presets.         Respond with the best preset for this scene and a short reason.         Focus on exposure triangle and technique — no beauty filters or sky replacement.
         """
         let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        let messageWithNote = note.isEmpty ? message : message + "
-Photographer scene note: \(note)"
+        let messageWithNote = note.isEmpty ? message : message + "\nPhotographer scene note: \(note)"
 
         let response: RecommendResponse
         do {
@@ -178,23 +189,17 @@ Photographer scene note: \(note)"
         phase = .applying("Applying \(recipe.title)…")
         try? await Task.sleep(nanoseconds: 280_000_000)
 
+        teachWhy = response.teachWhy
+        coachOnly = response.coachOnly
+        panCue = response.panCue
+        senseSummary = response.senseSummary
+
         let applied = session.apply(recipe: recipe, asPro: entitlements.isPro)
         // Same apply path for button + Camera voice: overlay agentic phoneTargets when present.
         if let targets = response.phoneTargets {
             _ = session.applyPhoneTargets(targets, asPro: entitlements.isPro)
         }
-        if let teach = response.teachWhy, !teach.isEmpty {
-            reasonNote = [reasonNote, teach].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
-        }
-        if let coach = response.coachOnly {
-            var coachTips: [String] = []
-            if let a = coach.aperture { coachTips.append("Aperture guidance: \(a)") }
-            if let nd = coach.nd { coachTips.append("ND: \(nd)") }
-            if coach.tripod == true { coachTips.append("Tripod recommended") }
-            if let n = coach.notes, !n.isEmpty { coachTips.append(n) }
-            if !coachTips.isEmpty { tips = Array((tips + coachTips).prefix(5)) }
-        }
-        session.optimizeReason = reasonNote
+        session.optimizeReason = teachOneLiner ?? reasonNote
 
         if !applied && !entitlements.isPro {
             afterSnapshot = recommended(recipe, session)

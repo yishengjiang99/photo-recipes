@@ -48,7 +48,6 @@ See `assets/ads/c3/` — library / detail / dials / checklist. Production notes:
 | [`../marketing/ad-copy-v2.md`](../marketing/ad-copy-v2.md) | **Canonical** Marketing v2 PT/H/R/hooks |
 | [`copy-pairing-v2.md`](./copy-pairing-v2.md) | Ads creative × copy matrix (mirrors Marketing) |
 | [`elevator-pitch-v1.md`](./elevator-pitch-v1.md) | Elevator pitch + slogan statics notes |
-| [`copy-pairing.md`](./copy-pairing.md) | v1 archive (Ask / recipe-card era) |
 | [`agentic-briefs-v2.md`](./agentic-briefs-v2.md) | C3-AO, C-BA, C-PAN, C-VF, C1/C2/C4 updates; C5 hold |
 | [`idea-dump.md`](./idea-dump.md) | G1–G12 + agentic section |
 | [`c1-c2-c4-briefs.md`](./c1-c2-c4-briefs.md) | Legacy C1/C2/C4 (pre-agentic) — prefer agentic-briefs-v2 |

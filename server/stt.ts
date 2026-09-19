@@ -2,6 +2,11 @@
  * Grok speech-to-text proxy.
  * Client uploads audio → we forward to xAI with XAI_API_KEY (never on device).
  * Batch REST for v1; live WSS (interim_results / smart_turn) is a v1.1 follow-up.
+ *
+ * Alternate input: transcripts feed the same Auto Optimize / recommend → phoneTargets
+ * apply path as viewfinder Sense (not Ask text-field-only). Keyterms bias toward
+ * field-coach + control vocabulary (exposure, panning, zoom, lock focus).
+ * See docs/agentic-prompt-v2.md.
  */
 import type { Express, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
@@ -42,6 +47,15 @@ export const PHOTO_STT_KEYTERMS = [
   'foreground',
   'landscape',
   'cyclist',
+  'pan left',
+  'pan right',
+  'Auto Optimize',
+  'zoom',
+  'lock focus',
+  'focus lock',
+  'two x',
+  'slower shutter',
+  'exposure compensation',
 ] as const
 
 export const ALLOWED_AUDIO_MIMES = new Set([

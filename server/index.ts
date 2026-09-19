@@ -162,7 +162,12 @@ function runRecommend(
       res.json({
         presetId: result.presetId,
         reason: result.reason,
+        teachWhy: result.teachWhy,
         tips: result.tips,
+        phoneTargets: result.phoneTargets,
+        coachOnly: result.coachOnly,
+        panCue: result.panCue,
+        senseSummary: result.senseSummary,
         preset: result.preset,
         model: result.model,
         vision: Boolean(parsed.imageDataUrl),
@@ -272,7 +277,7 @@ async function start() {
     console.log(
       process.env.XAI_API_KEY?.trim()
         ? 'XAI_API_KEY: present'
-        : 'XAI_API_KEY: missing (POST /api/recommend will return 503)',
+        : 'XAI_API_KEY: missing (POST /api/recommend, /api/stt, /api/describe-scene will return 503)',
     )
     console.log(
       process.env.SESSION_SECRET?.trim()

@@ -26,7 +26,7 @@ export function GearIcons({
   size?: 'sm' | 'md'
 }) {
   const box = size === 'sm' ? 'h-7 w-7' : 'h-9 w-9'
-  const icon = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4.5 w-4.5'
+  const icon = size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'
 
   return (
     <ul className="flex flex-wrap gap-1.5" aria-label="Equipment">
@@ -36,7 +36,7 @@ export function GearIcons({
           <li
             key={g}
             title={GEAR_LABELS[g]}
-            className={`flex ${box} items-center justify-center rounded-lg bg-zinc-800/80 text-rose-400 ring-1 ring-zinc-700/80`}
+            className={`flex ${box} items-center justify-center rounded-lg bg-surface-2 text-accent-soft ring-1 ring-border`}
           >
             <Icon className={icon} strokeWidth={1.75} aria-hidden />
             <span className="sr-only">{GEAR_LABELS[g]}</span>
