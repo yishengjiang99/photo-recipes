@@ -239,12 +239,19 @@ echo
 echo "==> Post-deploy smoke (https://${SERVER_NAME})…"
 SMOKE_BASE="https://${SERVER_NAME}"
 
-echo "--> Health"
-HEALTH="$(curl -fsS -m 15 "${SMOKE_BASE}/api/health")"
-echo "$HEALTH" | grep -q ok || {
-  echo "SMOKE FAIL: /api/health did not contain ok: $HEALTH" >&2
+echo "--> Health (wait for API after restart)"
+HEALTH=""
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if HEALTH="$(curl -fsS -m 10 "${SMOKE_BASE}/api/health" 2>/dev/null)" && echo "$HEALTH" | grep -q ok; then
+    break
+  fi
+  HEALTH=""
+  sleep 1
+done
+if [[ -z "$HEALTH" ]] || ! echo "$HEALTH" | grep -q ok; then
+  echo "SMOKE FAIL: /api/health did not become ok within ~10s: ${HEALTH:-'(empty/502)'}" >&2
   exit 1
-}
+fi
 echo "    health ok: $HEALTH"
 
 echo "--> Homepage + hashed assets"
