@@ -24,7 +24,7 @@ xcodegen generate   # reads project.yml
 open PhotoRecipes.xcodeproj
 ```
 
-- **Bundle ID:** `com.yishengjiang.photorecipes`
+- **Bundle ID:** `com.ragnus.mvp` (Team `83D36RPMUM`)
 - **Deployment:** iOS 17+
 - Select the **PhotoRecipes** scheme → run on a simulator or device.
 - For StoreKit local testing: Scheme → Edit Scheme → Run → Options → StoreKit Configuration → `PhotoRecipes/Resources/Products.storekit`
@@ -211,7 +211,7 @@ ios/
 
 ```bash
 # Required in production for real Apple verification:
-APPLE_IAP_BUNDLE_ID=com.yishengjiang.photorecipes
+APPLE_IAP_BUNDLE_ID=com.ragnus.mvp
 APPLE_IAP_PRODUCT_MONTHLY=com.ragnus.mvp.pro.monthly
 APPLE_IAP_PRODUCT_YEARLY=com.ragnus.mvp.pro.yearly
 APPLE_IAP_ISSUER_ID=        # App Store Connect → Users and Access → Keys → Issuer ID
@@ -227,12 +227,12 @@ APPLE_IAP_PRIVATE_KEY=      # PEM contents of AuthKey_XXX.p8 (or path via your s
 
 ### App Store Connect setup
 
-- [ ] App record exists for bundle ID `com.yishengjiang.photorecipes`.
+- [ ] App record exists for bundle ID `com.ragnus.mvp`.
 - [ ] Create the **Photo Recipes Pro** subscription group and these StoreKit 2 products:
   - Yearly: `com.ragnus.mvp.pro.yearly`
   - Monthly: `com.ragnus.mvp.pro.monthly`
 - [ ] Add a **7-day free introductory offer** to both products.
-- [ ] Set the Xcode signing team and enable In-App Purchase + Push Notifications for the App ID.
+- [ ] Set the Xcode signing team to **83D36RPMUM** and enable In-App Purchase + Push Notifications for App ID `com.ragnus.mvp`.
 - [ ] Add the 1024×1024 App Store icon before uploading the archive.
 - [ ] Finish Paid Apps Agreement, banking/tax, and sandbox tester setup.
 
@@ -242,7 +242,7 @@ For local/sandbox StoreKit testing, use `ios/PhotoRecipes/Resources/Products.sto
 
 1. Archive the Release build with the signing team above, upload it, and add an internal TestFlight tester.
 2. In the app, set **Settings → API base URL** to the deployed HTTPS API (or a simulator-reachable local URL). Do not ship the placeholder URL.
-3. For push Experiment 1, configure the server with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID=com.yishengjiang.photorecipes`, and `APNS_P8_PATH` (or `APNS_P8_CONTENTS`), then set `PUSH_EXP1_ENABLED=true`. Keep the `.p8` key out of git.
+3. For push Experiment 1, configure the server with `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID=com.ragnus.mvp`, and `APNS_P8_PATH` (or `APNS_P8_CONTENTS`), then set `PUSH_EXP1_ENABLED=true`. Keep the `.p8` key out of git.
 
 ### Push and deep-link path
 
