@@ -3,12 +3,41 @@
 @theme {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-bg: #0c0c0f;
+  --color-bg-elevated: #121216;
+  --color-surface: #16161c;
+  --color-surface-2: #1e1e26;
+  --color-border: #2a2a33;
+  --color-border-strong: #3f3f4a;
+  --color-ink: #f5f5f7;
+  --color-ink-secondary: #c4c4cc;
+  --color-ink-tertiary: #8b8b96;
   --color-accent: #f43f5e;
   --color-accent-soft: #fb7185;
-  --color-surface: #141418;
-  --color-surface-2: #1c1c22;
-  --color-ink: #fafafa;
-  --color-muted: #a1a1aa;
+  --color-accent-muted: color-mix(in oklab, #f43f5e 14%, transparent);
+  --color-vision: #8b7cf6;
+  --color-tip: #e7b549;
+  --color-tip-bg: color-mix(in oklab, #e7b549 8%, transparent);
+  --color-success: #34d399;
+  --color-danger: #f87171;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  --shadow-card: 0 8px 24px -12px rgba(0, 0, 0, 0.55);
 }
 
 html {
@@ -20,8 +49,8 @@ body {
   min-height: 100dvh;
   font-family: var(--font-sans);
   background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(244, 63, 94, 0.12), transparent),
-    #0c0c0f;
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(244, 63, 94, 0.06), transparent),
+    var(--color-bg);
   color: var(--color-ink);
 }
 
@@ -33,25 +62,32 @@ body {
   font-family: var(--font-display);
 }
 
-/* Subtle card hover sheen */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
 .preset-card {
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 .preset-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 40px -16px rgba(244, 63, 94, 0.35);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-card);
 }
 
-/* Dial ring animation */
 @keyframes dial-in {
-  from { opacity: 0; transform: scale(0.92) rotate(-8deg); }
+  from { opacity: 0; transform: scale(0.92) rotate(-4deg); }
   to { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 .dial-animate {
   animation: dial-in 0.45s ease-out both;
 }
 
-/* Checklist check */
+.soft-gate-mask {
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
 .checklist-item:has(input:checked) .checklist-label {
   text-decoration: line-through;
   opacity: 0.55;
@@ -62,6 +98,6 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--color-border-strong);
   border-radius: 4px;
 }
