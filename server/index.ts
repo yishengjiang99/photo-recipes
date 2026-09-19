@@ -174,6 +174,8 @@ function runRecommend(
         coachOnly: result.coachOnly,
         panCue: result.panCue,
         senseSummary: result.senseSummary,
+        // One-release fallback: mirror of phoneTargets.creativeLook when present
+        ...(result.creativeLook ? { creativeLook: result.creativeLook } : {}),
         preset: result.preset,
         model: result.model,
         vision: Boolean(parsed.imageDataUrl),

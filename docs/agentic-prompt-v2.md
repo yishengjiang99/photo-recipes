@@ -21,7 +21,7 @@ LOOP (strict):
 1. SENSE — {vision | text}
 2. REASON — Call list_presets. Optionally get_preset_details. Pick exactly ONE catalog id.
 3. ACT / FINALIZE — Call select_preset with phoneTargets + coachOnly (+ panCue when motion/panning fits).
-4. VERIFY — Targets match technique + control asks; ranges phone-plausible; aperture/ND/tripod in coachOnly; previewLUT / creativeLook never capture filters (default omit look); panCue only for panning/motion.
+4. VERIFY — Targets match technique + control asks; ranges phone-plausible; aperture/ND/tripod in coachOnly; previewLUT preview-only; creativeLook bakes preview+still when intensity>0 (default omit; intensity defaults 0.55); panCue only for panning/motion.
 
 ALTERNATE INPUT (spoken / STT — secondary):
 - Same Sense → recommend → phoneTargets apply path (not Ask text-field-only).
@@ -88,36 +88,44 @@ All keys **additive optional**. Older iOS builds **ignore unknown keys**. Never 
 | `monitorSubjectAreaChange` | `boolean` | When true, iOS enables monitoring and should **re-trigger Auto Optimize** on change. |
 | `maxPhotoDimensions` | `{ width, height }` | Preferred max photo pixels when PhotoOutput supports it. |
 
-### P1 — gated / preview
+### P1 — gated / grade
 
 | Key | Type | Notes |
 |-----|------|--------|
-| `previewLUT` | `string` | **Preview-only** LUT id. MUST NOT be sold as a capture magic filter. Capture settings remain primary. |
-| `creativeLook` | `{ id: CreativeLookId, intensity: number }` | Optional P1 grade / preview look. **Default: omit** (none / identity). `intensity` **0–1**. `id` must be a V1 pack id (see §3a). Capture settings remain **PRIMARY**. |
+| `previewLUT` | `string` | **Preview-only** LUT id. MUST NOT be sold as a capture magic filter. Capture settings remain primary. **Does not bake to still.** |
+| `creativeLook` | `{ id: CreativeLookId, intensity?: number }` | Optional P1 **bakeable** grade. **Default: omit** (none / identity). `id` = V1 pack (see §3a). `intensity` **0–1**, **optional** — server normalizes to **0.55** when omitted/null. **Bake:** same grade on **preview AND still** when `intensity > 0`; identity at 0. **Unlike `previewLUT`.** Capture settings remain **PRIMARY**. |
 | `simulatedAperture` | `number` | Only if OS supports; otherwise use **`coachOnly.aperture`**. Never fake hardware aperture. |
+
+**Top-level fallback (one release):** `RecommendResponse.creativeLook` may mirror `phoneTargets.creativeLook`. Decode preference: **`phoneTargets.creativeLook` primary**; accept top-level if nested missing.
 
 ### 3a. V1 creative look pack (ORIGINAL ids)
 
-**Legal:** Do **not** copy proprietary LUT binaries or use trademarked Instagram / CapCut filter names as product brands. Ship **ORIGINAL** look ids with our names. Docs may note “inspired by category” (e.g. cool crisp contrast) — **never** brand as “Clarendon” etc. in user-facing / product strings.
+**Legal / product UI:** Do **not** copy proprietary LUT binaries or use trademarked Instagram / CapCut filter names as product brands. Ship **ORIGINAL** look ids. **Product UI / coach strings use original display names only** (e.g. **Crisp Cool**, Warm Glow) — never trademarked brands. Inspired-by category stays in **internal docs only** — never product UI.
 
-| id | What it does | Inspired-by category (docs only) |
-|----|--------------|----------------------------------|
-| `crispCool` | Cooler WB bias, lifted mid contrast, clean edges | Cool crisp contrast (IG-classics class) |
-| `warmGlow` | Soft warm lift, gentle highlight roll-off | Warm soft glow (IG-classics class) |
-| `warmPop` | Warmer saturation pop, punchy midtones | Warm vivid pop (IG-classics class) |
-| `editorialRed` | Slight magenta/red accent, magazine contrast | Editorial red accent (IG-classics class) |
-| `softVintage` | Muted saturation, soft lift in blacks | Soft vintage fade (IG-classics class) |
-| `monoInk` | High-contrast monochrome ink look | Bold mono ink (IG-classics class) |
-| `goldenHour` | Golden warmth, soft sky lift | Golden-hour warmth (IG-classics class) |
-| `loFiPunch` | Slight vignette feel, punchy lo-fi contrast | Lo-fi punch (IG-classics class) |
-| `tealOrange` | Complementary teal shadows / orange skin bias | Teal–orange grade (CapCut-class) |
-| `blockbuster` | Wide cinematic contrast, cool shadows | Blockbuster cinema grade (CapCut-class) |
-| `moodyFilm` | Lower mid key, filmic curve, restrained chroma | Moody film still (CapCut-class) |
-| `coolBlue` | Cool blue cast, crisp shadows | Cool blue grade (CapCut-class) |
-| `softDream` | Soft bloom-ish lift, dreamy low contrast | Soft dream haze (CapCut-class) |
-| `filmGrain` | Subtle grain texture overlay + mild film curve | Film grain texture (CapCut-class) |
+**Pipeline (iOS Expert locked):** v1 = **CIFilter / CIColorMatrix procedural** first (original stacks). Optional later `.cube` / Metal — **not required for v1**.
 
-**Agent behavior:** Auto Optimize **MAY** suggest a look when it improves the story; default **omit / none / identity**. Voice can request e.g. “warm film look” → map to `warmGlow` / `moodyFilm` etc. Capture settings (shutter/ISO/…) remain primary; `creativeLook` is optional grade / preview intensity. Server rejects unknown `id` and out-of-range `intensity` in `parsePhoneTargets`.
+**Bake vs `previewLUT`:** `creativeLook` applies the **same grade on preview AND still** when `intensity > 0` (identity at 0). `previewLUT` remains **preview-only** and must not be sold as a capture magic filter.
+
+**Default intensity:** when `id` is present but `intensity` is omitted or null, server `parseCreativeLook` normalizes to **0.55**. Schema: `intensity` optional; after parse always present.
+
+| id | Product name (UI) | What it does | Inspired-by category (internal docs only) |
+|----|-------------------|--------------|-------------------------------------------|
+| `crispCool` | Crisp Cool | Cooler WB bias, lifted mid contrast, clean edges | Cool crisp contrast (IG-classics class) |
+| `warmGlow` | Warm Glow | Soft warm lift, gentle highlight roll-off | Warm soft glow (IG-classics class) |
+| `warmPop` | Warm Pop | Warmer saturation pop, punchy midtones | Warm vivid pop (IG-classics class) |
+| `editorialRed` | Editorial Red | Slight magenta/red accent, magazine contrast | Editorial red accent (IG-classics class) |
+| `softVintage` | Soft Vintage | Muted saturation, soft lift in blacks | Soft vintage fade (IG-classics class) |
+| `monoInk` | Mono Ink | High-contrast monochrome ink look | Bold mono ink (IG-classics class) |
+| `goldenHour` | Golden Hour | Golden warmth, soft sky lift | Golden-hour warmth (IG-classics class) |
+| `loFiPunch` | Lo-Fi Punch | Slight vignette feel, punchy lo-fi contrast | Lo-fi punch (IG-classics class) |
+| `tealOrange` | Teal Orange | Complementary teal shadows / orange skin bias | Teal–orange grade (CapCut-class) |
+| `blockbuster` | Blockbuster | Wide cinematic contrast, cool shadows | Blockbuster cinema grade (CapCut-class) |
+| `moodyFilm` | Moody Film | Lower mid key, filmic curve, restrained chroma | Moody film still (CapCut-class) |
+| `coolBlue` | Cool Blue | Cool blue cast, crisp shadows | Cool blue grade (CapCut-class) |
+| `softDream` | Soft Dream | Soft bloom-ish lift, dreamy low contrast | Soft dream haze (CapCut-class) |
+| `filmGrain` | Film Grain | Subtle grain texture overlay + mild film curve | Film grain texture (CapCut-class) |
+
+**Agent behavior:** Auto Optimize should **SUGGEST** a V1 look when the story clearly benefits (golden hour→goldenHour/warmGlow; night→coolBlue/moodyFilm; cinematic→tealOrange; B&W→monoInk); **MAY** omit for neutral/documentary; default **omit / none / identity**. Voice can request e.g. “warm film look” → map to `warmGlow` / `moodyFilm` etc. Capture settings (shutter/ISO/…) remain primary; `creativeLook` is optional bakeable grade. Server rejects unknown `id` and out-of-range `intensity`; omitted/null intensity → **0.55**.
 
 ### coachOnly (not applied)
 
@@ -145,8 +153,8 @@ All keys **additive optional**. Older iOS builds **ignore unknown keys**. Never 
 | `frameRate` / format hint | Format supports duration; fall back silently |
 | `bracket` | Burst / bracket capture path available |
 | `maxPhotoDimensions` | PhotoOutput max photo dimensions API |
-| `previewLUT` | Preview pipeline only — never mutate captured file as “filter” |
-| `creativeLook` | Preview / grade pipeline (CIFilter or **original** small LUTs); blend by `intensity`; never trademarked brand strings in UI |
+| `previewLUT` | Preview pipeline only — never mutate captured file as “filter”; **not** baked to still |
+| `creativeLook` | **Bakeable** grade: CIFilter/CIColorMatrix procedural v1 (optional .cube/Metal later); same on preview **and** still when `intensity > 0`; blend by `intensity` (default 0.55); product names only in UI |
 | `simulatedAperture` | OS cinematic / simulated aperture APIs; else coachOnly |
 
 iOS must **skip unsupported keys** without failing the whole apply.
@@ -206,7 +214,7 @@ Example (subset):
 | "bracket for HDR" | `bracket: { stops: [-2,0,2] }` |
 | "re-optimize if subject moves" | `monitorSubjectAreaChange: true` |
 | "daylight WB" / locked Kelvin | `whiteBalance` string or `{ temperature, tint }` |
-| "warm film look" / "teal orange grade" | `creativeLook: { id, intensity }` (V1 pack; default omit) |
+| "warm film look" / "teal orange grade" | `creativeLook: { id, intensity? }` (V1 pack; intensity defaults 0.55; default omit) |
 
 ---
 
@@ -216,8 +224,13 @@ Example (subset):
 2. Apply P0 keys only when capability gates pass; skip otherwise.
 3. Shared apply helper for Auto Optimize button **and** spoken follow-ups.
 4. `monitorSubjectAreaChange: true` → enable monitoring → re-trigger optimize on change.
-5. `previewLUT` → preview pipeline only; never market as magic capture filter.
-6. `creativeLook` → optional grade/preview: map `id` to **original** CIFilter stack or small original LUT; blend with `intensity` (0 = identity, 1 = full). Default omit = none. Never show trademarked filter brand names in UI.
+5. `previewLUT` → preview pipeline only; never market as magic capture filter; **not** baked to still.
+6. `creativeLook` → optional **bakeable** grade (NOT preview-only):
+   - **Pipeline v1:** CIFilter / CIColorMatrix procedural (original). Optional `.cube` / Metal later — not required v1.
+   - **Bake:** apply the **same** grade on **preview AND still** when `intensity > 0`; identity at 0.
+   - **Intensity:** blend 0…1; if `id` present but intensity omitted/null, treat as **0.55** (server also normalizes).
+   - **Decode:** prefer `phoneTargets.creativeLook`; also accept top-level `RecommendResponse.creativeLook` as one-release fallback.
+   - **UI strings:** original product names only (e.g. Crisp Cool). Inspired-by category = internal docs only — never product UI. Never trademarked brand names.
 7. `simulatedAperture` → OS-gated; else show `coachOnly.aperture`.
 8. Do **not** apply `coachOnly` to the session.
 
@@ -225,8 +238,8 @@ Example (subset):
 
 ## 9. Server route notes
 
-- `server/recommend.ts`: `PhoneTargets` type, `select_preset` JSON schema, `parsePhoneTargets` range validation, system prompt.
-- `server/index.ts`: passes `phoneTargets` through unchanged on `POST /api/recommend` (no per-key stripping).
+- `server/recommend.ts`: `PhoneTargets` type, `select_preset` JSON schema, `parsePhoneTargets` / `parseCreativeLook` (intensity default **0.55**), optional top-level `creativeLook` on result, system prompt.
+- `server/index.ts`: passes `phoneTargets` through unchanged; also mirrors top-level `creativeLook` when present (no per-key stripping).
 - Additive only — no AVFoundation implementation on server.
 
 ---
@@ -241,4 +254,4 @@ Example (subset):
 
 ---
 
-*Agentic Expert · prompt v2 · AVFoundation phoneTargets expansion*
+*Agentic Expert · prompt v2 · AVFoundation phoneTargets + creativeLook bake contract*
