@@ -320,3 +320,10 @@ Web matches §3 layouts at mobile + desktop breakpoints; tokens live in one plac
 ---
 
 *Designer · Photo Recipes UI redesign v1 · handoff for Web Engineer + iOS Expert*
+
+
+---
+
+## Addendum — Camera (product pivot)
+
+Live capture UI (viewfinder, dials overlay, apply recipe, permissions, Pro gate) lives in **[`design-handoff-camera-v1.md`](./design-handoff-camera-v1.md)**. Library/Detail/Ask/Paywall in this doc still apply; Camera is now the home surface and recipes drive the live session.
