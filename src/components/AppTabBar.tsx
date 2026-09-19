@@ -3,12 +3,9 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useSubscription } from '../hooks/useSubscription'
 import { track } from '../lib/analytics'
 
-/** Dispatched when the center shutter is tapped while already on /app. */
-export const SHUTTER_EVENT = 'photo-recipes:shutter'
-
 /**
  * Instagram-inspired bottom tab bar (layout/IA only).
- * Library | Camera (center shutter) | Pro/Account
+ * Library | Camera (center — navigate to /app only) | Pro/Account
  */
 export function AppTabBar() {
   const location = useLocation()
@@ -18,14 +15,9 @@ export function AppTabBar() {
   const onCamera =
     location.pathname === '/app' || location.pathname === '/app/'
 
-  function onShutter() {
-    if (onCamera) {
-      track('shutter_tap', { source: 'tab_bar' })
-      window.dispatchEvent(new CustomEvent(SHUTTER_EVENT))
-      return
-    }
+  function onCameraTab() {
     track('tab_camera', { source: 'tab_bar' })
-    navigate('/app')
+    if (!onCamera) navigate('/app')
   }
 
   return (
@@ -51,19 +43,29 @@ export function AppTabBar() {
         <div className="relative flex flex-col items-center justify-end pb-1">
           <button
             type="button"
-            onClick={onShutter}
-            aria-label={onCamera ? 'Capture frame' : 'Open Camera'}
+            onClick={onCameraTab}
+            aria-label={onCamera ? 'Camera' : 'Open Camera'}
+            aria-current={onCamera ? 'page' : undefined}
             className={`relative -mt-7 flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
               onCamera
-                ? 'bg-accent shadow-[0_10px_28px_-10px_rgba(244,63,94,0.7)] ring-[3px] ring-white/90'
+                ? 'bg-bg shadow-[0_8px_24px_-12px_rgba(0,0,0,0.35)] ring-[3px] ring-ink/85'
                 : 'bg-accent/90 shadow-[0_10px_28px_-12px_rgba(244,63,94,0.55)] ring-2 ring-white/70 hover:bg-accent'
             }`}
           >
-            <span className="absolute inset-[5px] rounded-full border-2 border-white/35" aria-hidden />
-            <Camera className="relative h-6 w-6 text-white" strokeWidth={2.25} aria-hidden />
+            <span
+              className={`absolute inset-[5px] rounded-full border-2 ${
+                onCamera ? 'border-ink/15' : 'border-white/35'
+              }`}
+              aria-hidden
+            />
+            <Camera
+              className={`relative h-6 w-6 ${onCamera ? 'text-ink' : 'text-white'}`}
+              strokeWidth={2.25}
+              aria-hidden
+            />
           </button>
           <span
-            className={`mt-1 text-[10px] font-semibold ${onCamera ? 'text-accent-soft' : 'text-ink-tertiary'}`}
+            className={`mt-1 text-[10px] font-semibold ${onCamera ? 'text-ink' : 'text-ink-tertiary'}`}
           >
             Camera
           </span>
