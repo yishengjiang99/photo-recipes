@@ -6,7 +6,8 @@ Field-technique only. No filter/AI-magic clichés.
 
 - **C1** Technique before/after video (fail→correct→dials→CTA) — panning hero; HDR variant next
 - **C2** Phone-in-field Ask (10–20s, 9:16)
-- **C3** Recipe card UI statics (SHIPPED — assets in `assets/ads/c3/`)
+- **C3** Recipe card UI statics (SHIPPED v1 — `assets/ads/c3/`; agentic AO family supersedes as primary paid)
+- **C3-AO / C-BA / C-PAN / C-VF** Agentic statics (SHIPPED v2 — `assets/ads/agentic-v2/`)
 - **C4** Paywall/checklist retarget (6–12s)
 - **C5** Vision upload — HOLD until feature live
 
@@ -38,3 +39,31 @@ Field-technique only. No filter/AI-magic clichés.
 3. G1 parking-lot static
 4. C1 HDR variant storyboard
 5. G5 UGC weekend script
+
+
+---
+
+## Agentic Auto Optimize (v2) — add
+
+Primary story is now **agentic camera** (Marketing [`ad-copy-v2.md`](../marketing/ad-copy-v2.md)). Statics ship in `assets/ads/agentic-v2/`.
+
+### Ship-now agentic frames
+- **AO primary** — rose Auto Optimize pill + `Reading light…` + shutter
+- **Before→after settings** — dials chips only (anti-filter proof)
+- **Pan cues** — soft L/R + “pan with subject →”
+- **Viewfinder + voice** — From viewfinder chip + mic + AO
+
+### Video / motion follow-ons
+- Sense → Reason → Apply → Verify → Ready loop (status line ASMR)
+- Teach mode sheet peek (Pro)
+- Pan-with-subject micro-demo (Hook 4)
+- Free Peek quota “1 left today” → Pro unlock
+
+### Superseded hooks (v1 Ask / parking-lot era)
+Mark as **superseded for paid** (ok to keep organic nostalgia):
+- “Stop Googling settings in the parking lot.” → prefer Hook 1: *Stop guessing settings in the viewfinder.*
+- “Describe the scene. Get the recipe.” → prefer Hook 3: *Sense the scene. Apply the recipe. Shoot.* / From viewfinder + voice
+- “Filters fix the photo. Recipes fix how you shoot.” → prefer Hook 2: *Filters fix the file. Auto Optimize fixes the shot.*
+- “One free Ask a day…” → prefer Hook 5: *One free Auto Optimize a day…*
+
+G1–G12 concepts above remain valid as **execution ideas**; retarget language to Auto Optimize / skill library / pan cues / Teach mode before production.

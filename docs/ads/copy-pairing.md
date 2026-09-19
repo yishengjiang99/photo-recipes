@@ -1,3 +1,5 @@
+> **Archive (v1).** Superseded by Marketing Expert **ad copy v2** — see [`copy-pairing-v2.md`](./copy-pairing-v2.md) and canonical [`docs/marketing/ad-copy-v2.md`](../marketing/ad-copy-v2.md). Keep this file for historical Ask / recipe-card pairings only.
+
 # Copy pairing matrix
 
 Source: Marketing Expert §4 deck.
