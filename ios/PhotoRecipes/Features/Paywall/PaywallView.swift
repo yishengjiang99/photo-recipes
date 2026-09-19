@@ -155,7 +155,7 @@ struct PaywallView: View {
                 }
             } label: {
                 HStack {
-                    if storeKit.isPurchasing { ProgressView().tint(primary ? .white : AppTheme.ink) }
+                    if storeKit.isPurchasing { ProgressView().tint(primary ? AppTheme.accentOnAccent : AppTheme.ink) }
                     Text("Start free trial")
                 }
                 .frame(maxWidth: .infinity)
