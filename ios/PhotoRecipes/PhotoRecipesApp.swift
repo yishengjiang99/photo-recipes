@@ -10,6 +10,7 @@ struct PhotoRecipesApp: App {
                 .environmentObject(appModel.entitlements)
                 .environmentObject(appModel.api)
                 .environmentObject(appModel.storeKit)
+                .environmentObject(appModel.cameraRouter)
                 .preferredColorScheme(.dark)
                 .sheet(isPresented: $appModel.entitlements.showPaywall) {
                     PaywallView()
@@ -29,6 +30,7 @@ final class AppModel: ObservableObject {
     let api = APIClient.shared
     let entitlements: EntitlementsStore
     let storeKit: StoreKitManager
+    let cameraRouter = CameraRouter()
 
     init() {
         let ents = EntitlementsStore(api: APIClient.shared)

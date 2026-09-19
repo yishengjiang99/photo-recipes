@@ -24,6 +24,18 @@
 		E57AEC4E918A456A8D6B0B46 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1ED1C99F65409EBFB3EE33 /* Theme.swift */; };
 		649D506AF2A14DA7AD2E03DB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 296D2F5E1DA34333B7A5B1BA /* Assets.xcassets */; };
 		DA8C92D8B9D64BD3845EE121 /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = DC8D19A87B3D41ABBE1CFAB6 /* Products.storekit */; };
+		C57CB26B218D4FBC97EED001 /* CameraSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 959973059EE74D68BA9CB789 /* CameraSession.swift */; };
+		9122EA254BBA4753B0454BB7 /* RecipeCameraMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9748FD9A4FC4ADA8CD75462 /* RecipeCameraMapper.swift */; };
+		2735CA93C7B3464C934F7276 /* AutoOptimizeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F71036156851482B84D96223 /* AutoOptimizeController.swift */; };
+		D8EA24FBDCD84972938AA600 /* CameraRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BAF6BA50984B678FC1982D /* CameraRouter.swift */; };
+		5DD56E7FD5DE4E4CA7328F14 /* HorizonMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA99C92B807247B092E8E181 /* HorizonMonitor.swift */; };
+		EB257FBDAD654EAFA1E52D66 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */; };
+		A718C6DEAF0647C9B2765E3C /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D9C072A787B4A918EFD3486 /* CameraView.swift */; };
+		A9BFCDE361A14C518ECF3CAA /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83143D0A1CCA48399790FB73 /* CameraPreviewView.swift */; };
+		A6D85F76905E4AC8BE1C5411 /* AgentStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B96A071DB134CB5A6EE2000 /* AgentStatusPill.swift */; };
+		468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */; };
+		F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */; };
+		7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18387B310F694F1F91524975 /* ManualDialsSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +60,18 @@
 		DC8D19A87B3D41ABBE1CFAB6 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 		04DAA72764EE4C0395C63C89 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		82FD7A6A74454398B7A9487B /* PhotoRecipes.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoRecipes.entitlements; sourceTree = "<group>"; };
+		959973059EE74D68BA9CB789 /* CameraSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSession.swift; sourceTree = "<group>"; };
+		F9748FD9A4FC4ADA8CD75462 /* RecipeCameraMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeCameraMapper.swift; sourceTree = "<group>"; };
+		F71036156851482B84D96223 /* AutoOptimizeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoOptimizeController.swift; sourceTree = "<group>"; };
+		A0BAF6BA50984B678FC1982D /* CameraRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraRouter.swift; sourceTree = "<group>"; };
+		BA99C92B807247B092E8E181 /* HorizonMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizonMonitor.swift; sourceTree = "<group>"; };
+		3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
+		7D9C072A787B4A918EFD3486 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		83143D0A1CCA48399790FB73 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		9B96A071DB134CB5A6EE2000 /* AgentStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusPill.swift; sourceTree = "<group>"; };
+		80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeforeAfterChip.swift; sourceTree = "<group>"; };
+		995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeachModeSheet.swift; sourceTree = "<group>"; };
+		18387B310F694F1F91524975 /* ManualDialsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDialsSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -84,7 +108,8 @@
 				627A771FBD054E719F216C8B /* Services */,
 				6BA042D688CA4E8D8FE4D4D5 /* Resources */,
 				82FD7A6A74454398B7A9487B /* PhotoRecipes.entitlements */,
-			);
+			
+				5ED919C3196E4008A2885AC0 /* Camera */,);
 			path = PhotoRecipes;
 			sourceTree = "<group>";
 		};
@@ -152,7 +177,13 @@
 				0DC9B7526A0840CC82F39593 /* APIClient.swift */,
 				89161FDC75D748C6BE10ABD7 /* EntitlementsStore.swift */,
 				B27E2F87255E44ED9BEA7236 /* StoreKitManager.swift */,
-			);
+			
+				959973059EE74D68BA9CB789 /* CameraSession.swift */,
+				F9748FD9A4FC4ADA8CD75462 /* RecipeCameraMapper.swift */,
+				F71036156851482B84D96223 /* AutoOptimizeController.swift */,
+				A0BAF6BA50984B678FC1982D /* CameraRouter.swift */,
+				BA99C92B807247B092E8E181 /* HorizonMonitor.swift */,
+				3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */,);
 			path = "Services";
 			sourceTree = "<group>";
 		};
@@ -164,6 +195,19 @@
 				04DAA72764EE4C0395C63C89 /* Info.plist */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		5ED919C3196E4008A2885AC0 /* Camera */ = {
+			isa = PBXGroup;
+			children = (
+				7D9C072A787B4A918EFD3486 /* CameraView.swift */,
+				83143D0A1CCA48399790FB73 /* CameraPreviewView.swift */,
+				9B96A071DB134CB5A6EE2000 /* AgentStatusPill.swift */,
+				80ADC3A37BBB4894A4BB4E56 /* BeforeAfterChip.swift */,
+				995F23433AFB4C6F8F78D14D /* TeachModeSheet.swift */,
+				18387B310F694F1F91524975 /* ManualDialsSheet.swift */,
+			);
+			path = Camera;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -257,7 +301,19 @@
 				E4026E962A56404EBA5D5CC6 /* EntitlementsStore.swift in Sources */,
 				ED33800AD75D47DF9BCC4601 /* StoreKitManager.swift in Sources */,
 				E57AEC4E918A456A8D6B0B46 /* Theme.swift in Sources */,
-			);
+			
+				C57CB26B218D4FBC97EED001 /* CameraSession.swift in Sources */,
+				9122EA254BBA4753B0454BB7 /* RecipeCameraMapper.swift in Sources */,
+				2735CA93C7B3464C934F7276 /* AutoOptimizeController.swift in Sources */,
+				D8EA24FBDCD84972938AA600 /* CameraRouter.swift in Sources */,
+				5DD56E7FD5DE4E4CA7328F14 /* HorizonMonitor.swift in Sources */,
+				EB257FBDAD654EAFA1E52D66 /* PhotoLibrarySaver.swift in Sources */,
+				A718C6DEAF0647C9B2765E3C /* CameraView.swift in Sources */,
+				A9BFCDE361A14C518ECF3CAA /* CameraPreviewView.swift in Sources */,
+				A6D85F76905E4AC8BE1C5411 /* AgentStatusPill.swift in Sources */,
+				468926CAEA554899BA4A2F92 /* BeforeAfterChip.swift in Sources */,
+				F94CF8150BFE4A06AAF828D2 /* TeachModeSheet.swift in Sources */,
+				7A2D197C84294FED97F25911 /* ManualDialsSheet.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

@@ -32,6 +32,8 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Photo Recipes uses your photo to recommend a field technique recipe via Ask Grok Photo Vision.</string>
@@ -40,5 +42,11 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Photo Recipes uses the camera to apply field recipes and Auto Optimize live capture settings.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Photo Recipes saves captures to your Camera Roll.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Photo Recipes uses motion to show a horizon level while shooting.</string>
 </dict>
 </plist>

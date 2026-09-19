@@ -40,6 +40,64 @@ Copy `Config/Debug.xcconfig.example` → `Config/Debug.xcconfig` for local overr
 
 Subscription group name suggestion: **Photo Recipes Pro**. Put yearly at the higher service level / primary ranking. These IDs are hard-coded in `StoreKitManager.swift` (`IAPProductID`) and `Products.storekit` — keep them identical everywhere.
 
+
+## Camera + Auto Optimize (v1 field camera)
+
+Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes and Ask/Vision stage settings into a live AVFoundation session — no beauty filters, no fake skies.
+
+### Capabilities
+
+| Capability | Free Peek | Pro |
+|---|---|---|
+| Live viewfinder + shutter → Camera Roll | ✓ | ✓ |
+| Auto mode capture | ✓ | ✓ |
+| See recipe dials (read-only / ghost) | ✓ | ✓ |
+| **Auto Optimize** (vision → recipe → apply) | **1 / day** | Unlimited |
+| Apply recipe → live settable exposure/focus/WB | ✗ | ✓ |
+| Manual MODE A/S/M dials | ✗ (Auto only) | ✓ |
+| Teach mode (“Why this?”) full copy | Teaser | Full |
+| Interactive field checklist while shooting | ✗ | ✓ |
+
+**Auto Optimize quota:** Free Peek gets **1 Auto Optimize/day** (parallel counter in `AutoOptimizeController`; Ask/Vision quota remains separate). Documented choice for v1.
+
+### Agentic MVP loop
+
+1. **Sense** — capture a probe JPEG from the session  
+2. **Reason** — `POST /api/recommend` with vision + field prompt  
+3. **Act** — map preset dials via `RecipeCameraMapper` → apply **settable** AVFoundation params (custom exposure duration+ISO, EV bias, focus POI/lock, WB lock). Aperture is **guidance overlay only**.  
+4. **Verify** — soft status step only (multi-round probe loop is a hook for later, max N=1–2)  
+5. **Commit** — user taps shutter; optional Teach sheet explains why  
+
+UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
+
+### Device fallbacks
+
+- Ultra-wide / some formats: custom exposure unavailable → guidance + clamp banner  
+- Fixed phone lens: aperture never written to hardware  
+- Torch/flash: cycled Off/On/Auto when supported  
+- ILC Sony/Canon remote APIs: **out of scope** (later)
+
+### Permissions (`Info.plist`)
+
+- `NSCameraUsageDescription` — live capture  
+- `NSPhotoLibraryAddUsageDescription` — save to Camera Roll  
+- `NSPhotoLibraryUsageDescription` — Ask vision picker  
+- `NSMotionUsageDescription` — horizon level  
+
+### Architecture (new)
+
+```
+Features/Camera/   CameraView, preview, dials, agent chips, teach sheet
+Services/          CameraSession, RecipeCameraMapper, AutoOptimizeController,
+                   CameraRouter, HorizonMonitor, PhotoLibrarySaver
+```
+
+### Pro gating (documented choice)
+
+- **Free:** live view, shutter, Auto mode, read-only recipe dials, **1 Auto Optimize/day**, Teach teaser  
+- **Pro:** Apply recipe to live session, manual A/S/M dials, unlimited Auto Optimize, full Teach, interactive checklist  
+
+
 ## Architecture
 
 ```

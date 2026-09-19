@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RecipeDetailView: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
+    @EnvironmentObject private var router: CameraRouter
     let recipe: Recipe
     @State private var selectedVariant: SubVariant?
     @State private var reasonBanner: String?
@@ -23,6 +24,13 @@ struct RecipeDetailView: View {
                     }
                     whenToUse
                     dialsSection
+
+            Button {
+                router.openCamera(staging: recipe, apply: true)
+            } label: {
+                Label("Apply to Camera", systemImage: "camera.fill")
+            }
+            .buttonStyle(PrimaryButtonStyle(filled: true))
                     if let variants = recipe.subVariants, !variants.isEmpty {
                         variantsSection(variants)
                     }

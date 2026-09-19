@@ -30,6 +30,22 @@ enum AppTheme {
     static let danger = Color(hex: 0xF87171)
     static let overlay = Color.black.opacity(0.72)
 
+    // MARK: - Camera chrome (design-handoff-camera-v1)
+    static let cameraScrim = Color.black.opacity(0.45)
+    static let cameraScrimStrong = Color.black.opacity(0.72)
+    static let shutterRing = Color(hex: 0xF5F5F7)
+    static let shutterCore = accent
+    static let recipeBadgeBg = Color(hex: 0xF43F5E).opacity(0.18)
+    static let aeLock = tip
+
+    // MARK: - Agentic Auto Optimize (design-handoff-agentic-v1)
+    static let agentStatusBg = Color.black.opacity(0.55)
+    static let agentRunning = Color(hex: 0xFB7185)
+    static let agentReady = Color(hex: 0x34D399)
+    static let agentWarn = Color(hex: 0xE7B549)
+    static let diffBefore = Color(hex: 0x8B8B96)
+    static let diffAfter = Color(hex: 0xF5F5F7)
+
     // MARK: - Category tints (~18% fill)
     static let categoryDoF = Color(hex: 0x5B8DEF)
     static let categoryMotion = Color(hex: 0xF59E0B)

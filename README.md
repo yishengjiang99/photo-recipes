@@ -255,7 +255,7 @@ Educational personal-use transcription of book recipes. Not affiliated with the 
 
 ## iOS app (SwiftUI)
 
-Native iOS 17+ client lives in [`ios/`](./ios/). Soft TestFlight launch: browse Free Peek offline, Ask Grok + Photo Vision against this API, unlock **Pro via StoreKit 2 IAP only** (not Stripe-in-app).
+Native iOS 17+ client lives in [`ios/`](./ios/). **Camera-first field camera**: live AVFoundation viewfinder, recipe→settings apply, and **Auto Optimize** (vision recommend → settable exposure/focus/WB). Soft TestFlight: Free Peek browse + 1 Auto Optimize/day; Pro unlocks manual dials, apply-to-live, unlimited optimize via **StoreKit 2 IAP only** (not Stripe-in-app). See `ios/README.md` and `docs/design-handoff-camera-v1.md` / `docs/design-handoff-agentic-v1.md`.md` / `docs/design-handoff-agentic-v1.md`.
 
 | | |
 |--|--|

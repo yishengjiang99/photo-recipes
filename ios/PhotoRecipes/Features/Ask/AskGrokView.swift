@@ -4,6 +4,7 @@ import PhotosUI
 /// Field Coach tab — unified Ask (Describe scene | From photo). Quiet surface, no dual neon glow.
 struct AskGrokView: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
+    @EnvironmentObject private var router: CameraRouter
 
     var body: some View {
         NavigationStack {
@@ -335,6 +336,13 @@ struct FieldCoachPanel: View {
                     } label: {
                         Text("Open recipe")
                             .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+
+                    Button {
+                        router.openCamera(staging: recipe, apply: true)
+                    } label: {
+                        Label("Apply to Camera", systemImage: "camera.fill")
                     }
                     .buttonStyle(PrimaryButtonStyle(filled: true))
                 }
