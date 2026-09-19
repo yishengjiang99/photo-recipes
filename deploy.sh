@@ -41,10 +41,16 @@ Secrets (manual on server — never auto-copied):
     sudo tee /etc/photo-recipes.env <<'ENV'
     XAI_API_KEY=your_key_here
     PORT=8787
+    PUBLIC_BASE_URL=https://your.domain
+    SESSION_SECRET=long-random-string
+    STRIPE_SECRET_KEY=sk_live_…
+    STRIPE_WEBHOOK_SECRET=whsec_…
     ENV
     sudo chmod 640 /etc/photo-recipes.env
     sudo chown root:www-data /etc/photo-recipes.env
     sudo systemctl restart photo-recipes
+
+  Stripe webhook URL: https://YOUR_DOMAIN/api/stripe-webhook
 
 Examples:
   DEPLOY_HOST=1.2.3.4 ./deploy.sh

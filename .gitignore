@@ -30,3 +30,7 @@ dist-ssr
 
 # Built API bundle
 server-dist
+
+# Entitlement / quota store (runtime)
+server/data/*
+!server/data/.gitkeep
