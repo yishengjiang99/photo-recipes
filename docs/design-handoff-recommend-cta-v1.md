@@ -1,105 +1,102 @@
 # Recommend recipe — first-class CTA v1
 
 **Audience:** Web Engineer · iOS Expert  
-**Ask:** One tap to Recommend — no “open Field Coach → pick mode → Recommend” gate.  
-**Framing:** Darkroom field notes. **Camera / Auto Optimize stays the capture primary** on iOS. Voice secondary. Web Field Coach **recommends** (does not write dials).  
-**Color:** Palette A — filled Recommend uses Signal Amber + `accentOnAccent` label when it’s a primary action on that surface.
+**Ask:** One tap to Recommend — no shutter-then-Recommend, no “open Field Coach → pick mode → Recommend.”  
+**Framing:** Darkroom field notes. Voice secondary. Web **recommends** dials (does not write). iOS Camera **Auto Optimize writes** dials.  
+**Color:** Palette A — filled primary uses Signal Amber + `accentOnAccent` label.
+
+**Confirmed (Web investigation):** Primary **Recommend recipe** = capture frame from live viewfinder (if needed) **and** recommend in one tap; if a frame is already held, recommend that frame. Secondary only: **Retake** · **Upload** · **Describe**.
 
 ---
 
-## 1. Principle
+## 1. Cross-platform map (don’t invent divergent chrome)
 
-| Surface | Loudest action | Recommend role |
-|---------|----------------|----------------|
-| iOS Camera (viewfinder) | **Auto Optimize** | Secondary always-visible chip — never replaces AO |
-| Web Camera / Field Coach home | **Recommend recipe** (web can’t write dials) | **Primary** filled CTA — always visible |
-| Ask / Library coach panel | Recommend | Primary; mode is progressive disclosure, not a prerequisite |
+| Surface | Primary (filled amber) | What it does | Secondary (outline / quiet) |
+|---------|------------------------|--------------|-----------------------------|
+| **Web** Camera / Field Coach | **Recommend recipe** | Grab live frame if none held → `/api/recommend` | Retake · Upload · Describe (text) · mic icon |
+| **iOS Camera** | **Auto Optimize** | Sense → apply shutter/ISO/EV/WB/focus on device | **Recommend** (recipe coach from viewfinder/note — no Ask tab) · mic |
+| **iOS Ask / Field Coach** | **Recommend a recipe** | Same one-tap recommend as web (note and/or photo) | Upload · Describe mode chips · mic |
 
-**Rule:** Default path uses **From viewfinder** (or current scene note / last frame) with **no mode picker required**. Advanced modes (type / photo pick / voice) live as optional chips *beside or under* the primary button — not a step before it.
-
----
-
-## 2. Default behavior (both platforms)
-
-1. User taps **Recommend recipe** (or compact **Recommend**).  
-2. Payload (first available):  
-   - live viewfinder frame / last captured preview frame, **or**  
-   - non-empty scene note / “From viewfinder” chip text, **or**  
-   - empty → still fire with `From viewfinder` sentinel so the agent senses from image if present; if neither note nor image, show inline error `Add a short scene note or enable camera` under the button (don’t open a sheet first).  
-3. Button → loading: `Matching a recipe…` · disabled.  
-4. Success → navigate / sheet to recipe result (existing recommend → detail flow).  
-5. Mic remains a quiet icon; never the only path to Recommend.
+**Why AO ≠ Recommend on iOS Camera:** AO *writes* phone settings. Recommend *picks a recipe* (coach / library handoff). Same “one tap from viewfinder” *idea*, different verbs — keep both visible; AO louder.
 
 ---
 
-## 3. Layout patterns
-
-### A. Web Camera / Field Coach (`/app` camera tab)
+## 2. Web pattern (confirmed)
 
 ```
-[ viewfinder / photo well ]
-[ scene note …………… ] [mic]
-[ ████ Recommend recipe ████ ]   ← accent filled, full width, always on
-[ From viewfinder ] [Photo] [Type]  ← optional mode chips; cosmetic defaults only
+[ live viewfinder / held frame ]
+[ ████████ Recommend recipe ████████ ]   ← only filled CTA
+[ Retake ]  [ Upload ]  [ Describe ]     ← secondary; optional mic
 ```
 
-- Remove any flow that requires selecting Describe vs Photo **before** the button enables.  
-- If a mode chip is selected, it only changes payload; Recommend stays enabled whenever default path can run.  
-- Keep one-line honesty: `Recommends dials — does not write them in the browser`.
+### Tap behavior
+1. If **no frame held** → capture current live viewfinder frame into hold, then recommend.  
+2. If **frame already held** → recommend that frame (optionally merge scene note if present).  
+3. Loading on primary: `Matching a recipe…` · disable primary + secondaries that would race.  
+4. Success → existing recipe result / detail navigation.  
+5. **Retake** → clear held frame, resume live preview (does not recommend).  
+6. **Upload** → image picker → hold frame; **auto-recommend after upload** (same loading state on primary).  
+7. **Describe** → expands text field; primary stays **Recommend recipe** and runs with text (+ held frame if any). Do **not** replace primary with a second button.
 
-### B. iOS Camera (viewfinder)
-
-```
-… status / chips …
-[ scene chip ▾ ] [mic]
-[ ⚡ Auto Optimize ]     ← primary (accent)
-[ Recommend ]            ← ghost/outline or compact secondary pill, same row or directly under AO
-```
-
-- Recommend opens coach recommend with From viewfinder / scene note — **does not** push Ask tab first.  
-- If Free Peek quota applies, same soft gate as Ask (sheet), not a hidden second button.  
-- Do not put Recommend in `···` only.
-
-### C. iOS Ask / Field Coach panel
-
-- Segmented mode (Describe / Photo) may remain for power users but **default = Describe** with Recommend always visible and enabled when note ≥ 1 char **or** photo attached **or** “use viewfinder” toggle on.  
-- Primary button label: `Recommend a recipe` (loading: `Matching a recipe…`).  
-- Photo path label when photo attached: same primary button (don’t rename to a second CTA that replaces the first).
+### Honesty line
+`Recommends dials — does not write them in the browser`
 
 ---
 
-## 4. Copy locks
+## 3. iOS Camera (aligned, not identical chrome)
+
+```
+[ viewfinder ]
+[ status / before→after / look chip ]
+[ ⚡ Auto Optimize ]     ← filled primary
+[ Recommend ]            ← outline secondary, always visible
+```
+
+- **Recommend** one-tap: From viewfinder frame and/or scene note → recommend result — **no Ask tab gate**, no mode picker.  
+- Do not merge Recommend into Auto Optimize (different outcomes).  
+- Quota / Pro soft-gate: same sheet as Ask, on tap — not a hidden second control.
+
+---
+
+## 4. iOS Ask panel
+
+- Primary filled: **Recommend a recipe** (loading: `Matching a recipe…`).  
+- Enabled when: note ≥ 1 char **or** photo attached **or** viewfinder frame available.  
+- Upload / Describe are secondary; never a prerequisite before the primary appears.
+
+---
+
+## 5. Copy locks
 
 | Slot | Copy |
 |------|------|
-| Primary (web) | `Recommend recipe` |
-| Primary (iOS Ask) | `Recommend a recipe` |
-| Compact (iOS Camera) | `Recommend` |
+| Web / Ask primary | `Recommend recipe` / `Recommend a recipe` |
+| iOS Camera secondary | `Recommend` |
 | Loading | `Matching a recipe…` |
-| Empty error | `Add a scene note or enable the camera` |
+| Empty (no camera + no note + no upload) | `Enable the camera or add a scene note` |
 | Web honesty | `Recommends dials — does not write them in the browser` |
 
 ---
 
-## 5. Anti-patterns
+## 6. Anti-patterns
 
-- Mode tabs that disable Recommend until a mode is chosen.  
-- Recommend only inside an overflow / second sheet.  
-- Leading with mic to get a recommendation.  
-- On iOS Camera: making Recommend equal visual weight to Auto Optimize (AO stays louder).  
-- Dual CTAs both filled amber competing on the same row (web: one filled; iOS Camera: AO filled, Recommend outline).
+- Shutter/capture as a required step before Recommend on web.  
+- Mode tabs that disable Recommend until chosen.  
+- Two filled amber buttons on one surface.  
+- On iOS Camera: Recommend equal weight to Auto Optimize.  
+- Mic-led recommend path.
 
 ---
 
-## 6. Engineer checklist
+## 7. Engineer checklist
 
-- [ ] Web Field Coach: one always-visible filled Recommend; modes optional  
-- [ ] Web: default From viewfinder / note / frame without extra click  
-- [ ] iOS Camera: Recommend secondary pill always visible near AO  
-- [ ] iOS Ask: Recommend enabled without mandatory mode gate  
-- [ ] Analytics: `recommend_cta_tap` with `surface=camera|ask|web_camera`  
+- [ ] Web: one filled Recommend = capture-if-needed + recommend  
+- [ ] Web: Retake / Upload / Describe secondary only  
+- [ ] iOS Camera: AO primary + always-visible Recommend secondary  
+- [ ] iOS Ask: one-tap Recommend, no mode gate  
+- [ ] Analytics: `recommend_cta_tap` + `surface` + `had_held_frame`  
 - [ ] No `docs/agents/*.md` edits  
 
 ---
 
-*Designer · recommend CTA v1 · for Web + iOS*
+*Designer · recommend CTA v1 · Web confirmed capture+recommend · iOS AO/Recommend mapped*
