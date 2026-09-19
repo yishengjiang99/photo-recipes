@@ -2,14 +2,11 @@
  * Grok speech-to-text proxy.
  * Client uploads audio → we forward to xAI with XAI_API_KEY (never on device).
  * Batch REST for v1; live WSS (interim_results / smart_turn) is a v1.1 follow-up.
- *
- * Alternate input: transcripts feed the same Auto Optimize / recommend → phoneTargets
- * apply path as viewfinder Sense (not Ask text-field-only). Keyterms bias toward
- * field-coach + control vocabulary (exposure, panning, zoom, lock focus).
- * See docs/agentic-prompt-v2.md.
  */
 import type { Express, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
+import { checkAssistQuota } from './entitlements.ts'
+import { fetchWithTimeout } from './fetchTimeout.ts'
 
 const XAI_STT_URL = 'https://api.x.ai/v1/stt'
 /** Current xAI batch model — https://docs.x.ai/docs/guides/voice/speech-to-text */
@@ -47,15 +44,6 @@ export const PHOTO_STT_KEYTERMS = [
   'foreground',
   'landscape',
   'cyclist',
-  'pan left',
-  'pan right',
-  'Auto Optimize',
-  'zoom',
-  'lock focus',
-  'focus lock',
-  'two x',
-  'slower shutter',
-  'exposure compensation',
 ] as const
 
 export const ALLOWED_AUDIO_MIMES = new Set([
@@ -76,7 +64,8 @@ export const ALLOWED_AUDIO_MIMES = new Set([
   'video/webm',
 ])
 
-export const MAX_AUDIO_BYTES = 25 * 1024 * 1024
+/** Practical cap for short FieldCoach dictate clips. */
+export const MAX_AUDIO_BYTES = 5 * 1024 * 1024
 
 const EXT_FROM_MIME: Record<string, string> = {
   'audio/webm': 'webm',
@@ -156,16 +145,33 @@ export async function transcribeWithGrok(
     filename,
   )
 
-  const res = await fetch(XAI_STT_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  })
+  let xaiRes: globalThis.Response
+  try {
+    xaiRes = await fetchWithTimeout(
+      XAI_STT_URL,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+      },
+      45_000,
+    )
+  } catch (e) {
+    const ex = e as Error & { status?: number }
+    if (ex.status === 504 || (e instanceof Error && e.name === 'AbortError')) {
+      const err = new Error(
+        'Voice unavailable — type your scene',
+      ) as Error & { status?: number }
+      err.status = 504
+      throw err
+    }
+    throw e
+  }
 
-  if (!res.ok) {
+  if (!xaiRes.ok) {
     let details = ''
     try {
-      const body = (await res.json()) as {
+      const body = (await xaiRes.json()) as {
         error?: string | { message?: string }
       }
       if (typeof body.error === 'string') details = body.error
@@ -173,16 +179,16 @@ export async function transcribeWithGrok(
         details = body.error.message
       }
     } catch {
-      details = await res.text().catch(() => '')
+      details = await xaiRes.text().catch(() => '')
     }
     const err = new Error(
-      details || `Speech-to-text failed (${res.status})`,
+      details || 'Voice unavailable — type your scene',
     ) as Error & { status?: number }
-    err.status = res.status >= 400 && res.status < 600 ? res.status : 502
+    err.status = xaiRes.status >= 400 && xaiRes.status < 600 ? xaiRes.status : 502
     throw err
   }
 
-  const data = (await res.json()) as {
+  const data = (await xaiRes.json()) as {
     text?: string
     language?: string
     duration?: number
@@ -227,14 +233,17 @@ const audioUpload = multer({
 })
 
 /**
- * Mount POST /api/stt — multipart field `audio` (or `file`).
- * Returns `{ text }` on success. Does not consume Ask/Optimize quota.
+ * Mount POST /api/stt — multipart field `audio` or `file`.
+ * Returns `{ text }` on success. Consumes assist quota after successful transcription.
  */
 export function mountSttRoutes(app: Express) {
   app.post(
     '/api/stt',
     (req: Request, res: Response, next: NextFunction) => {
-      audioUpload.any()(req, res, (err: unknown) => {
+      audioUpload.fields([
+        { name: 'audio', maxCount: 1 },
+        { name: 'file', maxCount: 1 },
+      ])(req, res, (err: unknown) => {
         if (err) {
           const msg = err instanceof Error ? err.message : 'Invalid audio upload'
           const isSize =
@@ -253,6 +262,12 @@ export function mountSttRoutes(app: Express) {
       })
     },
     (req: Request, res: Response) => {
+      const quota = checkAssistQuota(req, res)
+      if (!quota.allowed) {
+        res.status(402).json(quota.body)
+        return
+      }
+
       const apiKey = process.env.XAI_API_KEY?.trim()
       if (!apiKey) {
         res.status(503).json({
@@ -262,11 +277,11 @@ export function mountSttRoutes(app: Express) {
         return
       }
 
-      const files = (req.files as Express.Multer.File[] | undefined) ?? []
+      const byField = req.files as
+        | { [fieldname: string]: Express.Multer.File[] }
+        | undefined
       const uploaded =
-        files.find((f) => f.fieldname === 'audio') ||
-        files.find((f) => f.fieldname === 'file') ||
-        files[0]
+        byField?.audio?.[0] || byField?.file?.[0] || undefined
 
       if (!uploaded) {
         res.status(400).json({
@@ -289,6 +304,7 @@ export function mountSttRoutes(app: Express) {
             filename:
               uploaded.originalname || `recording.${audioExtFromMime(mime)}`,
           })
+          quota.consume()
           res.json({ text: result.text })
         } catch (e) {
           const ex = e as Error & { status?: number }
