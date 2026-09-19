@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=server-dist/index.js",
     "start": "node server-dist/index.js",
-    "test:server": "tsx --test server/phoneTargets.test.ts"
+    "test:server": "tsx --test server/phoneTargets.test.ts",
+    "smoke:web": "node scripts/smoke-web.mjs"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

@@ -9,9 +9,11 @@ server {
     root DEPLOY_PATH_PLACEHOLDER/dist;
     index index.html;
 
-    # SPA fallback
-    location / {
-        try_files $uri $uri/ /index.html;
+    # Hashed Vite assets — long cache
+    location /assets/ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
     }
 
     location /api/ {
@@ -28,5 +30,14 @@ server {
         expires 7d;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
+    }
+
+    # SPA HTML — never cache (prevents blank page after deploy when old
+    # index.html points at deleted hashed JS)
+    location / {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        try_files $uri $uri/ /index.html;
     }
 }
