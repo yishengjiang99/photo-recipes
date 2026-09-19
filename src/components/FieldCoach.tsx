@@ -22,7 +22,6 @@ import { useVoiceInput, type VoiceInputApi } from '../hooks/useVoiceInput'
 import { useSubscription } from '../hooks/useSubscription'
 import { compressImageForUpload } from '../lib/compressImage'
 import { track } from '../lib/analytics'
-import { SHUTTER_EVENT } from './AppTabBar'
 
 const EXAMPLES = [
   'Sunset canyon with a dark foreground',
@@ -260,7 +259,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     })()
   }
 
-  async function ingestFile(file: File) {
+  async function ingestFile(file: File): Promise<string | null> {
     setError(null)
     setPaywalled(false)
     setPreparing(true)
@@ -273,9 +272,11 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
       setDataUrl(compressed.dataUrl)
       setPreviewUrl(compressed.dataUrl)
       prefillNoteFromScene(compressed.dataUrl)
+      return compressed.dataUrl
     } catch (err) {
       clearImage()
       setError(err instanceof Error ? err.message : 'Could not prepare image')
+      return null
     } finally {
       setPreparing(false)
     }
@@ -286,12 +287,12 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     if (file) void ingestFile(file)
   }
 
-  const captureFrame = useCallback(async () => {
+  const captureFrame = useCallback(async (): Promise<string | null> => {
     const video = videoRef.current
-    if (!video || !cameraActive || busy) return
+    if (!video || !cameraActive || busy) return null
     if (!video.videoWidth || !video.videoHeight) {
       setCameraError('Camera is still warming up — try again in a moment.')
-      return
+      return null
     }
     setCameraError(null)
     setError(null)
@@ -307,38 +308,37 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
       )
       if (!blob) throw new Error('Could not capture frame')
       const file = new File([blob], 'viewfinder.jpg', { type: 'image/jpeg' })
-      await ingestFile(file)
-      track('capture_success', { source: 'field_coach' })
+      const image = await ingestFile(file)
+      if (image) track('capture_success', { source: 'field_coach' })
+      return image
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not capture frame')
+      return null
     }
   }, [busy, cameraActive])
 
-  const handleShutter = useCallback(() => {
+  function onRetake() {
     if (busy) return
+    clearImage()
+    setDescribeOpen(false)
+    setMode('photo')
+    if (!cameraActive) void startCamera()
+  }
+
+  /** One gesture: capture live frame then recommend (or start camera if not live). */
+  async function autoOptimizeFromViewfinder() {
+    if (busy || cameraStarting) return
     track('shutter_tap', { source: 'field_coach' })
     setDescribeOpen(false)
     setMode('photo')
-    if (previewUrl) {
-      // Retake — clear frame and ensure live view
-      clearImage()
-      if (!cameraActive) void startCamera()
-      return
-    }
     if (!cameraActive) {
       void startCamera()
       return
     }
-    void captureFrame()
-  }, [busy, previewUrl, cameraActive, startCamera, captureFrame, clearImage])
-
-  useEffect(() => {
-    function onShutterEvent() {
-      handleShutter()
-    }
-    window.addEventListener(SHUTTER_EVENT, onShutterEvent)
-    return () => window.removeEventListener(SHUTTER_EVENT, onShutterEvent)
-  }, [handleShutter])
+    const image = await captureFrame()
+    if (!image) return
+    await recommend({ text: noteRef.current, image })
+  }
 
   async function recommend(opts: { text?: string; image?: string }) {
     if (loading) return
@@ -486,7 +486,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
           <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
             <Camera className="mb-3 h-10 w-10 text-white/40" strokeWidth={1.5} />
             <p className="text-sm text-white/70">
-              {cameraStarting ? 'Starting camera…' : 'Tap the shutter to open the viewfinder'}
+              {cameraStarting ? 'Starting camera…' : 'Open the viewfinder, then Auto Optimize'}
             </p>
             <p className="mt-1 max-w-xs text-xs text-white/40">
               Recommends dials — does not write them in the browser
@@ -547,12 +547,13 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={clearImage}
+                onClick={onRetake}
                 disabled={busy}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/15 disabled:opacity-50"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-white/10 px-4 text-sm font-medium text-white ring-1 ring-white/20 hover:bg-white/15 disabled:opacity-50"
                 aria-label="Retake"
               >
-                <X className="h-5 w-5" />
+                <Camera className="h-4 w-4" strokeWidth={1.75} />
+                Retake
               </button>
               <button
                 type="button"
@@ -573,7 +574,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-                    Recommend recipe
+                    Auto Optimize
                   </>
                 )}
               </button>
@@ -584,15 +585,15 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         {/* Overlay controls when live / idle (no preview) */}
         {!previewUrl ? (
           <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent px-6 pb-5 pt-14">
-            <div className="flex items-center justify-center gap-8">
+            <div className="flex items-end justify-center gap-6 sm:gap-8">
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => fileRef.current?.click()}
-                className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-white/70 transition hover:text-white disabled:opacity-50"
+                className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-white/55 transition hover:text-white/85 disabled:opacity-50"
                 aria-label="Upload photo"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
                   <ImagePlus className="h-5 w-5" strokeWidth={1.75} />
                 </span>
                 <span className="text-[10px] font-medium">Upload</span>
@@ -601,18 +602,32 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
               <button
                 type="button"
                 disabled={busy || cameraStarting}
-                onClick={handleShutter}
+                onClick={() => void autoOptimizeFromViewfinder()}
                 aria-label={
-                  cameraActive ? 'Capture frame' : 'Open Camera'
+                  cameraStarting
+                    ? 'Starting camera'
+                    : cameraActive
+                      ? 'Auto Optimize'
+                      : 'Open Camera'
                 }
-                className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.25)] transition active:scale-95 disabled:opacity-50"
+                className="inline-flex min-h-[4.5rem] min-w-[9.5rem] flex-col items-center justify-center gap-1 rounded-full bg-accent px-5 py-3 text-white shadow-[0_12px_32px_-12px_rgba(244,63,94,0.75)] transition active:scale-[0.98] hover:bg-accent-soft disabled:opacity-50"
               >
-                <span className="absolute inset-[6px] rounded-full border-2 border-black/20" aria-hidden />
-                {cameraStarting ? (
-                  <Loader2 className="relative h-6 w-6 animate-spin text-black/70" />
+                {cameraStarting || loading || preparing ? (
+                  <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
                 ) : (
-                  <span className="relative h-14 w-14 rounded-full bg-accent" aria-hidden />
+                  <Sparkles className="h-6 w-6" strokeWidth={2} aria-hidden />
                 )}
+                <span className="text-xs font-semibold tracking-wide">
+                  {cameraStarting
+                    ? 'Starting…'
+                    : loading
+                      ? 'Matching…'
+                      : preparing
+                        ? 'Capturing…'
+                        : cameraActive
+                          ? 'Auto Optimize'
+                          : 'Open Camera'}
+                </span>
               </button>
 
               <button
@@ -622,17 +637,17 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
                   setDescribeOpen(true)
                   setMode('describe')
                 }}
-                className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-white/70 transition hover:text-white disabled:opacity-50"
+                className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 text-white/55 transition hover:text-white/85 disabled:opacity-50"
                 aria-label="Describe scene"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
                   <MessageSquareText className="h-5 w-5" strokeWidth={1.75} />
                 </span>
                 <span className="text-[10px] font-medium">Describe</span>
               </button>
             </div>
             <p className="mt-3 text-center text-[10px] text-white/35">
-              iOS Auto Optimize writes dials on device · web recommends only
+              iOS writes dials · web recommends
             </p>
           </div>
         ) : null}
@@ -721,7 +736,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  Recommend a recipe
+                  Auto Optimize
                 </>
               )}
             </button>
