@@ -326,4 +326,15 @@ export function identityMiddleware(req: Request, res: Response, next: NextFuncti
   next()
 }
 
+
+/** Lookup Pro/trial entitlement linked to a guest id (scheduler / offline). */
+export function findEntitlementByGuestId(guestId: string): Entitlement | null {
+  if (!guestId) return null
+  const store = readStore()
+  const matches = Object.values(store.entitlements).filter((e) => e.guestId === guestId)
+  const pro = matches.find((e) => isProStatus(e.status))
+  if (pro) return pro
+  return matches.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
+}
+
 export { GUEST_COOKIE, SUB_COOKIE, FREE_ASKS_PER_DAY, FREE_ASSIST_PER_DAY }
