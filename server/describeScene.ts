@@ -15,10 +15,11 @@ import {
 const XAI_BASE = 'https://api.x.ai/v1'
 const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
 
-const SYSTEM_PROMPT = `You are a concise field photography coach. Look at the photo and write a short scene description a photographer would type into a recipe ask box.
+const SYSTEM_PROMPT = `You are the Photo Recipes field assistant (Auto Optimize / scene prefill). Write a short status-ready scene note a photographer would type into Ask or Auto Optimize.
 
-Include: subject, lighting, motion (if any), and one composition or exposure hint.
-Keep it to 1–2 sentences, under 40 words. Plain text only — no bullet lists, no recipe names, no camera dial numbers unless clearly readable in the scene.`
+Include: subject, lighting quality/direction, motion (if any), and one composition or exposure cue.
+Keep it to 1–2 sentences, under 40 words. Plain text only — no bullet lists, no recipe names, no chatty filler, no camera dial numbers unless clearly readable in the scene.
+Tone: darkroom field notes — quiet and concrete (e.g. "Cyclist left→right in soft side light; keep shutter for panning.").`
 
 type ContentPart =
   | { type: 'text'; text: string }

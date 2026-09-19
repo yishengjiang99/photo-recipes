@@ -8,13 +8,20 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
-import type { AiRecommendState } from '../components/AskGrok'
+import type { AiRecommendState } from '../components/FieldCoach'
 import { CameraDials } from '../components/CameraDials'
 import { ChecklistMode } from '../components/ChecklistMode'
-import { GearIcons } from '../components/GearIcons'
 import { presets } from '../data/presets'
 import { useFavorites } from '../hooks/useFavorites'
+import type { TechniqueTag } from '../types'
 import { GEAR_LABELS, MODE_LABELS, TAG_LABELS } from '../types'
+
+const CATEGORY_TINT: Record<TechniqueTag, string> = {
+  'depth-of-field': '#5b8def',
+  motion: '#f59e0b',
+  hdr: '#a78bfa',
+  composition: '#2dd4bf',
+}
 
 export function PresetDetail() {
   const { id } = useParams<{ id: string }>()
@@ -48,7 +55,7 @@ export function PresetDetail() {
       <div className="mb-6 flex items-center justify-between gap-3">
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 text-sm text-zinc-400 transition hover:text-zinc-100"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm text-ink-secondary transition hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           Library
@@ -56,13 +63,13 @@ export function PresetDetail() {
         <button
           type="button"
           onClick={() => toggleFavorite(preset.id)}
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 transition ${
+          className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 transition ${
             favorite
-              ? 'bg-rose-500/15 text-rose-300 ring-rose-500/30'
-              : 'bg-zinc-900 text-zinc-400 ring-zinc-800 hover:text-zinc-200'
+              ? 'bg-accent-muted text-accent-soft ring-accent/30'
+              : 'bg-surface text-ink-secondary ring-border hover:text-ink'
           }`}
         >
-          <Heart className={`h-4 w-4 ${favorite ? 'fill-rose-400' : ''}`} />
+          <Heart className={`h-4 w-4 ${favorite ? 'fill-accent text-accent' : ''}`} />
           {favorite ? 'Favorited' : 'Favorite'}
         </button>
       </div>
@@ -71,33 +78,34 @@ export function PresetDetail() {
         {preset.tags.map((t) => (
           <span
             key={t}
-            className="rounded-md bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-300"
+            className="rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-secondary"
+            style={{ backgroundColor: `${CATEGORY_TINT[t]}2e` }}
           >
             {TAG_LABELS[t]}
           </span>
         ))}
-        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-500">
+        <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] text-ink-tertiary">
           Book p.{preset.page}
         </span>
       </div>
 
-      <h1 className="font-display text-3xl leading-tight text-zinc-50 sm:text-4xl">
+      <h1 className="font-display text-3xl leading-tight text-ink sm:text-4xl">
         {preset.title}
       </h1>
-      <p className="mt-3 text-base leading-relaxed text-zinc-400">{preset.blurb}</p>
+      <p className="mt-3 text-base leading-relaxed text-ink-secondary">{preset.blurb}</p>
 
       {ai ? (
-        <section className="mt-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 ring-1 ring-rose-500/20">
-          <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-rose-300">
+        <section className="mt-6 rounded-2xl border border-border bg-surface-2 p-4">
+          <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent-soft">
             <Sparkles className="h-3.5 w-3.5" />
             Grok picked this recipe
           </h2>
-          <p className="text-sm leading-relaxed text-zinc-200">{ai.reason}</p>
+          <p className="text-sm leading-relaxed text-ink-secondary">{ai.reason}</p>
           {ai.tips.length > 0 ? (
             <ul className="mt-3 space-y-1.5">
               {ai.tips.map((tip) => (
-                <li key={tip} className="flex gap-2 text-sm text-zinc-300">
-                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-rose-400" />
+                <li key={tip} className="flex gap-2 text-sm text-ink-secondary">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" />
                   {tip}
                 </li>
               ))}
@@ -106,26 +114,28 @@ export function PresetDetail() {
         </section>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <GearIcons gear={preset.gear} size="md" />
-        <div className="text-sm text-zinc-400">
-          {preset.gear.map((g) => GEAR_LABELS[g]).join(' · ')}
-        </div>
+      <div className="mt-6 flex flex-wrap gap-2">
+        {preset.gear.map((g) => (
+          <span
+            key={g}
+            className="rounded-full border border-border bg-surface px-3 py-1.5 text-sm text-ink-secondary"
+          >
+            {GEAR_LABELS[g]}
+          </span>
+        ))}
       </div>
 
-      {/* When to use */}
       <section className="mt-8">
-        <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-rose-400">
-          <Sparkles className="h-3.5 w-3.5" />
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink">
+          <Sparkles className="h-4 w-4 text-accent-soft" />
           When to use
         </h2>
-        <p className="text-sm leading-relaxed text-zinc-300">{preset.whenToUse}</p>
+        <p className="text-sm leading-relaxed text-ink-secondary">{preset.whenToUse}</p>
       </section>
 
-      {/* Sub-variants */}
       {preset.subVariants && preset.subVariants.length > 0 ? (
         <section className="mt-8">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
             Sub-settings on this recipe
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -134,8 +144,8 @@ export function PresetDetail() {
               onClick={() => setVariantId('base')}
               className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                 variantId === 'base'
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-zinc-900 text-zinc-400 ring-1 ring-zinc-800'
+                  ? 'bg-accent text-white'
+                  : 'border border-border text-ink-secondary'
               }`}
             >
               Overview
@@ -147,8 +157,8 @@ export function PresetDetail() {
                 onClick={() => setVariantId(v.id)}
                 className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                   variantId === v.id
-                    ? 'bg-rose-500 text-white'
-                    : 'bg-zinc-900 text-zinc-400 ring-1 ring-zinc-800'
+                    ? 'bg-accent text-white'
+                    : 'border border-border text-ink-secondary'
                 }`}
               >
                 {v.label}
@@ -156,7 +166,7 @@ export function PresetDetail() {
             ))}
           </div>
           {variantId !== 'base' ? (
-            <p className="mt-3 text-sm text-zinc-400">
+            <p className="mt-3 text-sm text-ink-secondary">
               {preset.subVariants.find((v) => v.id === variantId)?.description}
             </p>
           ) : null}
@@ -174,77 +184,78 @@ export function PresetDetail() {
         />
       </div>
 
-      {/* Steps */}
       <section className="mt-8">
-        <h2 className="mb-3 flex items-center gap-2 font-display text-xl text-zinc-100">
-          <ListOrdered className="h-5 w-5 text-rose-400" />
+        <h2 className="mb-3 flex items-center gap-2 font-display text-xl text-ink">
+          <ListOrdered className="h-5 w-5 text-accent-soft" />
           Steps
         </h2>
         <ol className="space-y-3">
           {preset.steps.map((step, i) => (
             <li
               key={i}
-              className="flex gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4"
+              className="flex gap-3 rounded-xl border border-border bg-surface p-4"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500/15 font-mono text-sm font-semibold text-rose-300">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-muted font-mono text-sm font-semibold text-accent">
                 {i + 1}
               </span>
-              <p className="text-sm leading-relaxed text-zinc-300">{step}</p>
+              <p className="text-sm leading-relaxed text-ink">{step}</p>
             </li>
           ))}
         </ol>
       </section>
 
-      {/* Tips */}
-      <section className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-400/90">
+      <section className="mt-8 rounded-2xl border border-tip/25 bg-tip-bg p-5">
+        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-tip">
           <Lightbulb className="h-3.5 w-3.5" />
           Mode / aperture / shutter tips
         </h2>
         <ul className="space-y-2">
           {(activeVariantTips ?? preset.tips).map((tip) => (
-            <li key={tip} className="flex gap-2 text-sm text-zinc-300">
-              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-amber-400/80" />
+            <li key={tip} className="flex gap-2 text-sm text-ink-secondary">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-tip" />
               {tip}
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-xs text-zinc-600">
+        <p className="mt-4 text-xs text-ink-tertiary">
           Default mode: {MODE_LABELS[preset.dials.mode]}
         </p>
       </section>
 
       {preset.phoneTip ? (
-        <section className="mt-4 flex gap-3 rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4">
-          <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-sky-400" />
+        <section className="mt-4 flex gap-3 rounded-2xl border border-border bg-surface p-4">
+          <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-ink-secondary" />
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-400">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
               Phone tip
             </h3>
-            <p className="mt-1 text-sm leading-relaxed text-zinc-300">{preset.phoneTip}</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink-secondary">
+              {preset.phoneTip}
+            </p>
           </div>
         </section>
       ) : null}
 
       {preset.advancedTip ? (
-        <section className="mt-4 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-violet-300">
+        <section className="mt-4 rounded-2xl border border-border bg-surface p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
             Advanced
           </h3>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-300">{preset.advancedTip}</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-secondary">
+            {preset.advancedTip}
+          </p>
         </section>
       ) : null}
 
-      {/* Equipment checklist summary */}
       <section className="mt-8">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
           Equipment checklist
         </h2>
         <ul className="grid gap-2 sm:grid-cols-2">
           {preset.equipmentChecklist.map((item) => (
             <li
               key={item}
-              className="rounded-xl bg-zinc-900/50 px-3 py-2.5 text-sm text-zinc-300 ring-1 ring-zinc-800"
+              className="rounded-xl bg-surface px-3 py-2.5 text-sm text-ink-secondary ring-1 ring-border"
             >
               {item}
             </li>
