@@ -134,6 +134,15 @@ final class AutoOptimizeController: ObservableObject {
         return max(0, Self.freeDailyLimit - UserDefaults.standard.integer(forKey: freeKey))
     }
 
+    func freeRemainingToday(entitlements: EntitlementsStore) -> Int {
+        if let remaining = entitlements.status.asksRemaining {
+            return max(0, remaining)
+        }
+        let limit = entitlements.status.freeDailyLimit ?? Self.freeDailyLimit
+        refreshDay()
+        return max(0, limit - UserDefaults.standard.integer(forKey: freeKey))
+    }
+
     func canRun(isPro: Bool) -> Bool {
         isPro || freeRemainingToday > 0
     }
@@ -141,7 +150,7 @@ final class AutoOptimizeController: ObservableObject {
     /// Pro / unlimited allowlist / asksLimit == nil → unlimited. Else shared free daily pool.
     func canRun(entitlements: EntitlementsStore) -> Bool {
         if isUnlimitedAsk(entitlements) { return true }
-        return freeRemainingToday > 0
+        return freeRemainingToday(entitlements: entitlements) > 0
     }
 
     private func consumeSharedFreeIfNeeded(_ entitlements: EntitlementsStore) {
@@ -292,9 +301,11 @@ final class AutoOptimizeController: ObservableObject {
 
         let notesBefore = session.applyNotes
         let applied = session.apply(recipe: recipe)
-        // Same apply path for button + Camera voice: overlay local phoneTargets.
-        // Free Peek writes dials; shared daily Optimize quota gates how often AO can run.
-        _ = session.applyPhoneTargets(local.phoneTargets)
+        // Same apply path for button + Camera voice: overlay local phoneTargets when allowed.
+        // freePhoneTargetsEnabled (server) gates free dial writes; Pro always applies.
+        if entitlements.canApplyDials {
+            _ = session.applyPhoneTargets(local.phoneTargets)
+        }
 
         if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
             var suggested = look
@@ -367,7 +378,7 @@ final class AutoOptimizeController: ObservableObject {
             sceneNote: sceneNote,
             probeJPEG: probe,
             generation: generation,
-            wroteDials: true
+            wroteDials: entitlements.canApplyDials
         )
     }
 
@@ -473,8 +484,10 @@ final class AutoOptimizeController: ObservableObject {
 
             if let targets = response.phoneTargets {
                 let notesBefore = session.applyNotes
-                // Always refine dials when Pass 2 returns phoneTargets (Free Peek + Pro).
-                _ = session.applyPhoneTargets(targets)
+                // Refine dials when server allows free phoneTargets (or Pro).
+                if entitlements.canApplyDials {
+                    _ = session.applyPhoneTargets(targets)
+                }
                 // Look chip: recipes remain source of truth; look is optional intensity on phoneTargets.
                 if let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
                     var suggested = look

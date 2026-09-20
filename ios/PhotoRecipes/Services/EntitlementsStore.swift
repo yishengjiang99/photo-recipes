@@ -26,6 +26,12 @@ final class EntitlementsStore: ObservableObject {
 
     var isPro: Bool { status.pro }
 
+    /// Pro always; free users when server freePhoneTargetsEnabled is on (default true offline).
+    var canApplyDials: Bool {
+        if isPro { return true }
+        return status.freePhoneTargetsEnabled ?? true
+    }
+
     func refresh() async {
         loading = true
         lastError = nil
@@ -77,6 +83,7 @@ final class EntitlementsStore: ObservableObject {
             asksLimit: nil,
             asksRemaining: nil,
             freeDailyLimit: status.freeDailyLimit,
+            freePhoneTargetsEnabled: status.freePhoneTargetsEnabled,
             stripeConfigured: status.stripeConfigured
         )
     }

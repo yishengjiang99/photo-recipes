@@ -5,6 +5,7 @@ import {
   getUnlimitedEmails,
   getQuotaConfigSnapshot,
 } from './entitlements.ts'
+import { clearOpsConfigOverridesForTests } from './opsConfig.ts'
 
 describe('free daily quota config', () => {
   const prev = {
@@ -13,6 +14,7 @@ describe('free daily quota config', () => {
   }
 
   afterEach(() => {
+    clearOpsConfigOverridesForTests()
     if (prev.FREE_DAILY_LIMIT === undefined) delete process.env.FREE_DAILY_LIMIT
     else process.env.FREE_DAILY_LIMIT = prev.FREE_DAILY_LIMIT
     if (prev.FREE_UNLIMITED_EMAILS === undefined) delete process.env.FREE_UNLIMITED_EMAILS

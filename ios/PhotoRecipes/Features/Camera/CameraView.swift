@@ -234,7 +234,7 @@ struct CameraView: View {
                     showRecommendResult = false
                     _ = session.apply(recipe: recipe)
                     // Fast Recommend JSON → same applyPhoneTargets path as Auto Optimize.
-                    if let targets = recommendResult?.phoneTargets {
+                    if entitlements.canApplyDials, let targets = recommendResult?.phoneTargets {
                         _ = session.applyPhoneTargets(targets)
                     }
                 },
@@ -282,7 +282,7 @@ struct CameraView: View {
                                 x: value.location.x / geo.size.width,
                                 y: value.location.y / geo.size.height
                             )
-                            session.focus(at: pt, lock: entitlements.isPro)
+                            session.focus(at: pt, lock: entitlements.canApplyDials)
                         }
                     )
 

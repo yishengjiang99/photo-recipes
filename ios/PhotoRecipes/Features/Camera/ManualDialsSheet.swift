@@ -4,6 +4,8 @@ struct ManualDialsSheet: View {
     @ObservedObject var session: CameraSession
     @ObservedObject var optimizer: AutoOptimizeController
     @EnvironmentObject private var entitlements: EntitlementsStore
+
+    private var canApplyDials: Bool { entitlements.canApplyDials }
     @Environment(\.dismiss) private var dismiss
 
     private let shutterStops: [Double] = [1/1000, 1/500, 1/250, 1/125, 1/60, 1/30, 1/15, 1/8, 1/4, 1/2, 1, 2, 4, 8, 15, 30]
@@ -16,13 +18,15 @@ struct ManualDialsSheet: View {
                     Text("Manual override")
                         .font(AppTheme.displayTitle())
                         .foregroundStyle(AppTheme.ink)
-                    Text(entitlements.isPro
-                         ? "Agent set these — adjust anytime"
+                    Text(canApplyDials
+                         ? (entitlements.isPro
+                            ? "Agent set these — adjust anytime"
+                            : "Free Peek — dials unlocked. Shared daily Optimize quota still applies.")
                          : "Free Peek shows ghost dials. Upgrade to edit.")
                         .font(AppTheme.bodySm())
                         .foregroundStyle(AppTheme.inkSecondary)
 
-                    if optimizer.isDirtyOverride && entitlements.isPro {
+                    if optimizer.isDirtyOverride && canApplyDials {
                         HStack {
                             Text("You changed the agent’s settings")
                                 .font(AppTheme.bodySm())
@@ -84,7 +88,7 @@ struct ManualDialsSheet: View {
                 .foregroundStyle(AppTheme.inkTertiary)
             HStack(spacing: 8) {
                 ForEach(CameraSession.CaptureMode.allCases) { mode in
-                    let enabled = entitlements.isPro || mode == .auto
+                    let enabled = canApplyDials || mode == .auto
                     Button {
                         if enabled {
                             session.captureMode = mode
@@ -111,10 +115,10 @@ struct ManualDialsSheet: View {
     }
 
     private var shutterRow: some View {
-        dialScroller(title: "SHUTTER", value: RecipeCameraMapper.formatShutter(session.exposureSeconds), locked: !entitlements.isPro) {
+        dialScroller(title: "SHUTTER", value: RecipeCameraMapper.formatShutter(session.exposureSeconds), locked: !canApplyDials) {
             ForEach(shutterStops, id: \.self) { s in
                 Button {
-                    guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                    guard canApplyDials else { entitlements.showPaywall = true; return }
                     session.setShutter(s)
                     optimizer.markDirty()
                 } label: {
@@ -130,10 +134,10 @@ struct ManualDialsSheet: View {
     }
 
     private var isoRow: some View {
-        dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !entitlements.isPro) {
+        dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !canApplyDials) {
             ForEach(isoStops, id: \.self) { v in
                 Button {
-                    guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                    guard canApplyDials else { entitlements.showPaywall = true; return }
                     session.setISO(v)
                     optimizer.markDirty()
                 } label: {
@@ -158,7 +162,7 @@ struct ManualDialsSheet: View {
                 Text(String(format: "%+.1f", session.evBias))
                     .font(AppTheme.monoSm())
                     .foregroundStyle(AppTheme.ink)
-                if !entitlements.isPro {
+                if !canApplyDials {
                     Image(systemName: "lock.fill").font(.caption2).foregroundStyle(AppTheme.inkTertiary)
                 }
             }
@@ -166,7 +170,7 @@ struct ManualDialsSheet: View {
                 value: Binding(
                     get: { Double(session.evBias) },
                     set: { newVal in
-                        guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.showPaywall = true; return }
                         session.setEV(Float(newVal))
                         optimizer.markDirty()
                     }
@@ -175,7 +179,7 @@ struct ManualDialsSheet: View {
                 step: 0.3
             )
             .tint(AppTheme.accent)
-            .disabled(!entitlements.isPro)
+            .disabled(!canApplyDials)
         }
         .padding(AppTheme.space3)
         .background(RoundedRectangle(cornerRadius: AppTheme.radiusMd).fill(AppTheme.surface))

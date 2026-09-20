@@ -20,6 +20,7 @@ export type SubscriptionStatus = {
   asksLimit: number | null
   asksRemaining: number | null
   freeDailyLimit?: number
+  freePhoneTargetsEnabled?: boolean
   stripeConfigured: boolean
 }
 
