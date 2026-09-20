@@ -1610,6 +1610,7 @@ async function recommendFastOneShot(
   req: RecommendRequest,
 ): Promise<RecommendResult> {
   const vision = Boolean(req.imageDataUrl)
+  const timeoutMs = vision ? FAST_VISION_TIMEOUT_MS : FAST_TEXT_TIMEOUT_MS
   if (!vision && !req.message.trim()) {
     throw Object.assign(new Error('Message or image is required'), { status: 400 })
   }
