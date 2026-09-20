@@ -1,35 +1,52 @@
 # Photo Recipes — iOS App Store Listing
 
-Bundle ID: com.ragnus.mvp
+Bundle ID: `com.ragnus.mvp`
 
-## App Name (30 char max)
+## Status (locked vs draft)
+
+| Field | Status | Notes |
+| --- | --- | --- |
+| App Name | **LOCKED** | `Photo Recipes` — do not change without CoS |
+| Bundle ID | **LOCKED** | `com.ragnus.mvp` — leave as-is |
+| Subtitle | **DRAFT** | Primary below — paste-ready (≤30) |
+| Promotional Text | **DRAFT** | Paste-ready (≤170; rotatable without resubmit) |
+| Description | **DRAFT** | Paste-ready — AI Auto Optimize + dials lead |
+| Keywords | **DRAFT** | Verify count in ASC editor before submit |
+| What’s New | **DRAFT** | Paste-ready |
+| Screenshot captions (5) | **LOCKED** | Exact captions below — do not change without CoS |
+
+Legend: **LOCKED** = CoS approval to change · **DRAFT** = ready for this ASC cycle.
+
+## App Name (30 char max) — LOCKED
 Photo Recipes
 
-## Subtitle (30 char max) — pick one primary
-**Primary:** Agentic Camera Settings
-Alts: Sets Shutter ISO Focus | Auto Optimize Camera Settings | Field Settings for Enthusiasts
+## Subtitle (30 char max) — DRAFT · pick one primary
+**Primary:** AI Auto: Shutter ISO Focus
+Alts: AI Sets Shutter ISO Focus | AI Camera Dial Control | Sets Shutter ISO Focus
 
-## Promotional Text (170 char) — rotatable without resubmit
-Point at the shot — Auto Optimize sets shutter, ISO & focus. Field looks = capture grades on the viewfinder. For serious enthusiasts. 1 free/day. Get on TestFlight · App Store.
+## Promotional Text (170 char) — DRAFT · rotatable without resubmit
+AI Auto Optimize applies shutter, ISO, EV, WB & focus — real capture dials, not filters. Field looks = viewfinder grades. Free Peek: 1/day. Get on TestFlight · App Store.
 
-## Description (full — App Store; use line breaks)
+## Description (full — App Store; use line breaks) — DRAFT
 
-Photo Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool. Better settings in the field, not filters afterward.
+AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. Photo Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
 
-Point your phone at the shot — Photo Recipes Auto Optimizes shutter, ISO, and focus so you capture the technique, not fix it later.
+Set the shot. Then take it.
 
-AUTO OPTIMIZE — FROM VIEWFINDER
-Point at the scene and tap Auto Optimize on the live viewfinder. The agent runs Sense → Reason → Apply → Verify → Capture: it senses light and motion, matches a photography recipe from your skill library, writes camera settings you can see (before → after), verifies exposure, and tells you when you’re Ready to capture. Optional pan left/right cues help you reframe. Set the shot. Then take it.
+Auto Optimize senses the scene, picks a Photo Recipe, and **applies real capture dials** on your iPhone — not just filters.
 
 CONTROLS WE SET (ON DEVICE)
-Auto Optimize agentically sets what the phone camera can actually change:
-• Shutter / exposure duration · custom exposure
-• ISO · EV bias
-• White balance · WB temp / tint
-• Focus (lock / POI) · subject re-optimize
-• Zoom / lens · UW / Wide / Tele pick when the device allows
-• Torch / flash · low-light boost
-• Video HDR · fps / format · brackets / HDR · photo quality
+AI Auto Optimize writes these capture dials on your iPhone:
+• Shutter / exposure duration
+• ISO
+• EV bias
+• White balance (temp / tint when available)
+• Focus lock / POI
+• Zoom / lens when the device allows
+• Torch / flash when relevant
+• Field looks / creative look intensity
+
+Also when the device allows: custom exposure, video HDR, fps / format, brackets / HDR, photo quality.
 
 COACH-ONLY (brief)
 Aperture, ND filters, and tripod/support stay guidance — we don’t fake aperture writes on device.
@@ -39,9 +56,6 @@ Optional field looks live on the viewfinder and at capture — crispCool, warmGl
 
 PHOTOGRAPHY SKILL LIBRARY
 Classic field techniques — panning, motion control, HDR, focus discipline, low angle, and more — as recipes with dials, steps, and checklists. Browse free anytime.
-
-FROM VIEWFINDER
-Use a From viewfinder note so the agent sees what you’re aiming at while optimizing. (Optional: dictate a short scene note if you prefer.)
 
 TEACH MODE
 Ask “Why this?” after a run. See the recipe choice, which dials moved (shutter, ISO, EV, WB, focus), and what to watch for — instructor-at-your-shoulder, not a chat wall.
@@ -53,6 +67,8 @@ FREE PEEK vs PRO
 Pricing: $7.99/month or $59.99/year (best value), both with a 7-day free trial. Subscriptions via Apple In-App Purchase.
 
 CTA: Get on TestFlight · Download — App Store.
+
+Optional: dictate a short scene note if you prefer (voice is secondary to From-viewfinder Auto Optimize).
 
 Tone: precise, craft-forward, field technique — never beauty filters, sky replacement, or AI-magic edits.
 
@@ -70,21 +86,20 @@ Suggested exact string (count in editor):
 
 (Verify character count when pasting; if over, drop “landscape” then “optimize.” Prefer craft terms; add look/grade carefully — never “filter.”)
 
-## What’s New (iOS-first · expanded levers · field looks)
-Point at the shot — Auto Optimize from the viewfinder sets shutter, ISO, EV, WB, focus (plus expanded iOS levers: custom exposure, lens pick, WB temp/tint, torch, low-light, brackets, and more). Field looks = capture grades on the viewfinder (intensity 0–1; Auto Optimize can suggest) — not beauty filters. Aperture, ND, tripod stay coach guidance. Free Peek: 1 optimize/day. Get on TestFlight. Set the shot. Then take it.
+## What’s New (iOS-first · AI-applied dials · field looks) — DRAFT
+AI Auto Optimize applies shutter, ISO, EV, WB, focus lock/POI, zoom/lens, torch when needed, plus field look intensity — real capture dials on your iPhone, not filters. Aperture/ND/tripod stay coach-only. Free Peek: 1/day. Set the shot. Then take it.
 
-## Screenshot captions (6)
-1. Point. Auto Optimize. Sets shutter, ISO, focus
-2. From viewfinder — before → after dials on the live camera
-3. Field look / capture grade on the viewfinder (intensity you control)
-4. Pan cues when you need to reframe
-5. Skill library for serious enthusiasts · Set the shot. Then take it.
-6. Teach mode: why these settings moved · Get on TestFlight
+## Screenshot captions (5) — LOCKED · exact copy
+1. Auto Optimize writes shutter, ISO, EV, WB & focus
+2. Point → Auto Optimize applies shutter, ISO, EV, WB, focus
+3. See shutter · ISO · EV · WB · focus — then override
+4. Look grade + shutter/ISO/EV/WB/focus on the viewfinder
+5. Ready — shutter, ISO, focus set · then take it
 
 ## ASO notes
-- Subtitle options lead with “Agentic Camera Settings” or “Sets Shutter ISO Focus” for enthusiast/settings search.
+- Subtitle leads with **AI Auto: Shutter ISO Focus** so search hits AI Auto Optimize and concrete dial intent — not vague “better photos.”
 - First 3 screenshots must show viewfinder + Auto Optimize CTA + real dials (shutter/ISO/EV/WB/focus) — include at least one **looks / grade** frame; never fake aperture writes; never beauty/sky.
-- Lead creative with From viewfinder Auto Optimize; voice is not a caption or promo lead.
+- Lead creative with From viewfinder Auto Optimize applying dials; voice is not a caption or promo lead.
 - Primary store CTA language: **Get on TestFlight** / **Download — App Store**.
 - One coach-only disclaimer in description is enough.
 - Category: Photo & Video; secondary Education optional.
