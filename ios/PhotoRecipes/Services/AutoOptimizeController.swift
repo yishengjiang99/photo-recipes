@@ -117,7 +117,7 @@ final class AutoOptimizeController: ObservableObject {
     var coreDiffs: [DiffLine] { diffs.filter { $0.tier == .core } }
 
     private let api: APIClient
-    /// Legacy local counter keys (unused for gating Pass 1). Pass 2 consumes server Ask quota.
+    /// Shared Free Peek Optimize pool (aligned with server FREE_DAILY_LIMIT default 5). One charge per AO tap.
     private let freeKey = "autoOptimize.freeUses.day"
     private let freeDateKey = "autoOptimize.freeUses.date"
     /// Fallback when subscription-status has not loaded (matches server FREE_DAILY_LIMIT default from #71).
@@ -125,23 +125,28 @@ final class AutoOptimizeController: ObservableObject {
 
     init(api: APIClient = .shared) { self.api = api }
 
-    /// Pass 1 is local and never quota-gated. Kept for UI badges that still read remaining.
+    /// Shared Free Peek daily pool (same default as server FREE_DAILY_LIMIT = 5).
+    /// One Auto Optimize tap = one unit; Pass 2 refine does not charge again.
     var freeRemainingToday: Int {
-        // Surface server Ask remaining when known; else show local leftover (compat).
         refreshDay()
         return max(0, Self.freeDailyLimit - UserDefaults.standard.integer(forKey: freeKey))
     }
 
-    /// Pass 1 always allowed. Pro still gates *writing* dials via `asPro` in apply paths.
     func canRun(isPro: Bool) -> Bool {
-        _ = isPro
-        return true
+        isPro || freeRemainingToday > 0
     }
 
-    /// Pass 1 ungated. `asksLimit == nil` means unlimited Ask (Pro / FREE_UNLIMITED_* / device allowlist from #71) — still used by Pass 2 soft-skip.
+    /// Pro / unlimited allowlist / asksLimit == nil → unlimited. Else shared free daily pool.
     func canRun(entitlements: EntitlementsStore) -> Bool {
-        _ = entitlements
-        return true
+        if isUnlimitedAsk(entitlements) { return true }
+        return freeRemainingToday > 0
+    }
+
+    private func consumeSharedFreeIfNeeded(_ entitlements: EntitlementsStore) {
+        guard !isUnlimitedAsk(entitlements) else { return }
+        refreshDay()
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: freeKey) + 1, forKey: freeKey)
+        objectWillChange.send()
     }
 
     /// Server Ask identity is unlimited when asksLimit is nil (Pro or allowlists from #71).
@@ -209,6 +214,11 @@ final class AutoOptimizeController: ObservableObject {
         devicePitchDegrees: Double? = nil
     ) async {
         guard !phase.isRunning else { return }
+        guard canRun(entitlements: entitlements) else {
+            phase = .error("Free Peek limit reached — try again tomorrow or go Pro")
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "path": "local"])
+            return
+        }
 
         cloudRefineTask?.cancel()
         isCloudRefining = false
@@ -306,6 +316,7 @@ final class AutoOptimizeController: ObservableObject {
                 "coach_only": "true",
                 "path": "local",
             ])
+            consumeSharedFreeIfNeeded(entitlements)
             PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
             schedulePass2CloudRefine(
                 session: session,
@@ -337,6 +348,7 @@ final class AutoOptimizeController: ObservableObject {
             "recipe_id": recipe.id,
             "path": "local",
         ])
+        consumeSharedFreeIfNeeded(entitlements)
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
         schedulePass2CloudRefine(
             session: session,
@@ -366,13 +378,8 @@ final class AutoOptimizeController: ObservableObject {
             Analytics.shared.track("cloud_refine_skipped", props: ["reason": "disabled", "recipe_id": recipe.id])
             return
         }
-        // Pass 2 uses server Ask quota. Soft-skip when Free Peek remaining is known 0; unlimited when asksLimit == nil (#71).
-        if !isUnlimitedAsk(entitlements) {
-            if let remaining = entitlements.status.asksRemaining, remaining <= 0 {
-                Analytics.shared.track("cloud_refine_skipped", props: ["reason": "quota", "recipe_id": recipe.id])
-                return
-            }
-        }
+        // Pass 1 already consumed the shared Free Peek unit for this tap — do not double-charge.
+        // Soft-skip only on hard server 402 below; allow refine attempt after a paid Pass 1.
         cloudRefineTask?.cancel()
         let recipeId = recipe.id
         let recipeTitle = recipe.title
