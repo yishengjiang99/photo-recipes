@@ -14,6 +14,7 @@ import {
   registerApnsToken,
   updatePushPrefs,
 } from './pushPrefs.ts'
+import { upsertDeviceAndPushToken } from './pushDevices.ts'
 import { isPushExp1Enabled, runPushExp1Tick } from './pushScheduler.ts'
 import { isApnsEnvPresent } from './apns.ts'
 
@@ -63,14 +64,33 @@ export function mountPushRoutes(app: Express) {
     const guestId = getGuestId(req, res)
     const body = (req.body ?? {}) as Record<string, unknown>
     try {
+      const token = String(body.token ?? '')
+      const platform = String(body.platform ?? '')
+      const bundleId = String(body.bundleId ?? '')
+      const environment = String(body.environment ?? '')
+      const appVersion =
+        typeof body.appVersion === 'string' ? body.appVersion : undefined
       registerApnsToken(guestId, {
-        token: String(body.token ?? ''),
-        platform: String(body.platform ?? ''),
-        bundleId: String(body.bundleId ?? ''),
-        environment: String(body.environment ?? ''),
-        appVersion:
-          typeof body.appVersion === 'string' ? body.appVersion : undefined,
+        token,
+        platform,
+        bundleId,
+        environment,
+        appVersion,
       })
+      // Dual-write MySQL devices + push_tokens when pool is configured (soft-fail).
+      if (
+        platform === 'ios' &&
+        (environment === 'sandbox' || environment === 'production')
+      ) {
+        void upsertDeviceAndPushToken({
+          guestId,
+          platform: 'ios',
+          bundleId: bundleId.trim() || 'com.ragnus.mvp',
+          environment,
+          token: token.trim().toLowerCase(),
+          appVersion,
+        })
+      }
       res.json({ ok: true, guestId })
     } catch (err) {
       res.status(400).json({

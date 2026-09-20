@@ -19,6 +19,10 @@ import {
   type PushPrefs,
 } from './pushPrefs.ts'
 import {
+  listPushTokensForGuest,
+  mergeApnsTokens,
+} from './pushDevices.ts'
+import {
   findEntitlementByGuestId,
   isProStatus,
   type Entitlement,
@@ -195,7 +199,9 @@ export async function runPushExp1Tick(now = new Date()): Promise<TickResult> {
         result.skipped.push({ guestId, reason: 'no_shoot_window' })
         continue
       }
-      if (!prefs.apnsDeviceTokens.length) {
+      const mysqlTokens = await listPushTokensForGuest(guestId)
+      const tokens = mergeApnsTokens(prefs.apnsDeviceTokens, mysqlTokens)
+      if (!tokens.length) {
         result.skipped.push({ guestId, reason: 'no_device_token' })
         continue
       }
@@ -257,7 +263,7 @@ export async function runPushExp1Tick(now = new Date()): Promise<TickResult> {
       }
 
       let anyOk = false
-      for (const device of prefs.apnsDeviceTokens) {
+      for (const device of tokens) {
         const r = await sendApns(device.token, payload, {
           environment: device.environment,
         })
