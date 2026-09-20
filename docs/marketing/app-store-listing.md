@@ -1,4 +1,4 @@
-# Photo Recipes — iOS App Store Listing
+# Grok Camera — iOS App Store Listing
 
 Bundle ID: `com.ragnus.mvp`
 
@@ -6,21 +6,23 @@ Bundle ID: `com.ragnus.mvp`
 
 | Field | Status | Notes |
 | --- | --- | --- |
-| App Name | **LOCKED** | `Photo Recipes` — do not change without CoS |
+| App Name | **LOCKED** | `Grok Camera` — do not change without CoS |
 | Bundle ID | **LOCKED** | `com.ragnus.mvp` — leave as-is |
-| Subtitle | **DRAFT** | Primary below — paste-ready (≤30) |
+| Subtitle | **LOCKED** | `AI Auto: Shutter ISO Focus` (≤30) |
 | Promotional Text | **DRAFT** | Paste-ready (≤170; rotatable without resubmit) |
 | Description | **DRAFT** | Paste-ready — AI Auto Optimize + dials lead |
 | Keywords | **DRAFT** | Verify count in ASC editor before submit |
 | What’s New | **DRAFT** | Paste-ready |
-| Screenshot captions (5) | **LOCKED** | Exact captions below — do not change without CoS |
+| Screenshot captions (5) | **DRAFT** | Build 16 copy below — finalize with CoS before ASC paste |
 
 Legend: **LOCKED** = CoS approval to change · **DRAFT** = ready for this ASC cycle.
 
 ## App Name (30 char max) — LOCKED
-Photo Recipes
+Grok Camera
 
-## Subtitle (30 char max) — DRAFT · pick one primary
+Former working names (historical only): Grepawk Photos / Photo Recipes. Do not use on-image or as ASC App Name.
+
+## Subtitle (30 char max) — LOCKED for this cycle
 **Primary:** AI Auto: Shutter ISO Focus
 Alts: AI Sets Shutter ISO Focus | AI Camera Dial Control | Sets Shutter ISO Focus
 
@@ -29,7 +31,7 @@ AI Auto Optimize applies shutter, ISO, EV, WB & focus — real capture dials, no
 
 ## Description (full — App Store; use line breaks) — DRAFT
 
-AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. Photo Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
+AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. Grok Camera is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
 
 Set the shot. Then take it.
 
@@ -62,7 +64,7 @@ Ask “Why this?” after a run. See the recipe choice, which dials moved (shutt
 
 FREE PEEK vs PRO
 • Free Peek: browse recipes, live viewfinder, 1 Auto Optimize per day
-• Photo Recipes Pro: unlimited Auto Optimize, manual dials, apply recipes to the live session, full Teach mode, interactive field checklists
+• Grok Camera Pro: unlimited Auto Optimize, manual dials, apply recipes to the live session, full Teach mode, interactive field checklists
 
 Pricing: $7.99/month or $59.99/year (best value), both with a 7-day free trial. Subscriptions via Apple In-App Purchase.
 
@@ -89,12 +91,14 @@ Suggested exact string (count in editor):
 ## What’s New (iOS-first · AI-applied dials · field looks) — DRAFT
 AI Auto Optimize applies shutter, ISO, EV, WB, focus lock/POI, zoom/lens, torch when needed, plus field look intensity — real capture dials on your iPhone, not filters. Aperture/ND/tripod stay coach-only. Free Peek: 1/day. Set the shot. Then take it.
 
-## Screenshot captions (5) — LOCKED · exact copy
+## Screenshot captions (5) — DRAFT · Build 16
 1. Auto Optimize writes shutter, ISO, EV, WB & focus
-2. Point → Auto Optimize applies shutter, ISO, EV, WB, focus
-3. See shutter · ISO · EV · WB · focus — then override
-4. Look grade + shutter/ISO/EV/WB/focus on the viewfinder
-5. Ready — shutter, ISO, focus set · then take it
+2. Recommend applies the recipe — dials on the finder
+3. Scene coach in the box (optional STT)
+4. See shutter · ISO · EV · WB · focus — then override
+5. Set the shot. Then take it.
+
+Files: `iphone-{67,61}-01-ao-dial-burst.png` … `05-hero-value.png` — see `assets/app-store/screenshots/README.md` and `docs/marketing/asc-screenshot-brief-build16.md`.
 
 ## ASO notes
 - Subtitle leads with **AI Auto: Shutter ISO Focus** so search hits AI Auto Optimize and concrete dial intent — not vague “better photos.”
