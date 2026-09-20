@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Combine
+import os.log
 
 /// Sense → Reason → Apply → Verify (soft) → Ready
 /// Build 3 hybrid:
@@ -78,6 +79,8 @@ final class AutoOptimizeController: ObservableObject {
     @Published var suggestedLook: CreativeLook?
     /// Bumps when Pass 1 / Pass 2 successfully writes dials — CameraView shows on-finder apply burst.
     @Published var applyFeedbackToken: Int = 0
+
+    private let log = Logger(subsystem: "com.ragnus.mvp", category: "AutoOptimize")
 
     /// Pass 2 cloud refine — Settings can disable. Default ON (hybrid). Never blocks AO / shutter.
     static let cloudRefineDefaultsKey = "autoOptimize.cloudRefineEnabled"
@@ -225,10 +228,14 @@ final class AutoOptimizeController: ObservableObject {
         sceneNote: String = "",
         devicePitchDegrees: Double? = nil
     ) async {
-        guard !phase.isRunning else { return }
+        guard !phase.isRunning else {
+            log.info("run skipped — already running")
+            return
+        }
         guard canRun(entitlements: entitlements) else {
             phase = .error("Free Peek limit reached — try again tomorrow or go Pro")
             Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "path": "local"])
+            log.info("run blocked — quota")
             return
         }
 
@@ -243,7 +250,9 @@ final class AutoOptimizeController: ObservableObject {
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
         beforeSnapshot = snap(session)
+        // Immediate UI so tap is never a silent no-op (TestFlight / App Review).
         phase = .sensing("Reading light…")
+        log.info("run start generation=\(generation)")
         try? await Task.sleep(nanoseconds: 120_000_000)
 
         // Metering first (instant) — no network.
@@ -251,19 +260,43 @@ final class AutoOptimizeController: ObservableObject {
         phase = .sensing("Finding subject…")
 
         // Optional probe for Vision faces / saliency / histogram — stays on-device.
+        // Hard-cap wait so a stuck photo pipeline cannot freeze AO with no feedback.
         var probe: Data?
-        do {
-            let raw = try await session.captureProbeFrame()
+        enum ProbeRace { case data(Data); case fail(String); case timeout }
+        let race = await withTaskGroup(of: ProbeRace.self) { group -> ProbeRace in
+            group.addTask { @MainActor in
+                do {
+                    let raw = try await session.captureProbeFrame()
+                    return .data(raw)
+                } catch {
+                    return .fail(error.localizedDescription)
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                return .timeout
+            }
+            let first = await group.next() ?? .timeout
+            group.cancelAll()
+            return first
+        }
+        switch race {
+        case .data(let raw):
             if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
                 probe = c
             } else {
                 probe = raw
             }
-        } catch {
-            // Soft-fail: continue with metering-only heuristics.
+        case .timeout:
             probe = nil
-            Analytics.shared.track("auto_optimize_probe_soft_fail", props: ["error": error.localizedDescription])
+            log.error("probe timed out — metering-only")
+            Analytics.shared.track("auto_optimize_probe_soft_fail", props: ["error": "timeout"])
+        case .fail(let msg):
+            probe = nil
+            log.error("probe soft-fail \(msg, privacy: .public)")
+            Analytics.shared.track("auto_optimize_probe_soft_fail", props: ["error": msg])
         }
+
 
         let signals = await LocalSceneAnalyzer.analyze(
             session: session,
@@ -303,8 +336,12 @@ final class AutoOptimizeController: ObservableObject {
         let applied = session.apply(recipe: recipe)
         // Same apply path for button + Camera voice: overlay local phoneTargets when allowed.
         // freePhoneTargetsEnabled (server) gates free dial writes; Pro always applies.
+        var wroteTargets = false
         if entitlements.canApplyDials {
-            _ = session.applyPhoneTargets(local.phoneTargets)
+            wroteTargets = session.applyPhoneTargets(local.phoneTargets)
+            log.info("applyPhoneTargets wrote=\(wroteTargets) recipe=\(recipe.id, privacy: .public)")
+        } else {
+            log.info("applyPhoneTargets skipped — dials locked")
         }
 
         if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
@@ -326,9 +363,8 @@ final class AutoOptimizeController: ObservableObject {
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
             agentBaseline = afterSnapshot
             phase = .ready
-            if !coreDiffs.isEmpty {
-                applyFeedbackToken &+= 1
-            }
+            // Always bump so CameraView can show burst/toast — never silent Ready.
+            applyFeedbackToken &+= 1
             Analytics.shared.track("auto_optimize_success", props: [
                 "recipe_id": recipe.id,
                 "coach_only": "true",
@@ -362,9 +398,8 @@ final class AutoOptimizeController: ObservableObject {
         }
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
-        if !coreDiffs.isEmpty {
-            applyFeedbackToken &+= 1
-        }
+        applyFeedbackToken &+= 1
+        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(coreDiffs.count) wroteTargets=\(wroteTargets)")
         Analytics.shared.track("auto_optimize_success", props: [
             "recipe_id": recipe.id,
             "path": "local",
@@ -594,3 +629,4 @@ final class AutoOptimizeController: ObservableObject {
         return lines.reversed().filter { seen.insert($0.label).inserted }.reversed()
     }
 }
+

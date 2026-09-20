@@ -39,7 +39,7 @@ struct CameraView: View {
     @State private var showApplyBurst = false
     @State private var applyBurstTask: Task<Void, Never>?
 
-    /// Coach Recommend via ··· overflow (not primary finder chrome).
+    /// Coach Recommend — primary labeled control lower-left of shutter (Library lives in ···).
     @State private var isRecommending = false
     @State private var recommendResult: RecommendResponse?
     @State private var recommendError: String?
@@ -129,7 +129,10 @@ struct CameraView: View {
         .onChange(of: voice.phase) { _, phase in
             switch phase {
             case .recording:
-                voiceDictationBase = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Expand Scene chip so the live TextField is visible while speaking.
+                if !sceneExpanded {
+                    withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
+                }
             case .error:
                 if voice.permission == .denied { showMicDenied = true }
             default:
@@ -349,8 +352,13 @@ struct CameraView: View {
                 }
             }
             .onChange(of: optimizer.applyFeedbackToken) { _, token in
-                guard token > 0, !optimizer.coreDiffs.isEmpty else { return }
-                presentApplyBurst()
+                guard token > 0 else { return }
+                if !optimizer.coreDiffs.isEmpty {
+                    presentApplyBurst()
+                } else if let title = optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle {
+                    // Empty dial deltas — still confirm Apply so Optimize never feels silent.
+                    presentChromeToast("Ready · \(title)")
+                }
             }
         }
         .ignoresSafeArea()
@@ -582,61 +590,115 @@ struct CameraView: View {
         )
     }
 
+    private var isVoiceListening: Bool {
+        if case .recording = voice.phase { return true }
+        if case .uploading = voice.phase { return true }
+        return false
+    }
+
     private func sceneMicRow(compact: Bool) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    if sceneFromViewfinder {
-                        Text("From viewfinder")
-                            .font(AppTheme.overline())
-                            .foregroundStyle(AppTheme.inkSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Group {
+                    if sceneExpanded || isVoiceListening {
+                        // Real TextField so STT partials stream into a visible text box (App Review).
+                        TextField("e.g. silky waterfall, sharp rocks…", text: $sceneNote, axis: .vertical)
+                            .lineLimit(2...4)
+                            .font(AppTheme.bodySm())
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
                             .background(
-                                Capsule()
-                                    .fill(AppTheme.accentMuted)
-                                    .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
+                                RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
+                                    .fill(AppTheme.agentStatusBg)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
+                                            .stroke(
+                                                isVoiceListening ? AppTheme.accent.opacity(0.7) : AppTheme.border.opacity(0.7),
+                                                lineWidth: 1
+                                            )
+                                    )
                             )
+                            .onChange(of: sceneNote) { _, _ in
+                                sceneFromViewfinder = false
+                            }
+                    } else {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if sceneFromViewfinder {
+                                    Text("From viewfinder")
+                                        .font(AppTheme.overline())
+                                        .foregroundStyle(AppTheme.inkSecondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            Capsule()
+                                                .fill(AppTheme.accentMuted)
+                                                .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
+                                        )
+                                }
+                                Text(sceneNote.isEmpty ? "Scene…" : sceneNote)
+                                    .font(AppTheme.caption())
+                                    .foregroundStyle(sceneNote.isEmpty ? AppTheme.inkTertiary : AppTheme.ink)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(AppTheme.inkTertiary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(AppTheme.agentStatusBg)
+                                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.7), lineWidth: 1))
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    Text(sceneNote.isEmpty ? "Scene…" : sceneNote)
-                        .font(AppTheme.caption())
-                        .foregroundStyle(sceneNote.isEmpty ? AppTheme.inkTertiary : AppTheme.ink)
-                        .lineLimit(sceneExpanded ? 3 : 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: sceneExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppTheme.inkTertiary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule().fill(AppTheme.agentStatusBg)
-                        .overlay(Capsule().stroke(AppTheme.border.opacity(0.7), lineWidth: 1))
+
+                if isDescribingScene {
+                    ProgressView().scaleEffect(0.7)
+                } else if !isVoiceListening {
+                    Button {
+                        Task { await refreshSceneFromViewfinder() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.inkSecondary)
+                            .frame(width: 36, height: 36)
+                    }
+                }
+
+                VoiceDictateButton(
+                    controller: voice,
+                    enabled: !optimizer.phase.isRunning && !isDescribingScene,
+                    onWillStart: {
+                        voiceDictationBase = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !sceneExpanded {
+                            withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
+                        }
+                    },
+                    onPartial: { applyCameraVoicePartial($0) },
+                    onTranscript: { applyCameraVoiceFinal($0) }
                 )
             }
-            .buttonStyle(.plain)
 
-            if isDescribingScene {
-                ProgressView().scaleEffect(0.7)
-            } else {
+            if sceneExpanded && !isVoiceListening {
                 Button {
-                    Task { await refreshSceneFromViewfinder() }
+                    withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = false }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.inkSecondary)
-                        .frame(width: 36, height: 36)
+                    Text("Collapse scene")
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.inkTertiary)
                 }
+                .buttonStyle(.plain)
             }
 
-            VoiceDictateButton(
-                controller: voice,
-                enabled: !optimizer.phase.isRunning && !isDescribingScene,
-                onPartial: { applyCameraVoicePartial($0) },
-                onTranscript: { applyCameraVoiceFinal($0) }
-            )
+            VoiceStatusCaption(controller: voice)
         }
     }
 
@@ -644,23 +706,46 @@ struct CameraView: View {
         let side: CGFloat = compact ? 48 : 56
         let outer: CGFloat = compact ? 68 : 76
         let inner: CGFloat = compact ? 56 : 62
+        let recommendDisabled = isRecommending || optimizer.phase.isRunning
 
         return HStack(spacing: 0) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(0.35))
-                    .frame(width: 40, height: 40)
-                if let thumb = session.lastThumb {
-                    Image(uiImage: thumb)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 40, height: 40)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    Image(systemName: "photo").foregroundStyle(AppTheme.inkTertiary)
+            // Labeled Recommend (not photo/library thumb). Library stays in ··· More.
+            Button {
+                guard !recommendDisabled else { return }
+                Task { await runRecommend() }
+            } label: {
+                VStack(spacing: 2) {
+                    if isRecommending {
+                        ProgressView()
+                            .tint(AppTheme.ink)
+                            .scaleEffect(0.75)
+                            .frame(height: 18)
+                    } else {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: compact ? 14 : 16, weight: .semibold))
+                            .foregroundStyle(AppTheme.ink)
+                    }
+                    Text(compact ? "Rec" : "Recommend")
+                        .font(AppTheme.overline())
+                        .foregroundStyle(AppTheme.inkSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
+                .frame(width: side, height: side)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(AppTheme.border.opacity(0.6), lineWidth: 1)
+                        )
+                )
             }
-            .frame(width: side, height: side)
+            .buttonStyle(.plain)
+            .disabled(recommendDisabled)
+            .opacity(recommendDisabled ? 0.45 : 1)
+            .accessibilityLabel(isRecommending ? "Matching recipe" : "Recommend")
 
             Spacer(minLength: 8)
 
@@ -760,6 +845,10 @@ struct CameraView: View {
                 try Task.checkCancellation()
                 let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
+                // Never clobber live STT / typed note while mic is active.
+                if case .recording = voice.phase { return }
+                if case .uploading = voice.phase { return }
+                if case .requestingPermission = voice.phase { return }
                 if sceneNote.isEmpty || sceneFromViewfinder {
                     sceneNote = trimmed
                     sceneFromViewfinder = true
@@ -773,11 +862,18 @@ struct CameraView: View {
     }
 
     private func runOptimize() async {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // Quota exhausted (not Pro/unlimited): present existing Pro paywall — button stays enabled.
         guard canOptimize else {
+            print("[AO] tap → paywall (quota exhausted)")
             entitlements.showPaywall = true
             return
         }
+        if optimizer.phase.isRunning {
+            print("[AO] tap ignored — already running phase=\(optimizer.phase.statusCopy)")
+            return
+        }
+        print("[AO] tap → run sceneNoteChars=\(sceneNote.count)")
         await optimizer.run(
             session: session,
             entitlements: entitlements,
@@ -785,6 +881,13 @@ struct CameraView: View {
             sceneNote: sceneNote,
             devicePitchDegrees: horizon.isAvailable ? horizon.pitchDegrees : nil
         )
+        // applyFeedbackToken / phase drive burst, toast, or error pill — never silent.
+        if case .ready = optimizer.phase {
+            let title = optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle ?? "recipe"
+            print("[AO] ready recipe=\(title) diffs=\(optimizer.coreDiffs.count)")
+        } else if case .error(let msg) = optimizer.phase {
+            print("[AO] error \(msg)")
+        }
     }
 
     /// Coach recommend from viewfinder frame and/or scene note.
@@ -813,7 +916,7 @@ struct CameraView: View {
         let hadHeldFrame = jpeg != nil
         Analytics.shared.track("recommend_cta_tap", props: [
             "surface": "camera",
-            "source": "overflow",
+            "source": "shutter_row",
             "had_held_frame": hadHeldFrame ? "true" : "false",
         ])
 
@@ -1092,7 +1195,7 @@ struct RecipePickerSheet: View {
 }
 
 
-/// Coach recommend result from Camera ··· overflow.
+/// Coach recommend result from Camera lower-left Recommend (also ···).
 /// Apply to Camera writes recipe dials + optional phoneTargets from JSON.
 struct CameraRecommendResultSheet: View {
     let result: RecommendResponse?

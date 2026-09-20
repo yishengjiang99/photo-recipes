@@ -7,6 +7,8 @@ import SwiftUI
 struct VoiceDictateButton: View {
     @ObservedObject var controller: VoiceCaptureController
     var enabled: Bool = true
+    /// Called synchronously on the start tap *before* recognition begins — snapshot field base here.
+    var onWillStart: (() -> Void)? = nil
     /// Interim / partial transcript for the current utterance (live in the text field).
     var onPartial: ((String) -> Void)? = nil
     /// Final utterance — commit cleanly; Camera also kicks Auto Optimize from here.
@@ -18,6 +20,10 @@ struct VoiceDictateButton: View {
     var body: some View {
         Button {
             guard enabled || isRecording else { return }
+            if !isRecording {
+                // Snapshot typed text before any partial arrives (avoids base+partial race).
+                onWillStart?()
+            }
             controller.toggle(
                 onPartial: { text in onPartial?(text) },
                 onTranscript: onTranscript
@@ -91,7 +97,7 @@ struct VoiceStatusCaption: View {
         Group {
             switch controller.phase {
             case .recording:
-                Text("Listening…")
+                Text(controller.streamsPartials ? "Listening…" : "Recording…")
                     .font(AppTheme.bodySm())
                     .foregroundStyle(AppTheme.inkSecondary)
             case .uploading:

@@ -1,10 +1,11 @@
 import AVFoundation
 import Foundation
 import Speech
+import os.log
 
 /// Tap-to-talk dictation with live partials in the bound text field.
-/// Default: on-device `SFSpeechRecognizer` (`requiresOnDeviceRecognition` when supported).
-/// Silent fallback: Grok `/api/stt` batch when on-device Speech is unavailable.
+/// Prefer on-device SFSpeechRecognizer; else Apple Speech (still streams partials);
+/// Grok `/api/stt` batch only when Speech is unavailable (no live partials).
 @MainActor
 final class VoiceCaptureController: ObservableObject {
     enum Phase: Equatable {
@@ -17,17 +18,20 @@ final class VoiceCaptureController: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var permission: AVAudioSession.RecordPermission = .undetermined
+    /// True when the active path can stream interim transcripts into the field.
+    @Published private(set) var streamsPartials = false
 
     private let api: APIClient
+    private let log = Logger(subsystem: "com.ragnus.mvp", category: "VoiceSTT")
 
-    // On-device Speech
+    // Apple Speech (on-device or network)
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioEngine: AVAudioEngine?
     private var latestTranscript = ""
     private var didEmitFinal = false
-    private var usingOnDevice = false
+    private var usingSpeechFramework = false
 
     // Grok batch fallback
     private var recorder: AVAudioRecorder?
@@ -62,7 +66,8 @@ final class VoiceCaptureController: ObservableObject {
         tearDownRecorder()
         latestTranscript = ""
         didEmitFinal = false
-        usingOnDevice = false
+        usingSpeechFramework = false
+        streamsPartials = false
         onPartial = nil
         onTranscript = nil
         phase = .idle
@@ -75,30 +80,46 @@ final class VoiceCaptureController: ObservableObject {
         phase = .requestingPermission
         latestTranscript = ""
         didEmitFinal = false
+        streamsPartials = false
 
         let micOK = await requestMic()
         permission = AVAudioSession.sharedInstance().recordPermission
         guard micOK else {
+            log.error("mic denied")
             phase = .error("Microphone is off")
             return
         }
 
         let speechOK = await requestSpeechAuth()
-        if speechOK, await startOnDeviceSpeech() {
-            return
+        if speechOK {
+            // 1) On-device when supported (privacy + offline).
+            if await startSpeech(requiresOnDevice: true) {
+                log.info("path=on_device_speech streams=true")
+                return
+            }
+            // 2) Apple Speech with network still streams partials — prefer over Grok batch.
+            if await startSpeech(requiresOnDevice: false) {
+                log.info("path=apple_speech_network streams=true")
+                return
+            }
+        } else {
+            log.info("speech auth denied — falling back to Grok batch")
         }
 
-        // On-device unavailable / failed → silent Grok batch (no live partials).
+        // 3) Speech unavailable → Grok batch (final only).
+        log.info("path=grok_batch streams=false")
         await startGrokRecording()
     }
 
-    private func startOnDeviceSpeech() async -> Bool {
+    /// Start SFSpeechRecognizer. When `requiresOnDevice` is true, fails closed if unsupported.
+    private func startSpeech(requiresOnDevice: Bool) async -> Bool {
         let recognizer = SFSpeechRecognizer(locale: .current)
             ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
         guard let recognizer, recognizer.isAvailable else { return false }
 
-        let onDevice = recognizer.supportsOnDeviceRecognition
-        guard onDevice else { return false }
+        if requiresOnDevice {
+            guard recognizer.supportsOnDeviceRecognition else { return false }
+        }
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -107,7 +128,9 @@ final class VoiceCaptureController: ObservableObject {
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
-            request.requiresOnDeviceRecognition = true
+            if requiresOnDevice {
+                request.requiresOnDeviceRecognition = true
+            }
             if #available(iOS 16.0, *) {
                 request.addsPunctuation = true
             }
@@ -128,13 +151,15 @@ final class VoiceCaptureController: ObservableObject {
             speechRecognizer = recognizer
             recognitionRequest = request
             audioEngine = engine
-            usingOnDevice = true
+            usingSpeechFramework = true
+            streamsPartials = true
             phase = .recording
 
             recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor in
                     guard let self else { return }
-                    guard self.usingOnDevice, self.phase == .recording || self.phase == .uploading else { return }
+                    guard self.usingSpeechFramework,
+                          self.phase == .recording || self.phase == .uploading else { return }
 
                     if let result {
                         let text = result.bestTranscription.formattedString
@@ -147,23 +172,26 @@ final class VoiceCaptureController: ObservableObject {
                     }
 
                     if let error, self.phase == .recording {
-                        // Ignore benign end-of-audio noise; Stop path commits explicitly.
                         let ns = error as NSError
+                        // Ignore benign end-of-audio noise; Stop path commits explicitly.
                         if ns.domain == "kAFAssistantErrorDomain", ns.code == 1110 {
                             return
                         }
+                        self.log.error("speech error domain=\(ns.domain, privacy: .public) code=\(ns.code)")
                     }
                 }
             }
             return true
         } catch {
+            log.error("startSpeech failed: \(error.localizedDescription, privacy: .public)")
             tearDownSpeech(emitFinal: false)
             return false
         }
     }
 
     private func startGrokRecording() async {
-        usingOnDevice = false
+        usingSpeechFramework = false
+        streamsPartials = false
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
@@ -192,15 +220,14 @@ final class VoiceCaptureController: ObservableObject {
     // MARK: - Stop / finalize
 
     private func stopAndFinalize() async {
-        if usingOnDevice {
-            await stopOnDeviceAndFinalize()
+        if usingSpeechFramework {
+            await stopSpeechAndFinalize()
         } else {
             await stopGrokAndTranscribe()
         }
     }
 
-    private func stopOnDeviceAndFinalize() async {
-        // Keep phase as recording until we have text — avoid flash-empty via uploading UI.
+    private func stopSpeechAndFinalize() async {
         recognitionRequest?.endAudio()
         if let engine = audioEngine {
             engine.inputNode.removeTap(onBus: 0)
@@ -212,7 +239,8 @@ final class VoiceCaptureController: ObservableObject {
         emitFinalIfNeeded(latestTranscript)
 
         tearDownSpeech(emitFinal: false)
-        usingOnDevice = false
+        usingSpeechFramework = false
+        streamsPartials = false
         if case .error = phase {
             // keep error
         } else {
@@ -226,11 +254,9 @@ final class VoiceCaptureController: ObservableObject {
         didEmitFinal = true
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            // Don't wipe partials already shown — leave field as-is; surface soft error.
             phase = .error("Didn't catch that — try again")
             return
         }
-        // Final replaces the same utterance segment the partials already painted (views use base+text).
         onPartial?(trimmed)
         onTranscript?(trimmed)
     }
@@ -260,6 +286,8 @@ final class VoiceCaptureController: ObservableObject {
                 phase = .error("Didn't catch that — try again")
                 return
             }
+            // Paint field once for batch path (no live partials).
+            onPartial?(trimmed)
             onTranscript?(trimmed)
             phase = .idle
         } catch let APIError.missingKey(msg) {
