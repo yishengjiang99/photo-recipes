@@ -10,7 +10,7 @@ Strategy and copy sources of truth for Photo Recipes marketing. Use these docs f
 | --- | --- |
 | [gtm-plan.md](./gtm-plan.md) | Full go-to-market plan: iOS-first positioning, ICP, channels, funnel, launch sequence, budget, north-star metrics |
 | [ad-copy-v2.md](./ad-copy-v2.md) | Ad copy v2 (Auto Optimize) — the sole source of truth for current Meta/Reddit/video copy and hooks |
-| [app-store-listing.md](./app-store-listing.md) | iOS App Store listing: name, subtitle, description, keywords, ASO, review notes |
+| [app-store-listing.md](./app-store-listing.md) | ASC listing: AI Auto Optimize applies shutter/ISO/EV/WB/focus (+ dials); keywords, ASO, review notes |
 | [landing-seo-brief.md](./landing-seo-brief.md) | SEO landing brief: SEO → TestFlight / App Store bridge (web features paused) |
 | [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md) | Where to hang out, lead magnets, outreach scripts, weekly cadence, CRM, first 20 outreaches |
 | [growth-ideas-unconventional.md](./growth-ideas-unconventional.md) | 60 unconventional growth ideas + top 5 to run next (not more Reddit/Meta tweaks) |
