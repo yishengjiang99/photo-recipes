@@ -76,6 +76,8 @@ final class AutoOptimizeController: ObservableObject {
     @Published var senseSummary: String?
     /// Suggested look from Auto Optimize — never silent apply (Apply / Dismiss chip).
     @Published var suggestedLook: CreativeLook?
+    /// Bumps when Pass 1 / Pass 2 successfully writes dials — CameraView shows on-finder apply burst.
+    @Published var applyFeedbackToken: Int = 0
 
     /// Pass 2 cloud refine — Settings can disable. Default ON (hybrid). Never blocks AO / shutter.
     static let cloudRefineDefaultsKey = "autoOptimize.cloudRefineEnabled"
@@ -203,6 +205,7 @@ final class AutoOptimizeController: ObservableObject {
         verifyWarning = nil; agentBaseline = nil; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
+        applyFeedbackToken = 0
     }
 
     /// Local-first Auto Optimize. Happy path never calls the network or a VLM.
@@ -312,6 +315,9 @@ final class AutoOptimizeController: ObservableObject {
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
             agentBaseline = afterSnapshot
             phase = .ready
+            if !coreDiffs.isEmpty {
+                applyFeedbackToken &+= 1
+            }
             Analytics.shared.track("auto_optimize_success", props: [
                 "recipe_id": recipe.id,
                 "coach_only": "true",
@@ -345,6 +351,9 @@ final class AutoOptimizeController: ObservableObject {
         }
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
+        if !coreDiffs.isEmpty {
+            applyFeedbackToken &+= 1
+        }
         Analytics.shared.track("auto_optimize_success", props: [
             "recipe_id": recipe.id,
             "path": "local",
@@ -387,7 +396,6 @@ final class AutoOptimizeController: ObservableObject {
         let note = sceneNote
         let probe = probeJPEG
         let favorites = Array(entitlements.favoriteIds)
-        let isPro = entitlements.isPro
 
         cloudRefineTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -482,17 +490,19 @@ final class AutoOptimizeController: ObservableObject {
                     afterNotes: session.applyNotes,
                     session: session
                 )
-                if isPro {
-                    session.refreshReadouts()
-                    self.afterSnapshot = self.snap(session)
-                    self.diffs = self.buildDiffs(self.beforeSnapshot, self.afterSnapshot, session.clampMessages)
-                    self.agentBaseline = self.afterSnapshot
+                // Free Peek + Pro both write dials — always refresh diffs for on-finder apply burst.
+                session.refreshReadouts()
+                self.afterSnapshot = self.snap(session)
+                self.diffs = self.buildDiffs(self.beforeSnapshot, self.afterSnapshot, session.clampMessages)
+                self.agentBaseline = self.afterSnapshot
+                if !self.coreDiffs.isEmpty {
+                    self.applyFeedbackToken &+= 1
                 }
             }
 
             Analytics.shared.track("cloud_refine_success", props: [
                 "recipe_id": recipeId,
-                "wrote": (wroteDials || isPro) ? "true" : "false",
+                "wrote": wroteDials ? "true" : "false",
             ])
         }
     }

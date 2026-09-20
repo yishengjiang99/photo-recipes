@@ -29,6 +29,12 @@ struct CameraView: View {
     @State private var showCoachMarks = false
     @State private var coachStep = 0
     @State private var lookToast: String?
+    /// Top-chrome toast for flash / flip (short-lived).
+    @State private var chromeToast: String?
+    @State private var chromeToastTask: Task<Void, Never>?
+    /// On-finder AO apply burst (dial deltas) — collapses into BeforeAfterChip.
+    @State private var showApplyBurst = false
+    @State private var applyBurstTask: Task<Void, Never>?
 
     /// Coach Recommend (outline secondary — never merges with Auto Optimize)
     @State private var isRecommending = false
@@ -123,6 +129,8 @@ struct CameraView: View {
         .onDisappear {
             voice.cancel()
             describeTask?.cancel()
+            chromeToastTask?.cancel()
+            applyBurstTask?.cancel()
             session.stop()
             horizon.stop()
         }
@@ -240,6 +248,7 @@ struct CameraView: View {
         GeometryReader { geo in
             let compact = isCompactChrome(width: geo.size.width, height: geo.size.height)
             let bottomScrim: CGFloat = compact ? 112 : 136
+            let topChromeH: CGFloat = compact ? 56 : 64
             ZStack {
                 CameraPreviewView(
                     session: session.session,
@@ -249,6 +258,9 @@ struct CameraView: View {
                     .ignoresSafeArea()
                     .simultaneousGesture(
                         SpatialTapGesture().onEnded { value in
+                            // Keep focus taps out of top/bottom chrome so flash / flip / ··· stay tappable.
+                            let y = value.location.y
+                            guard y > topChromeH, y < geo.size.height - bottomScrim else { return }
                             let pt = CGPoint(
                                 x: value.location.x / geo.size.width,
                                 y: value.location.y / geo.size.height
@@ -275,13 +287,26 @@ struct CameraView: View {
                         bottomInset: bottomScrim + 24,
                         topInset: compact ? 52 : 64
                     )
+                    .allowsHitTesting(false)
+                }
+
+                // Mid-finder AO apply burst — impossible to miss dial writes.
+                if showApplyBurst, !optimizer.coreDiffs.isEmpty {
+                    ApplyBurstBanner(diffs: optimizer.coreDiffs)
+                        .padding(.horizontal, 20)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        .allowsHitTesting(false)
+                        .zIndex(15)
                 }
 
                 VStack(spacing: 0) {
                     topOverlay(compact: compact)
+                        .zIndex(12)
                     Spacer(minLength: 0)
+                        .allowsHitTesting(false)
                     bottomOverlay(compact: compact, width: geo.size.width, scrimHeight: bottomScrim)
                 }
+                .zIndex(10)
 
                 if showCoachMarks {
                     CameraCoachMarksView(step: $coachStep) {
@@ -291,6 +316,10 @@ struct CameraView: View {
                     .transition(.opacity)
                     .zIndex(20)
                 }
+            }
+            .onChange(of: optimizer.applyFeedbackToken) { _, token in
+                guard token > 0, !optimizer.coreDiffs.isEmpty else { return }
+                presentApplyBurst()
             }
         }
         .ignoresSafeArea()
@@ -315,49 +344,71 @@ struct CameraView: View {
     }
 
     private func topOverlay(compact: Bool) -> some View {
-        HStack(spacing: 4) {
-            floatingIcon(session.flash.icon) { session.flash = session.flash.next }
-            Spacer(minLength: 4)
-            if session.focusLocked || session.exposureLocked {
-                Text("AE/AF LOCK")
-                    .font(AppTheme.overline())
-                    .foregroundStyle(AppTheme.aeLock)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(AppTheme.agentStatusBg))
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                floatingIcon(session.flash.icon, accessibility: "Flash \(session.flash.modeCaption)") {
+                    cycleFlash()
+                }
+                Spacer(minLength: 4)
+                if session.focusLocked || session.exposureLocked {
+                    Text("AE/AF LOCK")
+                        .font(AppTheme.overline())
+                        .foregroundStyle(AppTheme.aeLock)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(AppTheme.agentStatusBg))
+                        .allowsHitTesting(false)
+                }
+                if horizon.isAvailable {
+                    Circle()
+                        .fill(horizon.isLevel ? AppTheme.agentReady : AppTheme.agentWarn)
+                        .frame(width: 8, height: 8)
+                        .rotationEffect(.degrees(-horizon.rollDegrees))
+                        .allowsHitTesting(false)
+                }
+                if let title = session.appliedRecipeTitle {
+                    Text(title)
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.recipeBadgeBg)
+                                .overlay(Capsule().stroke(AppTheme.accent.opacity(0.45), lineWidth: 1))
+                        )
+                        .onTapGesture { showClearConfirm = true }
+                }
+                floatingIcon("arrow.triangle.2.circlepath.camera", accessibility: "Flip camera") {
+                    flipCameraWithFeedback()
+                }
+                floatingIcon("ellipsis", accessibility: "More") {
+                    showOverflow = true
+                }
             }
-            if horizon.isAvailable {
-                Circle()
-                    .fill(horizon.isLevel ? AppTheme.agentReady : AppTheme.agentWarn)
-                    .frame(width: 8, height: 8)
-                    .rotationEffect(.degrees(-horizon.rollDegrees))
-            }
-            if let title = session.appliedRecipeTitle {
-                Text(title)
+
+            if let chromeToast {
+                Text(chromeToast)
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.ink)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(AppTheme.recipeBadgeBg)
-                            .overlay(Capsule().stroke(AppTheme.accent.opacity(0.45), lineWidth: 1))
-                    )
-                    .onTapGesture { showClearConfirm = true }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(AppTheme.agentStatusBg))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .allowsHitTesting(false)
             }
-            floatingIcon("arrow.triangle.2.circlepath.camera") { session.flipCamera() }
-            floatingIcon("ellipsis") { showOverflow = true }
         }
         .padding(.horizontal, compact ? 10 : 14)
         .padding(.top, 8)
+        .contentShape(Rectangle())
         .background(
             LinearGradient(
                 colors: [AppTheme.cameraScrim.opacity(0.85), .clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 72)
+            .frame(height: 88)
             .frame(maxHeight: .infinity, alignment: .top)
             .allowsHitTesting(false)
         )
@@ -481,7 +532,7 @@ struct CameraView: View {
                     .padding(.horizontal, hPad)
             }
 
-            if case .ready = optimizer.phase {
+            if case .ready = optimizer.phase, !showApplyBurst {
                 BeforeAfterChip(
                     diffs: optimizer.coreDiffs,
                     recipeTitle: optimizer.chosenRecipeTitle,
@@ -812,13 +863,67 @@ struct CameraView: View {
         }
     }
 
-    private func floatingIcon(_ system: String, action: @escaping () -> Void) -> some View {
+    private func floatingIcon(
+        _ system: String,
+        accessibility: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: system)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(AppTheme.ink)
                 .frame(width: 44, height: 44)
+                .contentShape(Circle())
                 .background(Circle().fill(Color.black.opacity(0.35)))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+        .accessibilityLabel(accessibility ?? system)
+    }
+
+    private func cycleFlash() {
+        session.flash = session.flash.next
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let mode = session.flash
+        // Flash only fires on the next still (AVCapturePhotoSettings). Toast makes that obvious;
+        // on the back camera, briefly pulse torch so “On” is also visible in the preview.
+        switch mode {
+        case .on:
+            presentChromeToast("Flash On — next photo")
+            session.pulseTorchForFlashPreview()
+        case .auto:
+            presentChromeToast("Flash Auto")
+        case .off:
+            presentChromeToast("Flash Off")
+        }
+    }
+
+    private func flipCameraWithFeedback() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let goingFront = !session.isFront
+        session.flipCamera()
+        presentChromeToast(goingFront ? "Front camera" : "Back camera")
+    }
+
+    private func presentChromeToast(_ message: String) {
+        chromeToastTask?.cancel()
+        withAnimation(.easeOut(duration: 0.15)) { chromeToast = message }
+        chromeToastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.2)) { chromeToast = nil }
+        }
+    }
+
+    private func presentApplyBurst() {
+        applyBurstTask?.cancel()
+        withAnimation(.easeOut(duration: 0.18)) { showApplyBurst = true }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        applyBurstTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.25)) { showApplyBurst = false }
         }
     }
 
@@ -1058,5 +1163,62 @@ struct CameraRecommendResultSheet: View {
                         .stroke(AppTheme.border, lineWidth: 1)
                 )
         )
+    }
+}
+
+
+/// Short-lived on-finder confirmation when Auto Optimize writes phoneTargets.
+/// Lists before→after dial deltas, then collapses into BeforeAfterChip.
+struct ApplyBurstBanner: View {
+    let diffs: [AutoOptimizeController.DiffLine]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.accent)
+                Text("Settings applied")
+                    .font(AppTheme.bodySmMedium())
+                    .foregroundStyle(AppTheme.ink)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(diffs.prefix(5)) { d in
+                    HStack(spacing: 6) {
+                        Text(d.label)
+                            .font(AppTheme.overline())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                            .frame(width: 52, alignment: .leading)
+                        Text(d.before)
+                            .font(AppTheme.monoSm())
+                            .foregroundStyle(AppTheme.diffBefore)
+                            .strikethrough()
+                        Text("→")
+                            .font(AppTheme.caption())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                        Text(d.after)
+                            .font(AppTheme.monoSm())
+                            .foregroundStyle(AppTheme.diffAfter)
+                        if d.clamped {
+                            Text("clamped")
+                                .font(AppTheme.overline())
+                                .foregroundStyle(AppTheme.warn)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                .fill(AppTheme.agentStatusBg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                        .stroke(AppTheme.accent.opacity(0.55), lineWidth: 1.5)
+                )
+        )
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+        .accessibilityLabel(diffs.map { "\($0.label) \($0.before) to \($0.after)" }.joined(separator: ", "))
     }
 }
