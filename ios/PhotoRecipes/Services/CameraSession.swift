@@ -32,6 +32,14 @@ final class CameraSession: NSObject, ObservableObject {
             case .auto: return "bolt.badge.automatic.fill"
             }
         }
+        /// Short caption for on-finder toast (Off / On / Auto).
+        var modeCaption: String {
+            switch self {
+            case .off: return "Off"
+            case .on: return "On"
+            case .auto: return "Auto"
+            }
+        }
         var av: AVCaptureDevice.FlashMode {
             switch self { case .off: return .off; case .on: return .on; case .auto: return .auto }
         }
@@ -732,6 +740,26 @@ final class CameraSession: NSObject, ObservableObject {
 
     func setTorch(_ on: Bool) {
         _ = applyTorch(TorchTarget(mode: on ? "on" : "off", level: on ? 1.0 : nil))
+    }
+
+    /// Brief torch blink on the back camera when the user selects Flash On, so the
+    /// mode change is visible in the preview (still flash only fires on the next still).
+    /// Leaves `flash` as `.on` for AVCapturePhotoSettings; torch returns to off.
+    func pulseTorchForFlashPreview() {
+        guard !isFront, supportsTorch else { return }
+        guard let device = input?.device, device.hasTorch, device.isTorchModeSupported(.on) else { return }
+        configure(device) {
+            do { try device.setTorchModeOn(level: 0.35) } catch { /* ignore */ }
+        }
+        torchOn = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard let device = self.input?.device, device.hasTorch else { return }
+            self.configure(device) {
+                if device.isTorchModeSupported(.off) { device.torchMode = .off }
+            }
+            self.torchOn = false
+        }
     }
 
     @discardableResult
