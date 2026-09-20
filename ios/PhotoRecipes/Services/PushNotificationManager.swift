@@ -4,6 +4,12 @@ import UserNotifications
 
 /// Experiment 1 APNs client: permission after first successful Auto Optimize,
 /// token register, foreground/tap → deep link `photo-recipes://auto-optimize`.
+///
+/// Build 22 root-cause fix: never call `registerForRemoteNotifications` until
+/// after `application(_:didFinishLaunching:)` (and again on scene active).
+/// Build 21 called it from `configure()`/`AppModel.init` before the
+/// `UIApplicationDelegateAdaptor` was ready, so the token callback was dropped
+/// and `POST /api/push/register` never fired (while `push_permission_*` events did).
 @MainActor
 final class PushNotificationManager: NSObject, ObservableObject {
     static let shared = PushNotificationManager()
@@ -22,8 +28,12 @@ final class PushNotificationManager: NSObject, ObservableObject {
     private let lastRegisteredTokenKey = "push.lastRegisteredToken"
     private let lastServerRegisterOkKey = "push.lastServerRegisterOk"
     private var registerRetryTask: Task<Void, Never>?
+    private var serverRegisterBackoffTask: Task<Void, Never>?
     /// Forces at least one /api/push/register attempt after a fresh Allow even if hex matches cache.
     private var forceRegisterAfterAllow = false
+    /// Gate: AppDelegate didFinishLaunching / scene active must flip this before APNs register.
+    private var appLaunchReady = false
+    private var pendingRegisterReason: String?
 
     init(api: APIClient = .shared, analytics: PushAnalytics = .shared) {
         self.api = api
@@ -35,9 +45,25 @@ final class PushNotificationManager: NSObject, ObservableObject {
         self.router = router
     }
 
+    /// Wire UNUserNotificationCenter only — do NOT request an APNs token here.
     func configure() {
         UNUserNotificationCenter.current().delegate = self
-        Task { await refreshAuthorizationStatus() }
+        Task { await refreshAuthorizationStatus(requestTokenIfAuthorized: false) }
+    }
+
+    /// Called from AppDelegate.didFinishLaunching and scenePhase.active.
+    func noteAppLaunchReady(reason: String) {
+        appLaunchReady = true
+        let pending = pendingRegisterReason
+        pendingRegisterReason = nil
+        Task {
+            await refreshAuthorizationStatus(requestTokenIfAuthorized: true)
+            if let pending {
+                await ensureRemoteNotificationRegistration(reason: pending)
+            } else {
+                await ensureRemoteNotificationRegistration(reason: reason)
+            }
+        }
     }
 
     // MARK: - Flags
@@ -50,6 +76,10 @@ final class PushNotificationManager: NSObject, ObservableObject {
         UserDefaults.standard.bool(forKey: Self.didAskPushPermissionKey)
     }
 
+    private var serverRegisterOk: Bool {
+        UserDefaults.standard.bool(forKey: lastServerRegisterOkKey)
+    }
+
     /// Call after Auto Optimize reaches `.ready` successfully.
     func noteFirstSuccessfulAutoOptimize() {
         let defaults = UserDefaults.standard
@@ -57,6 +87,9 @@ final class PushNotificationManager: NSObject, ObservableObject {
         defaults.set(true, forKey: Self.hasCompletedFirstAutoOptimizeKey)
         if wasFirst {
             Task { await maybeAskPermissionAfterFirstOptimize() }
+        } else {
+            // Later AOs: if Allow already happened but server never got a token, keep trying.
+            Task { await ensureRemoteNotificationRegistration(reason: "post_ao_reregister") }
         }
     }
 
@@ -66,38 +99,40 @@ final class PushNotificationManager: NSObject, ObservableObject {
     func maybeAskPermissionAfterFirstOptimize() async {
         guard hasCompletedFirstAutoOptimize else { return }
         guard !didAskPushPermission else {
-            // Already prompted once — if authorized, still ensure APNs token → server.
             await ensureRemoteNotificationRegistration(reason: "reask_gate")
             return
         }
 
-        await refreshAuthorizationStatus()
+        await refreshAuthorizationStatus(requestTokenIfAuthorized: false)
         if authorizationStatus == .authorized || authorizationStatus == .provisional {
             UserDefaults.standard.set(true, forKey: Self.didAskPushPermissionKey)
             forceRegisterAfterAllow = true
+            syncPushOptIn(true)
             requestAPNsDeviceToken(reason: "already_authorized")
             return
         }
         if authorizationStatus == .denied {
             UserDefaults.standard.set(true, forKey: Self.didAskPushPermissionKey)
+            syncPushOptIn(false)
             return
         }
 
         analytics.track(.pushPermissionPromptShown)
-        // Mark asked only after we present the system dialog (not before), so a crash
-        // mid-prompt can still re-prompt once — but do not re-prompt after Deny/Allow.
+        // Mark asked only after we present the system dialog (not before).
         do {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
             UserDefaults.standard.set(true, forKey: Self.didAskPushPermissionKey)
-            await refreshAuthorizationStatus()
+            await refreshAuthorizationStatus(requestTokenIfAuthorized: false)
             if granted {
                 analytics.track(.pushPermissionAccepted)
-                // Critical path: Allow → request APNs device token → POST /api/push/register.
                 forceRegisterAfterAllow = true
+                syncPushOptIn(true)
+                // Critical path: Allow → APNs token → POST /api/push/register.
                 requestAPNsDeviceToken(reason: "permission_accepted")
             } else {
                 analytics.track(.pushPermissionDenied)
+                syncPushOptIn(false)
             }
         } catch {
             UserDefaults.standard.set(true, forKey: Self.didAskPushPermissionKey)
@@ -105,9 +140,10 @@ final class PushNotificationManager: NSObject, ObservableObject {
         }
     }
 
-    func refreshAuthorizationStatus() async {
+    func refreshAuthorizationStatus(requestTokenIfAuthorized: Bool = true) async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         authorizationStatus = settings.authorizationStatus
+        guard requestTokenIfAuthorized else { return }
         if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
             await ensureRemoteNotificationRegistration(reason: "refresh_status")
         }
@@ -119,37 +155,35 @@ final class PushNotificationManager: NSObject, ObservableObject {
         authorizationStatus = settings.authorizationStatus
         guard settings.authorizationStatus == .authorized
             || settings.authorizationStatus == .provisional else { return }
-        let serverOk = UserDefaults.standard.bool(forKey: lastServerRegisterOkKey)
-        if !serverOk { forceRegisterAfterAllow = true }
+        if !serverRegisterOk { forceRegisterAfterAllow = true }
         requestAPNsDeviceToken(reason: reason)
     }
 
-    /// Step 1 after Allow: ask iOS for an APNs device token (AppDelegate callbacks deliver it).
+    /// Step 1 after Allow / cold start: ask iOS for an APNs device token.
     private func requestAPNsDeviceToken(reason: String) {
-        #if DEBUG
-        print("[Push] registerForRemoteNotifications reason=\(reason)")
-        #endif
-        // Must be on the main queue; UIApplication rejects otherwise.
-        let app = UIApplication.shared
-        if Thread.isMainThread {
-            app.registerForRemoteNotifications()
-        } else {
-            DispatchQueue.main.async { app.registerForRemoteNotifications() }
+        guard appLaunchReady else {
+            print("[Push] defer registerForRemoteNotifications reason=\(reason) (launch not ready)")
+            pendingRegisterReason = reason
+            return
         }
-        // Retry a few times — first call after Allow can race before the system is ready.
+        print("[Push] registerForRemoteNotifications reason=\(reason)")
+        let app = UIApplication.shared
+        let fire = { app.registerForRemoteNotifications() }
+        if Thread.isMainThread {
+            fire()
+        } else {
+            DispatchQueue.main.async(execute: fire)
+        }
+        // Retry with backoff — first call after Allow can race; early calls can miss the callback.
         registerRetryTask?.cancel()
         registerRetryTask = Task { @MainActor in
-            for delayNs in [500_000_000, 2_000_000_000, 5_000_000_000] as [UInt64] {
+            for delayNs in [500_000_000, 2_000_000_000, 5_000_000_000, 15_000_000_000] as [UInt64] {
                 try? await Task.sleep(nanoseconds: delayNs)
                 guard !Task.isCancelled else { return }
-                if deviceTokenHex != nil,
-                   UserDefaults.standard.bool(forKey: lastServerRegisterOkKey),
-                   !forceRegisterAfterAllow {
+                if self.deviceTokenHex != nil, self.serverRegisterOk, !self.forceRegisterAfterAllow {
                     return
                 }
-                #if DEBUG
-                print("[Push] retry registerForRemoteNotifications after \(delayNs)ns")
-                #endif
+                print("[Push] retry registerForRemoteNotifications after \(delayNs)ns reason=\(reason)")
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
@@ -160,16 +194,13 @@ final class PushNotificationManager: NSObject, ObservableObject {
     func didRegisterDeviceToken(_ data: Data) {
         let hex = data.map { String(format: "%02x", $0) }.joined()
         deviceTokenHex = hex
-        #if DEBUG
         print("[Push] didRegisterDeviceToken len=\(hex.count)")
-        #endif
         Task { await registerTokenWithServer(hex) }
     }
 
     func didFailToRegister(error: Error) {
-        // Always surface — B20 era only logged in DEBUG so TF failures were invisible.
         print("[Push] didFailToRegister: \(error.localizedDescription)")
-        // Keep retrying via requestAPNsDeviceToken's scheduled retries.
+        // Retries continue via requestAPNsDeviceToken's scheduled loop.
     }
 
     private func registerTokenWithServer(_ hex: String) async {
@@ -177,8 +208,10 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let prior = defaults.string(forKey: lastRegisteredTokenKey)
         let serverOk = defaults.bool(forKey: lastServerRegisterOkKey)
         if prior == hex, serverOk, !forceRegisterAfterAllow {
+            print("[Push] skip /api/push/register (cached ok)")
             return
         }
+        print("[Push] POST /api/push/register env=\(Self.apnsEnvironment) len=\(hex.count)")
         do {
             try await api.registerPushToken(
                 token: hex,
@@ -188,27 +221,58 @@ final class PushNotificationManager: NSObject, ObservableObject {
             defaults.set(hex, forKey: lastRegisteredTokenKey)
             defaults.set(true, forKey: lastServerRegisterOkKey)
             forceRegisterAfterAllow = false
-            #if DEBUG
             print("[Push] /api/push/register ok env=\(Self.apnsEnvironment)")
-            #endif
+            syncPushOptIn(true)
         } catch {
-            // Do not cache as OK — next launch / retry must hit the server again.
             defaults.set(false, forKey: lastServerRegisterOkKey)
             print("[Push] /api/push/register fail: \(error.localizedDescription)")
-            // Soft-retry once after a short delay (network blip / cold start).
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            guard !Task.isCancelled else { return }
+            scheduleServerRegisterBackoff(hex: hex)
+        }
+    }
+
+    private func scheduleServerRegisterBackoff(hex: String) {
+        serverRegisterBackoffTask?.cancel()
+        serverRegisterBackoffTask = Task { @MainActor in
+            for delayNs in [1_500_000_000, 5_000_000_000, 15_000_000_000] as [UInt64] {
+                try? await Task.sleep(nanoseconds: delayNs)
+                guard !Task.isCancelled else { return }
+                if UserDefaults.standard.bool(forKey: lastServerRegisterOkKey),
+                   UserDefaults.standard.string(forKey: lastRegisteredTokenKey) == hex,
+                   !forceRegisterAfterAllow {
+                    return
+                }
+                print("[Push] /api/push/register backoff retry after \(delayNs)ns")
+                do {
+                    try await api.registerPushToken(
+                        token: hex,
+                        environment: Self.apnsEnvironment,
+                        appVersion: Self.appVersion
+                    )
+                    UserDefaults.standard.set(hex, forKey: lastRegisteredTokenKey)
+                    UserDefaults.standard.set(true, forKey: lastServerRegisterOkKey)
+                    forceRegisterAfterAllow = false
+                    print("[Push] /api/push/register ok (backoff) env=\(Self.apnsEnvironment)")
+                    syncPushOptIn(true)
+                    return
+                } catch {
+                    print("[Push] /api/push/register backoff fail: \(error.localizedDescription)")
+                }
+            }
+            requestAPNsDeviceToken(reason: "register_backoff_exhausted")
+        }
+    }
+
+    /// Mirror opt-in to server prefs (token register alone does not set pushOptIn).
+    private func syncPushOptIn(_ optedIn: Bool) {
+        Task {
             do {
-                try await api.registerPushToken(
-                    token: hex,
-                    environment: Self.apnsEnvironment,
-                    appVersion: Self.appVersion
-                )
-                defaults.set(hex, forKey: lastRegisteredTokenKey)
-                defaults.set(true, forKey: lastServerRegisterOkKey)
-                forceRegisterAfterAllow = false
+                var prefs = APIClient.PushPrefs()
+                prefs.pushOptIn = optedIn
+                prefs.timezone = TimeZone.current.identifier
+                _ = try await api.updatePushPrefs(prefs)
+                print("[Push] prefs pushOptIn=\(optedIn) ok")
             } catch {
-                print("[Push] /api/push/register retry fail: \(error.localizedDescription)")
+                print("[Push] prefs pushOptIn=\(optedIn) fail: \(error.localizedDescription)")
             }
         }
     }
@@ -283,7 +347,10 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Ensure delegate callbacks (including APNs token) are wired under SwiftUI.
+        // Mark launch ready BEFORE any deferred registerForRemoteNotifications runs.
+        Task { @MainActor in
+            PushNotificationManager.shared.noteAppLaunchReady(reason: "did_finish_launching")
+        }
         return true
     }
 
@@ -307,7 +374,7 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         Task { @MainActor in
-            await PushNotificationManager.shared.ensureRemoteNotificationRegistration(reason: "become_active")
+            PushNotificationManager.shared.noteAppLaunchReady(reason: "become_active")
         }
     }
 }
