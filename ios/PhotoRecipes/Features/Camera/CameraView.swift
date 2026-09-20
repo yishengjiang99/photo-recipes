@@ -164,8 +164,7 @@ struct CameraView: View {
         .sheet(isPresented: $showRecipePicker) {
             RecipePickerSheet { recipe in
                 showRecipePicker = false
-                let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
-                if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+                _ = session.apply(recipe: recipe)
             }
         }
         .sheet(isPresented: $showOverflow) {
@@ -205,8 +204,7 @@ struct CameraView: View {
                 errorText: recommendError,
                 onApply: { recipe in
                     showRecommendResult = false
-                    let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
-                    if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+                    _ = session.apply(recipe: recipe)
                 },
                 onDismiss: {
                     showRecommendResult = false
@@ -794,8 +792,7 @@ struct CameraView: View {
         guard let id = router.stagedRecipeId,
               let recipe = BundledPresets.recipe(id: id) else { return }
         if router.pendingApply {
-            let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
-            if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+            _ = session.apply(recipe: recipe)
             router.pendingApply = false
         } else {
             session.appliedRecipeId = recipe.id

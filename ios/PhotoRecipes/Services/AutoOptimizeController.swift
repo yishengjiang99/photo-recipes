@@ -168,7 +168,7 @@ final class AutoOptimizeController: ObservableObject {
     func resetToAgent(session: CameraSession) {
         guard agentBaseline != nil else { return }
         if let id = chosenRecipeId, let recipe = BundledPresets.recipe(id: id) {
-            _ = session.apply(recipe: recipe, asPro: true)
+            _ = session.apply(recipe: recipe)
         }
         afterSnapshot = agentBaseline
         isDirtyOverride = false
@@ -288,9 +288,10 @@ final class AutoOptimizeController: ObservableObject {
         try? await Task.sleep(nanoseconds: 120_000_000)
 
         let notesBefore = session.applyNotes
-        let applied = session.apply(recipe: recipe, asPro: entitlements.isPro)
+        let applied = session.apply(recipe: recipe)
         // Same apply path for button + Camera voice: overlay local phoneTargets.
-        _ = session.applyPhoneTargets(local.phoneTargets, asPro: entitlements.isPro)
+        // Free Peek writes dials; shared daily Optimize quota gates how often AO can run.
+        _ = session.applyPhoneTargets(local.phoneTargets)
 
         if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
             var suggested = look
@@ -464,9 +465,8 @@ final class AutoOptimizeController: ObservableObject {
 
             if let targets = response.phoneTargets {
                 let notesBefore = session.applyNotes
-                if wroteDials || isPro {
-                    _ = session.applyPhoneTargets(targets, asPro: isPro)
-                }
+                // Always refine dials when Pass 2 returns phoneTargets (Free Peek + Pro).
+                _ = session.applyPhoneTargets(targets)
                 // Look chip: recipes remain source of truth; look is optional intensity on phoneTargets.
                 if let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
                     var suggested = look
