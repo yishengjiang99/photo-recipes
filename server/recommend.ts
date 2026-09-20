@@ -13,7 +13,9 @@ const FALLBACK_MODEL = 'grok-3-mini'
 const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
 /** Hard cap on tool rounds. If select_preset never succeeds, fail clearly. */
 const MAX_ROUNDS = 4
-/** Vision token cost vs quality — low is much faster for Auto Optimize. */
+/** Vision token cost vs quality — low is much faster for Auto Optimize.
+ * Image data URLs are held in memory for the tool loop only — never persisted.
+ */
 const VISION_IMAGE_DETAIL: 'auto' | 'low' | 'high' = 'low'
 
 export interface RecommendRequest {
@@ -199,7 +201,10 @@ export interface RecommendResult {
   creativeLook?: CreativeLook
   preset: RecipePreset
   model: string
-  messages?: unknown[]
+  /**
+   * Intentionally omitted: conversation history can contain image data URLs.
+   * Vision is pass-through only — never return or persist message transcripts with photos.
+   */
 }
 
 type ContentPart =
@@ -1340,7 +1345,7 @@ export async function recommendWithGrok(
         ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
         preset,
         model,
-        messages,
+        // Do not return `messages` — they embed the vision data URL (pass-through only).
       }
     }
 
