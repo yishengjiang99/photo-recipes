@@ -25,3 +25,11 @@ node export.mjs
 Outputs 10 PNGs under `out/` at 1290×2796 (6.7") and 1179×2556 (6.1"). Copy to `assets/app-store/screenshots/` for ASC.
 
 See `docs/marketing/asc-screenshot-brief-build16.md`.
+
+## Polish notes (Build 16 fidelity)
+
+- Recommend is **labeled** lower-left of shutter (sparkles + text), not a blank thumb
+- Frame 1 dial burst uses larger mono + amber → arrows for ASC thumb readability
+- Frame 5 is quiet (caption band only + AO + shutter; no mid-finder chrome noise)
+- Accent `#E0A812` / `#F5C518` on AO fills only; shutter core stays neutral
+

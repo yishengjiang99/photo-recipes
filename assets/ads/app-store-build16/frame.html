@@ -41,6 +41,18 @@
   }
 
   .phone { position: absolute; inset: 0; background: #000; }
+  .mock-badge {
+    position: absolute; top: 18px; right: 22px; z-index: 40;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(245,245,247,0.50);
+    padding: 5px 9px; border-radius: 6px;
+    background: rgba(0,0,0,0.40);
+    border: 1px solid rgba(255,255,255,0.10);
+    pointer-events: none;
+  }
+  #ad.size-61 .mock-badge { top: 16px; right: 18px; font-size: 10px; }
+
   .vf {
     position: absolute; inset: 0;
     background: url("assets/viewfinder-scene.jpg") center/cover no-repeat;
@@ -70,6 +82,7 @@
   }
   #ad.size-61 .caption { font-size: 38px; }
   #ad.size-61 .caption-band { padding: 64px 48px 24px; }
+  .caption-sub { display: none; }
 
   .top-chrome {
     position: absolute; top: 220px; left: 0; right: 0; z-index: 12;
@@ -95,41 +108,41 @@
 
   /* Frame 1 — AO dial burst */
   .burst {
-    position: absolute; left: 40px; right: 40px; top: 42%; z-index: 15;
+    position: absolute; left: 44px; right: 44px; top: 40%; z-index: 15;
     transform: translateY(-50%);
-    padding: 18px 20px;
-    border-radius: 16px;
-    background: var(--agent-bg);
-    border: 1.5px solid rgba(245,245,247,0.22);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.45);
-    backdrop-filter: blur(12px);
+    padding: 22px 24px;
+    border-radius: 18px;
+    background: rgba(0,0,0,0.64);
+    border: 1.5px solid rgba(224,168,18,0.50);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    backdrop-filter: blur(16px);
     display: none;
   }
-  #ad.size-61 .burst { left: 32px; right: 32px; }
+  #ad.size-61 .burst { left: 36px; right: 36px; padding: 18px 20px; }
   .burst-head {
     display: flex; align-items: center; gap: 8px;
-    margin-bottom: 12px;
-    font-size: 15px; font-weight: 600;
+    margin-bottom: 14px;
+    font-size: 17px; font-weight: 650;
   }
-  .burst-head .bolt { color: var(--accent); font-size: 14px; }
+  .burst-head .bolt { color: var(--accent); font-size: 15px; }
   .diff-row {
-    display: flex; align-items: center; gap: 8px;
-    margin-bottom: 6px;
-    font-size: 14px;
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 9px;
   }
   .diff-row:last-child { margin-bottom: 0; }
   .diff-lab {
-    width: 64px; font-size: 11px; font-weight: 600;
-    letter-spacing: 0.06em; text-transform: uppercase;
+    width: 78px; font-size: 13px; font-weight: 700;
+    letter-spacing: 07em; text-transform: uppercase;
     color: var(--ink-tertiary);
   }
   .diff-before {
-    font-family: var(--mono); font-weight: 600; font-size: 15px;
+    font-family: var(--mono); font-weight: 600; font-size: 17px;
     color: var(--ink-tertiary); text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
   }
-  .diff-arr { color: var(--ink-tertiary); font-size: 13px; }
+  .diff-arr { color: var(--accent-soft); font-size: 16px; font-weight: 700; min-width: 22px; text-align: center; }
   .diff-after {
-    font-family: var(--mono); font-weight: 600; font-size: 15px;
+    font-family: var(--mono); font-weight: 700; font-size: 18px;
     color: var(--ink);
   }
 
@@ -174,15 +187,15 @@
     display: flex; flex-wrap: wrap; gap: 8px;
   }
   .mini-dial {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 7px 11px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 12px; border-radius: 999px;
     background: var(--surface-2); border: 1px solid var(--border);
-    font-size: 12px;
+    font-size: 13px;
   }
-  .mini-dial .k { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-tertiary); }
-  .mini-dial .b { font-family: var(--mono); font-weight: 600; color: var(--ink-tertiary); text-decoration: line-through; }
-  .mini-dial .a { font-family: var(--mono); font-weight: 600; color: var(--ink); }
-  .mini-dial .arr { color: var(--ink-tertiary); font-size: 11px; }
+  .mini-dial .k { font-size: 11px; font-weight: 700; letter-spacing: 06em; text-transform: uppercase; color: var(--ink-tertiary); }
+  .mini-dial .b { font-family: var(--mono); font-weight: 600; color: var(--ink-tertiary); text-decoration: line-through; font-size: 13px; }
+  .mini-dial .a { font-family: var(--mono); font-weight: 700; color: var(--ink); font-size: 14px; }
+  .mini-dial .arr { color: var(--accent-soft); font-size: 12px; font-weight: 700; }
 
   /* Frame 3 — Scene coach / optional STT (secondary) */
   .coach-box {
@@ -223,7 +236,7 @@
   }
   .stt-line .mic {
     width: 22px; height: 22px; border-radius: 50%;
-    background: rgba(245,245,247,0.08);
+    background: rgba(245,245,247,08);
     display: flex; align-items: center; justify-content: center;
   }
   .stt-line .mic svg { width: 12px; height: 12px; stroke: var(--ink-tertiary); fill: none; stroke-width: 1.8; }
@@ -258,13 +271,14 @@
     box-shadow: inset 0 0 0 1px rgba(224,168,18,0.2);
   }
   .dial-cell .k {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    font-size: 10px; font-weight: 600; letter-spacing: 08em;
     text-transform: uppercase; color: var(--ink-tertiary); margin-bottom: 4px;
   }
   .dial-cell .ba {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
-    font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 4px;
+    font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 5px;
   }
+  .dial-cell .arr { color: var(--accent-soft); font-weight: 700; }
   .dial-cell .b { color: var(--ink-tertiary); text-decoration: line-through; }
   .dial-cell .a { color: var(--ink); font-weight: 600; }
   .dial-cell .val { color: var(--ink); font-weight: 600; font-family: var(--mono); font-size: 15px; }
@@ -282,39 +296,26 @@
   }
 
   /* Frame 5 — Hero value prop */
+  /* Frame 5 — quiet hero: caption band carries brand+slogan; mid-finder stays clean */
   .hero {
-    position: absolute; left: 48px; right: 48px; top: 38%; z-index: 15;
-    transform: translateY(-40%);
-    display: none;
-    text-align: center;
+    display: none !important;
   }
-  #ad.size-61 .hero { left: 40px; right: 40px; }
-  .hero .brand {
-    font-size: 14px; font-weight: 700; letter-spacing: 0.22em;
-    text-transform: uppercase; color: rgba(245,245,247,0.55);
-    margin-bottom: 22px;
+  #ad.frame-5 .caption {
+    font-size: 52px; line-height: 1.12;
   }
-  .hero .slogan {
-    font-family: "Instrument Serif", Georgia, serif;
-    font-size: 64px; line-height: 1.12; color: var(--ink);
-    text-shadow: 0 4px 28px rgba(0,0,0,0.55);
-    margin-bottom: 28px;
+  #ad.size-61.frame-5 .caption { font-size: 44px; }
+  #ad.frame-5 .caption-sub {
+    display: block;
+    margin-top: 12px;
+    font-size: 17px; font-weight: 500;
+    color: rgba(245,245,247,0.58);
+    letter-spacing: 02em;
   }
-  #ad.size-61 .hero .slogan { font-size: 54px; }
-  .hero .sub {
-    font-size: 18px; color: var(--ink-secondary); line-height: 1.4;
-    max-width: 720px; margin: 0 auto 28px;
-  }
-  .hero .pill-row {
-    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
-  }
-  .hero .pill {
-    padding: 8px 14px; border-radius: 999px;
-    background: var(--chrome-bg); border: 1px solid var(--border);
-    font-size: 13px; font-weight: 500; color: var(--ink);
-  }
-  .hero .pill em {
-    font-style: normal; color: var(--accent); font-weight: 600;
+  #ad.size-61.frame-5 .caption-sub { font-size: 15px; }
+  .ao.highlight {
+    outline: 3px solid rgba(245,197,24,0.85);
+    outline-offset: 5px;
+    box-shadow: 0 0 0 10px rgba(224,168,18,0.18), 0 8px 28px -6px rgba(224,168,18,0.55);
   }
 
   /* Bottom stack */
@@ -352,59 +353,76 @@
   }
   .ao svg { width: 16px; height: 16px; fill: currentColor; }
 
-  .recommend {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    height: 36px; padding: 0 18px; border-radius: 999px;
-    background: var(--chrome-bg);
-    border: 1.5px solid var(--border-strong);
-    font-size: 14px; font-weight: 500; color: var(--ink);
+  /* Build 16: labeled Recommend lower-left of shutter (not a blank thumb) */
+  .recommend-ll {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px;
+    width: 72px; height: 72px;
+    border-radius: 14px;
+    background: rgba(0,0,0,0.40);
+    border: 1px solid rgba(58,58,60,0.75);
+    color: var(--ink);
+    backdrop-filter: blur(8px);
   }
+  .recommend-ll svg {
+    width: 20px; height: 20px;
+    stroke: var(--ink); fill: none; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .recommend-ll .lab {
+    font-size: 11px; font-weight: 650; letter-spacing: 02em;
+    color: var(--ink-secondary); line-height: 1;
+  }
+  .recommend-ll.hot {
+    border-color: rgba(224,168,18,0.65);
+    box-shadow: 0 0 0 3px rgba(224,168,18,0.18);
+    background: rgba(224,168,18,0.12);
+  }
+  .recommend-ll.hot .lab { color: var(--ink); }
+  .recommend-ll.hot svg { stroke: var(--accent-soft); }
 
   .shutter-row {
     display: flex; align-items: center; justify-content: space-between;
-    width: 100%; max-width: 420px; padding: 4px 8px 0;
+    width: 100%; max-width: 480px; padding: 6px 4px 0;
   }
   .side {
-    width: 44px; height: 44px; border-radius: 12px;
-    background: rgba(28,28,30,0.7); border: 1px solid rgba(58,58,60,0.7);
+    width: 72px; height: 72px; border-radius: 14px;
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(58,58,60,0.65);
     display: flex; align-items: center; justify-content: center;
   }
-  .side.svg-on svg { width: 18px; height: 18px; stroke: rgba(245,245,247,0.72); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .side svg { width: 18px; height: 18px; stroke: rgba(245,245,247,0.72); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .side svg { width: 26px; height: 26px; stroke: rgba(245,245,247,0.78); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .shutter {
-    width: 72px; height: 72px; border-radius: 50%;
-    border: 3px solid rgba(245,245,247,0.92);
+    width: 84px; height: 84px; border-radius: 50%;
+    border: 4px solid rgba(245,245,247,0.94);
     display: flex; align-items: center; justify-content: center;
   }
   .shutter .core {
-    width: 56px; height: 56px; border-radius: 50%;
-    background: var(--accent);
+    width: 66px; height: 66px; border-radius: 50%;
+    background: #F5F5F7; /* neutral shutter — amber only on AO */
   }
 
   /* Visibility toggles */
   .show-burst .burst { display: block; }
-  .show-recommend-callout .recommend-callout { display: flex; }
   .show-recipe-apply .recipe-apply-card { display: block; }
   .show-coach .coach-box { display: block; }
   .show-dials .dial-panel { display: block; }
   .show-hero .hero { display: block; }
-  .hide-recommend .recommend { display: none; }
   .hide-ao .ao { display: none; }
-  .hide-stack-chrome .status,
-  .hide-stack-chrome .ao,
-  .hide-stack-chrome .recommend { display: none; }
+  .hide-status .status { display: none; }
   .hide-top .top-chrome { display: none; }
-  .dim-stack .stack { opacity: 0.92; }
+  /* Frame 2 keeps floating callout off — Recommend lives in shutter row */
 </style>
 </head>
 <body>
 <div id="ad">
   <div class="phone">
     <div class="vf"></div>
+    <div class="mock-badge">MOCK</div>
 
     <div class="caption-band">
       <div class="wordmark">Grok Camera</div>
       <div class="caption" id="caption">Auto Optimize writes shutter, ISO, EV, WB &amp; focus</div>
+      <div class="caption-sub" id="captionSub">AI Auto: Shutter ISO Focus</div>
     </div>
 
     <div class="top-chrome" id="topChrome">
@@ -425,10 +443,10 @@
     <div class="burst" id="burst">
       <div class="burst-head"><span class="bolt">⚡</span> Settings applied</div>
       <div class="diff-row"><span class="diff-lab">Shutter</span><span class="diff-before">1/500</span><span class="diff-arr">→</span><span class="diff-after">1/60</span></div>
-      <div class="diff-row"><span class="diff-lab">ISO</span><span class="diff-before">100</span><span class="diff-arr">→</span><span class="diff-after">400</span></div>
-      <div class="diff-row"><span class="diff-lab">EV</span><span class="diff-before">0.0</span><span class="diff-arr">→</span><span class="diff-after">−0.7</span></div>
-      <div class="diff-row"><span class="diff-lab">WB</span><span class="diff-before">Auto</span><span class="diff-arr">→</span><span class="diff-after">5600K</span></div>
-      <div class="diff-row"><span class="diff-lab">Focus</span><span class="diff-before">AF-C</span><span class="diff-arr">→</span><span class="diff-after">Lock</span></div>
+      <div class="diff-row"><span class="diff-lab">ISO</span><span class="diff-before">ISO 100</span><span class="diff-arr">→</span><span class="diff-after">ISO 400</span></div>
+      <div class="diff-row"><span class="diff-lab">EV</span><span class="diff-before">EV 0</span><span class="diff-arr">→</span><span class="diff-after">−0.7</span></div>
+      <div class="diff-row"><span class="diff-lab">WB</span><span class="diff-before">Auto</span><span class="diff-arr">→</span><span class="diff-after">5200K</span></div>
+      <div class="diff-row"><span class="diff-lab">Focus</span><span class="diff-before">AF</span><span class="diff-arr">→</span><span class="diff-after">Lock</span></div>
     </div>
 
     <!-- 2 Recommend + recipe apply -->
@@ -438,9 +456,9 @@
       <div class="mini-dials">
         <div class="mini-dial"><span class="k">Shutter</span><span class="b">1/500</span><span class="arr">→</span><span class="a">1/60</span></div>
         <div class="mini-dial"><span class="k">ISO</span><span class="b">100</span><span class="arr">→</span><span class="a">400</span></div>
-        <div class="mini-dial"><span class="k">EV</span><span class="b">0.0</span><span class="arr">→</span><span class="a">−0.7</span></div>
-        <div class="mini-dial"><span class="k">WB</span><span class="b">Auto</span><span class="arr">→</span><span class="a">5600K</span></div>
-        <div class="mini-dial"><span class="k">Focus</span><span class="b">AF-C</span><span class="arr">→</span><span class="a">Lock</span></div>
+        <div class="mini-dial"><span class="k">EV</span><span class="b">0</span><span class="arr">→</span><span class="a">−0.7</span></div>
+        <div class="mini-dial"><span class="k">WB</span><span class="b">Auto</span><span class="arr">→</span><span class="a">5200K</span></div>
+        <div class="mini-dial"><span class="k">Focus</span><span class="b">AF</span><span class="arr">→</span><span class="a">Lock</span></div>
       </div>
     </div>
     <div class="recommend-callout" id="recommendCallout">
@@ -464,7 +482,7 @@
         <div class="mini-dial"><span class="k">Shutter</span><span class="a">1/60</span></div>
         <div class="mini-dial"><span class="k">ISO</span><span class="a">400</span></div>
         <div class="mini-dial"><span class="k">EV</span><span class="a">−0.7</span></div>
-        <div class="mini-dial"><span class="k">WB</span><span class="a">5600K</span></div>
+        <div class="mini-dial"><span class="k">WB</span><span class="a">5200K</span></div>
         <div class="mini-dial"><span class="k">Focus</span><span class="a">Lock</span></div>
       </div>
     </div>
@@ -473,28 +491,19 @@
     <div class="dial-panel" id="dialPanel">
       <div class="lab">Manual dials · override anytime</div>
       <div class="dial-grid">
-        <div class="dial-cell override"><div class="k">Shutter</div><div class="val">1/125</div></div>
-        <div class="dial-cell"><div class="k">ISO</div><div class="val">400</div></div>
-        <div class="dial-cell"><div class="k">EV</div><div class="val">−0.7</div></div>
-        <div class="dial-cell"><div class="k">WB</div><div class="val">5600K</div></div>
-        <div class="dial-cell"><div class="k">Focus</div><div class="val">Lock</div></div>
-        <div class="dial-cell"><div class="k">Teach</div><div class="ba"><span class="a" style="text-decoration:none;font-family:DM Sans,sans-serif;font-size:12px">Why?</span></div></div>
+        <div class="dial-cell override"><div class="k">Shutter</div><div class="ba"><span class="b">1/500</span><span class="arr">→</span><span class="a">1/125</span></div></div>
+        <div class="dial-cell"><div class="k">ISO</div><div class="ba"><span class="b">100</span><span class="arr">→</span><span class="a">400</span></div></div>
+        <div class="dial-cell"><div class="k">EV</div><div class="ba"><span class="b">0</span><span class="arr">→</span><span class="a">−0.7</span></div></div>
+        <div class="dial-cell"><div class="k">WB</div><div class="ba"><span class="b">Auto</span><span class="arr">→</span><span class="a">5200K</span></div></div>
+        <div class="dial-cell"><div class="k">Focus</div><div class="ba"><span class="b">AF</span><span class="arr">→</span><span class="a">Lock</span></div></div>
+        <div class="dial-cell"><div class="k">Teach</div><div class="ba"><span class="a" style="text-decoration:none;font-family:DM Sans,sans-serif;font-size:13px">Why?</span></div></div>
       </div>
       <div class="why"><strong>Why this?</strong> You bumped shutter to freeze a stride — ISO stays for dusk light · focus remains locked.</div>
       <div class="teach-btn">✦ Teach · Why this?</div>
     </div>
 
-    <!-- 5 Hero value prop -->
-    <div class="hero" id="hero">
-      <div class="brand">Grok Camera</div>
-      <div class="slogan">Set the shot.<br/>Then take it.</div>
-      <div class="sub">AI Auto Optimize writes shutter, ISO, EV, WB &amp; focus — real capture dials, not filters.</div>
-      <div class="pill-row">
-        <span class="pill"><em>Shutter</em> · ISO · EV</span>
-        <span class="pill">WB · Focus</span>
-        <span class="pill">Recommend · Teach</span>
-      </div>
-    </div>
+    <!-- 5 Hero value prop — quiet; brand+slogan live in caption band only -->
+    <div class="hero" id="hero" aria-hidden="true"></div>
 
     <div class="stack" id="stack">
       <div class="status" id="status"><span class="dot"></span><span id="statusText">Applying shutter &amp; ISO…</span></div>
@@ -502,11 +511,15 @@
         <svg viewBox="0 0 24 24"><path d="M11 2L7 13h4l-1 9 9-14h-5l2-6z"/></svg>
         Auto Optimize
       </div>
-      <div class="recommend" id="recommendBtn">✦ Recommend</div>
       <div class="shutter-row">
-        <div class="side" title="Mic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 11a7 7 0 01-14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg></div>
+        <div class="recommend-ll" id="recommendBtn" title="Recommend">
+          <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M18 15l.9 2.6L21.5 18.5l-2.6.9L18 22l-.9-2.6L14.5 18.5l2.6-.9L18 15z"/></svg>
+          <span class="lab">Recommend</span>
+        </div>
         <div class="shutter"><div class="core"></div></div>
-        <div class="side" aria-hidden="true"></div>
+        <div class="side" aria-label="Controls">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+        </div>
       </div>
     </div>
   </div>
@@ -517,31 +530,47 @@
       caption: 'Auto Optimize writes shutter, ISO, EV, WB & focus',
       status: 'Applying shutter & ISO…',
       ready: false,
-      classes: ['show-burst'],
+      classes: ['show-burst', 'frame-1'],
+      recommendHot: false,
+      aoHighlight: false,
+      showSub: false,
     },
     2: {
       caption: 'Recommend applies the recipe — dials on the finder',
       status: 'Recipe on finder',
       ready: true,
-      classes: ['show-recipe-apply', 'show-recommend-callout', 'hide-recommend'],
+      classes: ['show-recipe-apply', 'frame-2'],
+      recommendHot: true,
+      aoHighlight: false,
+      showSub: false,
     },
     3: {
       caption: 'Scene coach in the box (optional STT)',
       status: 'Coach ready',
       ready: true,
-      classes: ['show-coach', 'hide-recommend'],
+      classes: ['show-coach', 'frame-3'],
+      recommendHot: false,
+      aoHighlight: false,
+      showSub: false,
     },
     4: {
       caption: 'See shutter · ISO · EV · WB · focus — then override',
       status: 'Manual · Teach open',
       ready: true,
-      classes: ['show-dials', 'hide-recommend'],
+      classes: ['show-dials', 'frame-4'],
+      recommendHot: false,
+      aoHighlight: false,
+      showSub: false,
     },
     5: {
       caption: 'Set the shot. Then take it.',
       status: 'Ready to capture',
       ready: true,
-      classes: ['show-hero', 'hide-stack-chrome', 'hide-top', 'hide-ao', 'hide-recommend'],
+      classes: ['frame-5', 'hide-top', 'hide-status'],
+      recommendHot: false,
+      aoHighlight: true,
+      showSub: true,
+      sub: 'AI Auto: Shutter ISO Focus',
     },
   };
 
@@ -563,9 +592,17 @@
 
   cfg.classes.forEach(c => ad.classList.add(c));
   document.getElementById('caption').textContent = cfg.caption;
+  if (cfg.showSub) {
+    const sub = document.getElementById('captionSub');
+    if (cfg.sub) sub.textContent = cfg.sub;
+  } else {
+    document.getElementById('captionSub').style.display = 'none';
+  }
   document.getElementById('statusText').textContent = cfg.status;
   const statusEl = document.getElementById('status');
   if (cfg.ready) statusEl.classList.add('ready');
+  if (cfg.aoHighlight) document.getElementById('aoBtn').classList.add('highlight');
+  if (cfg.recommendHot) document.getElementById('recommendBtn').classList.add('hot');
 
   Promise.all([
     document.fonts.ready,
