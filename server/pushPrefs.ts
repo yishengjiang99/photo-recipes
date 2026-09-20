@@ -256,6 +256,8 @@ export function registerApnsToken(
     ...prev,
     guestId,
     apnsDeviceTokens: [...others, entry],
+    // Registering a real device token implies opt-in for Exp1 (iOS also PUTs prefs).
+    pushOptIn: true,
     updatedAt: new Date().toISOString(),
   }
   store.prefs[guestId] = next

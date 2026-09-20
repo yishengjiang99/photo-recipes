@@ -4,6 +4,7 @@ import SwiftUI
 struct PhotoRecipesApp: App {
     @UIApplicationDelegateAdaptor(PhotoRecipesAppDelegate.self) private var appDelegate
     @StateObject private var appModel = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -20,6 +21,11 @@ struct PhotoRecipesApp: App {
                 }
                 .task {
                     await appModel.bootstrap()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        appModel.push.noteAppLaunchReady(reason: "scene_active")
+                    }
                 }
         }
     }
