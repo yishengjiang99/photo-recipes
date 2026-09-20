@@ -10,10 +10,14 @@ import {
   MAX_IMAGE_BYTES,
   mimeFromFilename,
   normalizeMime,
-  parseDataUrl,
-  toDataUrl,
 } from './image.ts'
 import { recommendWithGrok } from './recommend.ts'
+import {
+  dataUrlFromMultipartFile,
+  parseImageFromJsonBody,
+  releaseMultipartImageBuffer,
+  scrubImageFieldsFromBody,
+} from './visionPassthrough.ts'
 import {
   ensureStripePrices,
   getStripe,
@@ -100,6 +104,10 @@ type ParsedRecommend = {
   imageDataUrl?: string
 }
 
+/**
+ * Parse recommend JSON. Image bytes stay in memory only (vision pass-through).
+ * Scrubs image fields off `body` after a successful image parse.
+ */
 function parseJsonRecommend(body: Record<string, unknown>): ParsedRecommend | { error: string } {
   const message =
     typeof body?.message === 'string'
@@ -115,27 +123,10 @@ function parseJsonRecommend(body: Record<string, unknown>): ParsedRecommend | { 
   let imageDataUrl: string | undefined
   const imageField = body.image ?? body.imageBase64 ?? body.imageDataUrl
   if (typeof imageField === 'string' && imageField.trim()) {
-    const raw = imageField.trim()
-    if (raw.startsWith('data:')) {
-      const parsed = parseDataUrl(raw)
-      if ('error' in parsed) return { error: parsed.error }
-      imageDataUrl = toDataUrl(parsed.mime, parsed.buffer)
-    } else {
-      // bare base64 — assume jpeg unless mime provided
-      const mime =
-        normalizeMime(typeof body.mime === 'string' ? body.mime : 'image/jpeg') ||
-        'image/jpeg'
-      try {
-        const buffer = Buffer.from(raw.replace(/\s+/g, ''), 'base64')
-        if (!buffer.length) return { error: 'Empty image data' }
-        if (buffer.length > MAX_IMAGE_BYTES) {
-          return { error: `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)` }
-        }
-        imageDataUrl = toDataUrl(mime, buffer)
-      } catch {
-        return { error: 'Invalid base64 image data' }
-      }
-    }
+    const parsed = parseImageFromJsonBody(body)
+    if ('error' in parsed) return { error: parsed.error }
+    imageDataUrl = parsed.imageDataUrl
+    scrubImageFieldsFromBody(body)
   }
 
   if (!message && !imageDataUrl) {
@@ -210,7 +201,11 @@ function runRecommend(
   })()
 }
 
-/** POST /api/recommend — text Ask Grok and/or Photo Vision (multipart or JSON). */
+/**
+ * POST /api/recommend — text Ask Grok and/or Photo Vision (multipart or JSON).
+ * Vision: in-memory pass-through to xAI (see visionPassthrough.ts). No disk/DB image store.
+ * Response shape unchanged for iOS Build 2/3.
+ */
 app.post('/api/recommend', (req, res) => {
   const ct = (req.headers['content-type'] || '').toLowerCase()
   if (ct.includes('multipart/form-data')) {
@@ -259,23 +254,24 @@ app.post('/api/recommend', (req, res) => {
 
       let imageDataUrl: string | undefined
       if (req.file) {
-        const mime =
-          normalizeMime(req.file.mimetype) ||
-          mimeFromFilename(req.file.originalname)
-        if (!mime) {
-          res.status(400).json({
-            error: 'Unsupported image type. Use JPEG, PNG, or WebP.',
+        const parsed = dataUrlFromMultipartFile(req.file)
+        if ('error' in parsed) {
+          const isSize = /too large/i.test(parsed.error)
+          const status = isSize ? 413 : 400
+          logApiError(req, {
+            event: 'optimize_error',
+            route: '/api/recommend',
+            status,
+            message: parsed.error,
+            method: 'POST',
           })
+          res.status(status).json({ error: parsed.error })
           return
         }
-        if (req.file.size > MAX_IMAGE_BYTES) {
-          res.status(400).json({
-            error: `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`,
-          })
-          return
-        }
-        // Buffer stays in memory briefly; never logged
-        imageDataUrl = toDataUrl(mime, req.file.buffer)
+        // Pass-through: in-memory data URL only; release multer buffer ref
+        imageDataUrl = parsed.imageDataUrl
+        releaseMultipartImageBuffer(req)
+        scrubImageFieldsFromBody(req.body as Record<string, unknown>)
       }
 
       if (!message && !imageDataUrl) {

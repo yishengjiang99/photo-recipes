@@ -56,8 +56,9 @@ export function Privacy() {
           <strong className="text-ink">Optional image for coaching.</strong> If you use Field
           Coach, Photo Vision, Ask Grok with an image, or Auto Optimize’s vision step, a
           compressed probe/frame or photo you select may be sent to our servers and then to the
-          xAI API solely to return recipe / dial recommendations. Images are processed for that
-          request; we do not build a permanent photo archive or use your photos for advertising.
+          xAI API solely to return recipe / dial recommendations. Images are held in memory for
+          that request only (not written to our disk or database); we do not build a permanent
+          photo archive or use your photos for advertising.
         </p>
         <p>
           <strong className="text-ink">Microphone & voice (optional).</strong> If you use voice

@@ -8,12 +8,16 @@ import {
   MAX_IMAGE_BYTES,
   mimeFromFilename,
   normalizeMime,
-  parseDataUrl,
-  toDataUrl,
 } from './image.ts'
 import { logApiError } from './telemetry.ts'
 import { checkAssistQuota } from './entitlements.ts'
 import { fetchWithTimeout } from './fetchTimeout.ts'
+import {
+  dataUrlFromMultipartFile,
+  parseImageFromJsonBody,
+  releaseMultipartImageBuffer,
+  scrubImageFieldsFromBody,
+} from './visionPassthrough.ts'
 
 const XAI_BASE = 'https://api.x.ai/v1'
 const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
@@ -153,38 +157,9 @@ const imageUpload = multer({
   },
 })
 
-function parseImageFromJson(
-  body: Record<string, unknown>,
-): { imageDataUrl: string } | { error: string } {
-  const imageField = body.image ?? body.imageBase64 ?? body.imageDataUrl
-  if (typeof imageField !== 'string' || !imageField.trim()) {
-    return { error: 'Provide an image (multipart field "image", or JSON image data URL / base64).' }
-  }
-  const raw = imageField.trim()
-  if (raw.startsWith('data:')) {
-    const parsed = parseDataUrl(raw)
-    if ('error' in parsed) return { error: parsed.error }
-    return { imageDataUrl: toDataUrl(parsed.mime, parsed.buffer) }
-  }
-  const mime =
-    normalizeMime(typeof body.mime === 'string' ? body.mime : 'image/jpeg') ||
-    'image/jpeg'
-  try {
-    const buffer = Buffer.from(raw.replace(/\s+/g, ''), 'base64')
-    if (!buffer.length) return { error: 'Empty image data' }
-    if (buffer.length > MAX_IMAGE_BYTES) {
-      return {
-        error: `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`,
-      }
-    }
-    return { imageDataUrl: toDataUrl(mime, buffer) }
-  } catch {
-    return { error: 'Invalid base64 image data' }
-  }
-}
-
 /**
  * Mount POST /api/describe-scene — short vision caption for Ask/Camera prefill.
+ * Vision pass-through: image held in memory only for this request (see visionPassthrough.ts).
  * Consumes assist quota (shared with STT) after a successful caption.
  */
 export function mountDescribeSceneRoutes(app: Express) {
@@ -238,20 +213,27 @@ export function mountDescribeSceneRoutes(app: Express) {
     let imageDataUrl: string | undefined
 
     if (req.file) {
-      const mime =
-        normalizeMime(req.file.mimetype) ||
-        mimeFromFilename(req.file.originalname)
-      if (!mime) {
-        res.status(400).json({
-          error: 'Unsupported image type. Use JPEG, PNG, or WebP.',
+      const parsed = dataUrlFromMultipartFile(req.file)
+      if ('error' in parsed) {
+        const isSize = /too large/i.test(parsed.error)
+        const status = isSize ? 413 : 400
+        logApiError(req, {
+          event: 'api_error',
+          route: '/api/describe-scene',
+          status,
+          message: parsed.error,
+          method: 'POST',
         })
+        res.status(status).json({ error: parsed.error })
         return
       }
-      imageDataUrl = toDataUrl(mime, req.file.buffer)
+      // Pass-through: in-memory only; release multer buffer after copy
+      imageDataUrl = parsed.imageDataUrl
+      releaseMultipartImageBuffer(req)
+      scrubImageFieldsFromBody(req.body as Record<string, unknown>)
     } else {
-      const parsed = parseImageFromJson(
-        (req.body ?? {}) as Record<string, unknown>,
-      )
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const parsed = parseImageFromJsonBody(body)
       if ('error' in parsed) {
         const isSize = /too large/i.test(parsed.error)
         const status = isSize ? 413 : 400
@@ -266,6 +248,7 @@ export function mountDescribeSceneRoutes(app: Express) {
         return
       }
       imageDataUrl = parsed.imageDataUrl
+      scrubImageFieldsFromBody(body)
     }
 
     void (async () => {
