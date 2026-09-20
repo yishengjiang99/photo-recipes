@@ -39,6 +39,14 @@ struct CameraView: View {
     @State private var showApplyBurst = false
     @State private var applyBurstTask: Task<Void, Never>?
 
+    /// Viewfinder-native still-capture feedback (flash / freeze / Saved chip).
+    @State private var showCaptureFlash = false
+    @State private var captureFreezeImage: UIImage?
+    @State private var showSavedChip = false
+    @State private var shutterPressScale: CGFloat = 1.0
+    @State private var captureFeedbackTask: Task<Void, Never>?
+    @State private var savedChipTask: Task<Void, Never>?
+
     /// Coach Recommend — primary labeled control lower-left of shutter (Library lives in ···).
     @State private var isRecommending = false
     @State private var recommendResult: RecommendResponse?
@@ -147,6 +155,8 @@ struct CameraView: View {
             describeTask?.cancel()
             chromeToastTask?.cancel()
             applyBurstTask?.cancel()
+            captureFeedbackTask?.cancel()
+            savedChipTask?.cancel()
             session.stop()
             horizon.stop()
         }
@@ -317,6 +327,44 @@ struct CameraView: View {
                         topInset: (compact ? 52 : 64) + safeTop
                     )
                     .allowsHitTesting(false)
+                }
+
+                // Still capture: freeze last frame under a white blink (Camera-app feel).
+                if let freeze = captureFreezeImage {
+                    Image(uiImage: freeze)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        .allowsHitTesting(false)
+                        .zIndex(8)
+                }
+                if showCaptureFlash {
+                    Color.white
+                        .opacity(0.92)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .zIndex(9)
+                        .transition(.opacity)
+                }
+                if showSavedChip {
+                    VStack {
+                        Spacer(minLength: 0)
+                        Text("Saved")
+                            .font(AppTheme.caption())
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule()
+                                    .fill(AppTheme.agentStatusBg)
+                                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.5), lineWidth: 1))
+                            )
+                            .padding(.bottom, bottomScrim + 4)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(16)
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                 }
 
                 // Mid-finder AO apply burst — impossible to miss dial writes.
@@ -763,10 +811,12 @@ struct CameraView: View {
                         .stroke(AppTheme.shutterRing, lineWidth: compact ? 3 : 4)
                         .frame(width: outer, height: outer)
                     Circle()
-                        .fill(AppTheme.shutterCore.opacity(isCapturing ? 0.5 : 1))
+                        .fill(AppTheme.shutterCore.opacity(isCapturing ? 0.55 : 1))
                         .frame(width: inner, height: inner)
                 }
+                .scaleEffect(shutterPressScale)
             }
+            .buttonStyle(.plain)
             .disabled(isCapturing)
             .accessibilityLabel("Shutter")
 
@@ -1086,19 +1136,68 @@ struct CameraView: View {
     }
 
     private func takePhoto() async {
+        guard !isCapturing else { return }
         isCapturing = true
         captureError = nil
-        defer { isCapturing = false }
+
+        // Immediate shutter press: scale + medium impact (don't wait for AVCapture).
+        withAnimation(.easeOut(duration: 0.07)) { shutterPressScale = 0.86 }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
         do {
             let data = try await session.capturePhoto()
+            // Unlock shutter ASAP — feedback overlays must not gate the next shot.
+            isCapturing = false
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+                shutterPressScale = 1.0
+            }
+            // Viewfinder-native flash + freeze from the captured JPEG (~250–350ms).
+            playCaptureFeedback(jpeg: data)
+
             try await PhotoLibrarySaver.saveJPEG(data)
             Analytics.shared.track("capture_success", props: ["source": "camera"])
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            presentSavedChip()
         } catch {
+            isCapturing = false
+            withAnimation(.easeOut(duration: 0.15)) { shutterPressScale = 1.0 }
             captureError = error.localizedDescription
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 
+    /// White blink + brief freeze of the captured still layered on the live finder.
+    private func playCaptureFeedback(jpeg: Data) {
+        captureFeedbackTask?.cancel()
+        let freeze = UIImage(data: jpeg)
+        // Snap flash + freeze on without easing so the blink reads as a shutter.
+        var flashTxn = Transaction()
+        flashTxn.disablesAnimations = true
+        withTransaction(flashTxn) {
+            showCaptureFlash = true
+            captureFreezeImage = freeze
+        }
+        captureFeedbackTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000) // ~80ms white peak
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.12)) { showCaptureFlash = false }
+            // Hold freeze a beat longer so the still is readable (~300ms total).
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.14)) { captureFreezeImage = nil }
+        }
+    }
+
+    /// Light non-modal confirmation — chrome stays out of the way of AO / Recommend.
+    private func presentSavedChip() {
+        savedChipTask?.cancel()
+        withAnimation(.easeOut(duration: 0.14)) { showSavedChip = true }
+        savedChipTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.18)) { showSavedChip = false }
+        }
+    }
 
     private func consumePendingAutoOptimizeIfNeeded() async {
         guard router.consumePendingAutoOptimize() else { return }
