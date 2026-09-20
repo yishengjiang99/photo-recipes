@@ -12,11 +12,12 @@
     "preview": "vite preview",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=server-dist/index.js",
     "start": "node server-dist/index.js",
-    "test:server": "tsx --test server/phoneTargets.test.ts server/visionPassthrough.test.ts server/entitlementsQuota.test.ts server/opsConfig.test.ts server/recommendFast.test.ts server/imageShrink.test.ts",
+    "test:server": "tsx --test server/phoneTargets.test.ts server/visionPassthrough.test.ts server/entitlementsQuota.test.ts server/opsConfig.test.ts server/recommendFast.test.ts server/imageShrink.test.ts server/iap.test.ts",
     "smoke:web": "node scripts/smoke-web.mjs",
     "funnel:report": "node scripts/funnel-report.mjs"
   },
   "dependencies": {
+    "@apple/app-store-server-library": "^3.1.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
