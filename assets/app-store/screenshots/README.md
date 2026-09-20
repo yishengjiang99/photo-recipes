@@ -2,44 +2,46 @@
 
 Darkroom App Store screenshot exports for Grepawk Photos / Photo Recipes.
 
-## Sizes
+## Primary set (dial-change / AO apply) — interim MOCK
 
-- iPhone 6.7": **1290 × 2796 px**
-- iPhone 6.5": **1242 × 2688 px**
+**Status:** Interim **MOCK** HTML/Playwright exports (Build 7 decluttered chrome + dial deltas). Prefer real device stills before ASC final upload when available. Marketing owns ASC upload.
 
-The source 9:16 creatives are scaled to the exact canvas width and centered on a #0c0c0f darkroom canvas with letterboxing.
+**Signal Amber (Palette A):** `#E0A812` (from `ios/PhotoRecipes/Theme.swift`).
 
-## Finals (Ad Designer / ASC-ready)
+### Sizes
 
-Committed on `main` (PR #45). Use these for App Store Connect uploads.
+- iPhone 6.7": **1290 × 2796**
+- iPhone 6.1": **1179 × 2556**
+
+### Files + locked ASC captions
+
+| File | Frame | Caption (Marketing lock) |
+| --- | --- | --- |
+| `iphone-67-01-dial-burst.png` / `iphone-61-01-dial-burst.png` | 1 HERO — dial burst mid-apply | Auto Optimize writes shutter, ISO, EV, WB & focus |
+| `iphone-67-02-ao-cta.png` / `iphone-61-02-ao-cta.png` | 2 AO CTA + live apply | Point → Auto Optimize applies shutter, ISO, EV, WB, focus |
+| `iphone-67-03-recipe-dials.png` / `iphone-61-03-recipe-dials.png` | 3 Recipe dials / Teach | See shutter · ISO · EV · WB · focus — then override |
+| `iphone-67-04-field-look.png` / `iphone-61-04-field-look.png` | 4 Field look chip | Look grade + shutter/ISO/EV/WB/focus on the viewfinder |
+| `iphone-67-05-ready-pan.png` / `iphone-61-05-ready-pan.png` | 5 Ready + pan (nice-to-have) | Ready — shutter, ISO, focus set · then take it |
+
+Frames **1–4 required** for ASC; frame **5** optional. Every frame 1–4 shows **Shutter, ISO, EV, WB, Focus** before→after deltas (no aperture-as-applied; no beauty/filter photo B/A).
+
+### Source
+
+- Generators: `assets/ads/app-store-dial-v1/frame.html` + `export.mjs`
+- Viewfinder still: `assets/ads/app-store-dial-v1/assets/viewfinder-scene.jpg` (shared elevator scene)
+- UI fidelity: Build 7 ApplyBurstBanner / BeforeAfterChip / LookChip; decluttered finder (··· overflow only, no Library/Coach/Settings tab bar)
+
+---
+
+## Superseded static set (6.5" / 6.7")
+
+Earlier static chrome stills (PR #45). **Superseded for ASC** by the dial-change MOCK set above when Marketing uploads the new frames. Kept for reference:
 
 | File | Theme |
 | --- | --- |
-| `iphone-67-01-auto-optimize.png` | Auto Optimize |
-| `iphone-67-02-dial-chips.png` | Dial chips |
-| `iphone-67-03-field-looks.png` | Field Looks |
-| `iphone-67-04-pan-cue.png` | Pan cue |
-| `iphone-65-01-auto-optimize.png` | Auto Optimize |
-| `iphone-65-02-dial-chips.png` | Dial chips |
-| `iphone-65-03-field-looks.png` | Field Looks |
-| `iphone-65-04-pan-cue.png` | Pan cue |
+| `iphone-67-01-auto-optimize.png` … `iphone-67-04-pan-cue.png` | Static AO / dials / looks / pan |
+| `iphone-65-01-auto-optimize.png` … `iphone-65-04-pan-cue.png` | Same themes @ 1242×2688 |
 
-## Drafts (legacy naming)
+### Drafts
 
-Earlier draft exports live under `drafts/` so they do not clash with the `iphone-67-*` / `iphone-65-*` finals:
-
-| File | Notes |
-| --- | --- |
-| `drafts/iphone67-1.png` … `drafts/iphone67-6.png` | Pre-final drafts; prefer finals above for ASC |
-
-## Themes
-
-1. `01-auto-optimize` — viewfinder-first Auto Optimize flow.
-2. `02-dial-chips` — before → after shutter, ISO, EV, WB, and focus chips.
-3. `03-field-looks` — Field Looks capture-grades strip.
-4. `04-pan-cue` — pan-with-subject cue paired with the camera controls.
-
-## Source assets
-
-- `assets/ads/ios-first-v1/` (Auto Optimize and Field Looks creatives)
-- `assets/ads/elevator-v1/` (dial chips and pan cue creatives)
+Earlier draft exports live under `drafts/`.
