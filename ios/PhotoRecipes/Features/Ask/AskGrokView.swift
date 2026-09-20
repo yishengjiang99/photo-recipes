@@ -355,7 +355,7 @@ struct FieldCoachPanel: View {
                     .foregroundStyle(AppTheme.inkTertiary)
             }
 
-            let recipe = r.preset ?? BundledPresets.recipe(id: r.presetId ?? "")
+            let recipe = r.preset ?? BundledPresets.recipe(id: r.resolvedPresetId ?? "")
             if let recipe {
                 Text(recipe.title)
                     .font(AppTheme.displayTitle())
@@ -379,7 +379,11 @@ struct FieldCoachPanel: View {
                     .buttonStyle(PrimaryButtonStyle(filled: true))
 
                     Button {
-                        router.openCamera(staging: recipe, apply: true)
+                        router.openCamera(
+                            staging: recipe,
+                            apply: true,
+                            phoneTargets: r.phoneTargets
+                        )
                     } label: {
                         Label("Apply to Camera", systemImage: "camera.fill")
                     }

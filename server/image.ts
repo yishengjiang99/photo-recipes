@@ -105,3 +105,44 @@ export function parseDataUrl(
   }
   return { mime, buffer }
 }
+
+/** Fast recommend: shrink in memory only — never write image bytes to disk/DB. */
+export const VISION_SHRINK_MAX_EDGE = 1024
+/** sharp JPEG quality 1–100 (~0.65). */
+export const VISION_SHRINK_JPEG_QUALITY = 65
+
+/**
+ * Resize + recompress a vision data URL in memory (max edge, JPEG).
+ * Returns a new data:image/jpeg;base64,... URL. Does not persist.
+ */
+export async function shrinkVisionDataUrl(
+  dataUrl: string,
+  opts?: { maxEdge?: number; quality?: number },
+): Promise<string> {
+  const parsed = parseDataUrl(dataUrl)
+  if ('error' in parsed) {
+    throw Object.assign(new Error(parsed.error), { status: 400 })
+  }
+  const maxEdge = opts?.maxEdge ?? VISION_SHRINK_MAX_EDGE
+  const quality = opts?.quality ?? VISION_SHRINK_JPEG_QUALITY
+
+  try {
+    const sharp = (await import('sharp')).default
+    const out = await sharp(parsed.buffer, { failOn: 'none' })
+      .rotate()
+      .resize({
+        width: maxEdge,
+        height: maxEdge,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer()
+    return toDataUrl('image/jpeg', out)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Image shrink failed'
+    throw Object.assign(new Error(`Could not process image: ${msg}`), {
+      status: 400,
+    })
+  }
+}

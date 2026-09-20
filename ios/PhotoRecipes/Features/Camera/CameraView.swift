@@ -233,6 +233,10 @@ struct CameraView: View {
                 onApply: { recipe in
                     showRecommendResult = false
                     _ = session.apply(recipe: recipe)
+                    // Fast Recommend JSON → same applyPhoneTargets path as Auto Optimize.
+                    if let targets = recommendResult?.phoneTargets {
+                        _ = session.applyPhoneTargets(targets)
+                    }
                 },
                 onDismiss: {
                     showRecommendResult = false
@@ -758,7 +762,8 @@ struct CameraView: View {
         )
     }
 
-    /// Coach recommend from viewfinder frame and/or scene note. Does not write dials (AO does).
+    /// Coach recommend from viewfinder frame and/or scene note.
+    /// Apply writes recipe + phoneTargets via applyPhoneTargets (same as AO).
     /// Triggered from ··· overflow — not primary finder chrome.
     private func runRecommend() async {
         recommendError = nil
@@ -851,6 +856,10 @@ struct CameraView: View {
               let recipe = BundledPresets.recipe(id: id) else { return }
         if router.pendingApply {
             _ = session.apply(recipe: recipe)
+            if let targets = router.stagedPhoneTargets {
+                _ = session.applyPhoneTargets(targets)
+            }
+            router.stagedPhoneTargets = nil
             router.pendingApply = false
         } else {
             session.appliedRecipeId = recipe.id
@@ -1058,7 +1067,8 @@ struct RecipePickerSheet: View {
 }
 
 
-/// Coach recommend result from Camera ··· overflow (does not auto-apply dials).
+/// Coach recommend result from Camera ··· overflow.
+/// Apply to Camera writes recipe dials + optional phoneTargets from JSON.
 struct CameraRecommendResultSheet: View {
     let result: RecommendResponse?
     let errorText: String?
@@ -1139,7 +1149,7 @@ struct CameraRecommendResultSheet: View {
                     .foregroundStyle(AppTheme.inkTertiary)
             }
 
-            let recipe = r.preset ?? BundledPresets.recipe(id: r.presetId ?? "")
+            let recipe = r.preset ?? BundledPresets.recipe(id: r.resolvedPresetId ?? "")
             if let recipe {
                 Text(recipe.title)
                     .font(AppTheme.displayTitle())
