@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 /// Field Coach tab — unified Ask (Describe scene | From photo). Quiet surface, no dual neon glow.
 struct AskGrokView: View {
@@ -14,12 +15,23 @@ struct AskGrokView: View {
                     FieldCoachPanel(compact: false)
                         .padding(AppTheme.space4)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Field Coach")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     EntitlementBadge(isPro: entitlements.isPro)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+                    .fontWeight(.semibold)
                 }
             }
         }
@@ -49,6 +61,7 @@ struct FieldCoachPanel: View {
 
     @State private var mode: FieldCoachMode = .describe
     @State private var message = ""
+    @FocusState private var askFieldFocused: Bool
     @StateObject private var voice = VoiceCaptureController()
     /// Snapshot of message when dictation starts — partials replace utterance, not append.
     @State private var voiceDictationBase = ""
@@ -225,6 +238,9 @@ struct FieldCoachPanel: View {
                     .lineLimit(compact ? 2...4 : 3...5)
                     .font(AppTheme.body())
                     .foregroundStyle(AppTheme.ink)
+                    .focused($askFieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit { askFieldFocused = false }
                     .padding(AppTheme.space3)
                     .frame(minHeight: compact ? 72 : 88, alignment: .topLeading)
                     .background(
@@ -299,6 +315,9 @@ struct FieldCoachPanel: View {
                 TextField("Optional scene note…", text: $message, axis: .vertical)
                     .lineLimit(1...3)
                     .font(AppTheme.bodySm())
+                    .focused($askFieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit { askFieldFocused = false }
                     .padding(AppTheme.space3)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
@@ -335,6 +354,12 @@ struct FieldCoachPanel: View {
 
     private func applyAskVoiceFinal(_ text: String) {
         applyAskVoicePartial(text)
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        // APPLY-FILTERS voice → same Recommend SSE path as typed submit (message as-is).
+        if ApplyFiltersIntent.matches(message) || ApplyFiltersIntent.matches(t) {
+            Task { await submit() }
+        }
     }
 
     private var canSubmit: Bool {
@@ -414,10 +439,21 @@ struct FieldCoachPanel: View {
                     .buttonStyle(PrimaryButtonStyle(filled: true))
 
                     Button {
+                        var targets = r.phoneTargets
+                        if var t = targets {
+                            if t.creativeLook == nil, let top = r.creativeLook {
+                                t.creativeLook = top
+                                targets = t
+                            }
+                        } else if let top = r.creativeLook {
+                            var t = PhoneTargets()
+                            t.creativeLook = top
+                            targets = t
+                        }
                         router.openCamera(
                             staging: recipe,
                             apply: true,
-                            phoneTargets: r.phoneTargets
+                            phoneTargets: targets
                         )
                     } label: {
                         Label("Apply to Camera", systemImage: "camera.fill")
@@ -485,6 +521,7 @@ struct FieldCoachPanel: View {
                 }
             }
             result = response
+            assertApplyFiltersLook(message: prompt, response: response)
             await entitlements.refresh()
         } catch let APIError.paywall(payload) {
             errorText = payload.error
@@ -507,6 +544,7 @@ struct FieldCoachPanel: View {
                     imageJPEGData: jpeg
                 )
                 result = response
+                assertApplyFiltersLook(message: prompt, response: response)
                 await entitlements.refresh()
             } catch let APIError.paywall(payload) {
                 errorText = payload.error
@@ -519,6 +557,16 @@ struct FieldCoachPanel: View {
                 errorText = error.localizedDescription
             }
         }
+    }
+
+    private func assertApplyFiltersLook(message: String, response: RecommendResponse) {
+        guard ApplyFiltersIntent.matches(message) else { return }
+        if ApplyFiltersIntent.resolvedLook(from: response) != nil { return }
+        errorText = ApplyFiltersIntent.missingLookMessage
+        Analytics.shared.track("apply_filters_missing_look", props: [
+            "surface": "ask",
+            "message_chars": "\(message.count)",
+        ])
     }
 
     private func applyAskStreamEvent(_ event: RecommendStreamEvent) {

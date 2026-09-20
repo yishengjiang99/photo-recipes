@@ -47,6 +47,10 @@ struct CameraView: View {
     @State private var captureFeedbackTask: Task<Void, Never>?
     @State private var savedChipTask: Task<Void, Never>?
 
+    /// Scene TextField focus + keyboard avoidance (full-bleed finder ignores safe area).
+    @FocusState private var sceneFieldFocused: Bool
+    @State private var keyboardHeight: CGFloat = 0
+
     /// Coach Recommend — primary labeled control lower-left of shutter (Library lives in ···).
     @State private var isRecommending = false
     @State private var recommendResult: RecommendResponse?
@@ -159,6 +163,25 @@ struct CameraView: View {
             savedChipTask?.cancel()
             session.stop()
             horizon.stop()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let screen = UIScreen.main.bounds
+            let overlap = max(0, screen.maxY - frame.origin.y)
+            withAnimation(.easeOut(duration: 0.22)) { keyboardHeight = overlap }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.22)) { keyboardHeight = 0 }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    sceneFieldFocused = false
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .fontWeight(.semibold)
+            }
         }
         .sheet(isPresented: $showDials) {
             ControlsSheet(
@@ -297,9 +320,12 @@ struct CameraView: View {
                     .ignoresSafeArea()
                     .simultaneousGesture(
                         SpatialTapGesture().onEnded { value in
+                            // Dismiss Scene keyboard on finder tap (also sets AE/AF).
+                            if sceneFieldFocused { dismissSceneKeyboard() }
                             // Keep focus taps out of top/bottom chrome so flash / flip / ··· stay tappable.
                             let y = value.location.y
-                            guard y > topChromeH, y < geo.size.height - bottomScrim else { return }
+                            let kbPad = keyboardHeight > 0 ? max(0, keyboardHeight - safeBottom) : 0
+                            guard y > topChromeH, y < geo.size.height - bottomScrim - kbPad else { return }
                             let pt = CGPoint(
                                 x: value.location.x / geo.size.width,
                                 y: value.location.y / geo.size.height
@@ -329,23 +355,52 @@ struct CameraView: View {
                     .allowsHitTesting(false)
                 }
 
-                // Still capture: freeze last frame under a white blink (Camera-app feel).
+                // Mid-finder AO apply burst — impossible to miss dial writes.
+                if showApplyBurst, !optimizer.coreDiffs.isEmpty {
+                    ApplyBurstBanner(diffs: optimizer.coreDiffs)
+                        .padding(.horizontal, 20)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        .allowsHitTesting(false)
+                        .zIndex(15)
+                }
+
+                VStack(spacing: 0) {
+                    topOverlay(compact: compact, topSafeInset: safeTop)
+                        .zIndex(12)
+                    Spacer(minLength: 0)
+                        // Tap empty finder to dismiss Scene keyboard.
+                        .contentShape(Rectangle())
+                        .onTapGesture { dismissSceneKeyboard() }
+                    bottomOverlay(
+                        compact: compact,
+                        width: geo.size.width,
+                        scrimHeight: bottomScrim,
+                        bottomSafeInset: safeBottom
+                    )
+                    // Pad chrome above the software keyboard (finder ignoresSafeArea, so
+                    // SwiftUI's default avoidance does not lift Scene / AO / shutter).
+                    Color.clear.frame(height: keyboardHeight > 0 ? max(0, keyboardHeight - safeBottom) : 0)
+                }
+                .zIndex(10)
+                .animation(.easeOut(duration: 0.22), value: keyboardHeight)
+
+                // Capture feedback ABOVE chrome + preview (B20 sat at zIndex 8–9 under chrome 10;
+                // ~80ms flash was also easy to miss; heavy haptic was gated on Photos save).
                 if let freeze = captureFreezeImage {
                     Image(uiImage: freeze)
                         .resizable()
                         .scaledToFill()
                         .frame(width: geo.size.width, height: geo.size.height)
                         .clipped()
+                        .ignoresSafeArea()
                         .allowsHitTesting(false)
-                        .zIndex(8)
+                        .zIndex(90)
                 }
                 if showCaptureFlash {
                     Color.white
-                        .opacity(0.92)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
-                        .zIndex(9)
-                        .transition(.opacity)
+                        .zIndex(91)
                 }
                 if showSavedChip {
                     VStack {
@@ -360,35 +415,12 @@ struct CameraView: View {
                                     .fill(AppTheme.agentStatusBg)
                                     .overlay(Capsule().stroke(AppTheme.border.opacity(0.5), lineWidth: 1))
                             )
-                            .padding(.bottom, bottomScrim + 4)
+                            .padding(.bottom, bottomScrim + 4 + (keyboardHeight > 0 ? max(0, keyboardHeight - safeBottom) : 0))
                     }
                     .allowsHitTesting(false)
-                    .zIndex(16)
+                    .zIndex(92)
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
                 }
-
-                // Mid-finder AO apply burst — impossible to miss dial writes.
-                if showApplyBurst, !optimizer.coreDiffs.isEmpty {
-                    ApplyBurstBanner(diffs: optimizer.coreDiffs)
-                        .padding(.horizontal, 20)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                        .allowsHitTesting(false)
-                        .zIndex(15)
-                }
-
-                VStack(spacing: 0) {
-                    topOverlay(compact: compact, topSafeInset: safeTop)
-                        .zIndex(12)
-                    Spacer(minLength: 0)
-                        .allowsHitTesting(false)
-                    bottomOverlay(
-                        compact: compact,
-                        width: geo.size.width,
-                        scrimHeight: bottomScrim,
-                        bottomSafeInset: safeBottom
-                    )
-                }
-                .zIndex(10)
 
                 if showCoachMarks {
                     CameraCoachMarksView(step: $coachStep) {
@@ -655,6 +687,9 @@ struct CameraView: View {
                             .lineLimit(2...4)
                             .font(AppTheme.bodySm())
                             .foregroundStyle(AppTheme.ink)
+                            .focused($sceneFieldFocused)
+                            .submitLabel(.done)
+                            .onSubmit { dismissSceneKeyboard() }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -672,9 +707,17 @@ struct CameraView: View {
                             .onChange(of: sceneNote) { _, _ in
                                 sceneFromViewfinder = false
                             }
+                            .onChange(of: sceneFieldFocused) { _, focused in
+                                if focused, !sceneExpanded {
+                                    withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
+                                }
+                            }
                     } else {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded.toggle() }
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                sceneExpanded = true
+                                sceneFieldFocused = true
+                            }
                         } label: {
                             HStack(spacing: 6) {
                                 if sceneFromViewfinder {
@@ -738,6 +781,7 @@ struct CameraView: View {
 
             if sceneExpanded && !isVoiceListening {
                 Button {
+                    dismissSceneKeyboard()
                     withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = false }
                 } label: {
                     Text("Collapse scene")
@@ -873,12 +917,17 @@ struct CameraView: View {
         sceneFromViewfinder = false
     }
 
-    /// Final utterance: commit text (same compose as partials) then Auto Optimize apply path.
+    /// Final utterance: APPLY-FILTERS → Recommend SSE (auto-apply look); else AO.
     private func applyCameraVoiceFinal(_ text: String) {
         applyCameraVoicePartial(text)
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        // Camera mic shares Auto Optimize → applyPhoneTargets (PR #11); not text-only.
+        // APPLY-FILTERS (apply filters / make it cinematic / …) uses Recommend message as-is.
+        if ApplyFiltersIntent.matches(sceneNote) || ApplyFiltersIntent.matches(t) {
+            Task { await runRecommend() }
+            return
+        }
+        // Default mic path: Auto Optimize → applyPhoneTargets (PR #11); AO Pass 2 keeps autoApplyLook false.
         Task { await runOptimize() }
     }
 
@@ -1033,6 +1082,7 @@ struct CameraView: View {
             if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
                 applyRecommendToCamera(recipe: recipe, response: response)
             }
+            assertApplyFiltersLook(message: message, response: response)
             showRecommendResult = true
             await entitlements.refresh()
         } catch let APIError.paywall(payload) {
@@ -1062,6 +1112,7 @@ struct CameraView: View {
                 if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
                     applyRecommendToCamera(recipe: recipe, response: response)
                 }
+                assertApplyFiltersLook(message: message, response: response)
                 showRecommendResult = true
                 await entitlements.refresh()
             } catch let APIError.paywall(payload) {
@@ -1079,6 +1130,18 @@ struct CameraView: View {
         }
     }
 
+
+    /// Client matched APPLY-FILTERS but server returned no creativeLook — never silent no-op.
+    private func assertApplyFiltersLook(message: String, response: RecommendResponse) {
+        guard ApplyFiltersIntent.matches(message) else { return }
+        if ApplyFiltersIntent.resolvedLook(from: response) != nil { return }
+        recommendError = ApplyFiltersIntent.missingLookMessage
+        presentChromeToast(ApplyFiltersIntent.missingLookMessage)
+        Analytics.shared.track("apply_filters_missing_look", props: [
+            "surface": "camera",
+            "message_chars": "\(message.count)",
+        ])
+    }
 
     /// Apply Recommend recipe + phoneTargets + creativeLook onto the live viewfinder (dials + bake path).
     private func applyRecommendToCamera(recipe: Recipe, response: RecommendResponse?) {
@@ -1139,25 +1202,34 @@ struct CameraView: View {
         guard !isCapturing else { return }
         isCapturing = true
         captureError = nil
+        dismissSceneKeyboard()
 
         // Immediate shutter press: scale + medium impact (don't wait for AVCapture).
         withAnimation(.easeOut(duration: 0.07)) { shutterPressScale = 0.86 }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let medium = UIImpactFeedbackGenerator(style: .medium)
+        medium.prepare()
+        medium.impactOccurred()
 
         do {
             let data = try await session.capturePhoto()
             // Unlock shutter ASAP — feedback overlays must not gate the next shot.
             isCapturing = false
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.55)) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.52)) {
                 shutterPressScale = 1.0
             }
-            // Viewfinder-native flash + freeze from the captured JPEG (~250–350ms).
+            // Unmissable viewfinder flash + freeze on every successful capture return
+            // (do NOT wait for Photos library write).
             playCaptureFeedback(jpeg: data)
 
-            try await PhotoLibrarySaver.saveJPEG(data)
-            Analytics.shared.track("capture_success", props: ["source": "camera"])
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-            presentSavedChip()
+            do {
+                try await PhotoLibrarySaver.saveJPEG(data)
+                Analytics.shared.track("capture_success", props: ["source": "camera"])
+                presentSavedChip()
+            } catch {
+                // Capture already succeeded — keep flash/freeze; surface save error only.
+                captureError = error.localizedDescription
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
         } catch {
             isCapturing = false
             withAnimation(.easeOut(duration: 0.15)) { shutterPressScale = 1.0 }
@@ -1166,25 +1238,33 @@ struct CameraView: View {
         }
     }
 
-    /// White blink + brief freeze of the captured still layered on the live finder.
+    /// Full-bleed white flash + freeze of captured JPEG + heavy haptic.
+    /// Runs on every successful `capturePhoto` return — never gated on Photos save.
     private func playCaptureFeedback(jpeg: Data) {
         captureFeedbackTask?.cancel()
-        let freeze = UIImage(data: jpeg)
-        // Snap flash + freeze on without easing so the blink reads as a shutter.
+        let freeze = UIImage(data: jpeg) ?? session.lastThumb
+        // Heavy shutter thunk immediately — B20 deferred this until after library save.
+        let heavy = UIImpactFeedbackGenerator(style: .heavy)
+        heavy.prepare()
+        heavy.impactOccurred(intensity: 1.0)
+
+        // Snap flash + freeze on with zero animation so the blink cannot be skipped.
         var flashTxn = Transaction()
         flashTxn.disablesAnimations = true
         withTransaction(flashTxn) {
             showCaptureFlash = true
             captureFreezeImage = freeze
         }
+        // Ensure a layout pass before we schedule fade — avoids clearing before first paint.
         captureFeedbackTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 80_000_000) // ~80ms white peak
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 180_000_000) // ~180ms solid white peak (was 80ms)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.12)) { showCaptureFlash = false }
-            // Hold freeze a beat longer so the still is readable (~300ms total).
-            try? await Task.sleep(nanoseconds: 220_000_000)
+            withAnimation(.easeOut(duration: 0.16)) { showCaptureFlash = false }
+            // Hold freeze so the still is readable (~550ms total).
+            try? await Task.sleep(nanoseconds: 380_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.14)) { captureFreezeImage = nil }
+            withAnimation(.easeOut(duration: 0.18)) { captureFreezeImage = nil }
         }
     }
 
@@ -1197,6 +1277,11 @@ struct CameraView: View {
             guard !Task.isCancelled else { return }
             withAnimation(.easeIn(duration: 0.18)) { showSavedChip = false }
         }
+    }
+
+    private func dismissSceneKeyboard() {
+        sceneFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func consumePendingAutoOptimizeIfNeeded() async {
@@ -1219,7 +1304,8 @@ struct CameraView: View {
         if router.pendingApply {
             _ = session.apply(recipe: recipe)
             if let targets = router.stagedPhoneTargets {
-                _ = session.applyPhoneTargets(targets)
+                // Ask / Recommend Apply → bake look immediately (same as runRecommend).
+                _ = session.applyPhoneTargets(targets, autoApplyLook: true)
             }
             router.stagedPhoneTargets = nil
             router.pendingApply = false
