@@ -399,7 +399,7 @@ final class AutoOptimizeController: ObservableObject {
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
-        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(coreDiffs.count) wroteTargets=\(wroteTargets)")
+        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets)")
         Analytics.shared.track("auto_optimize_success", props: [
             "recipe_id": recipe.id,
             "path": "local",
