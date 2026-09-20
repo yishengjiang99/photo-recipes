@@ -55,7 +55,7 @@ struct SettingsView: View {
                     Section("Billing") {
                         Text("Pro on iOS is unlocked only via App Store In-App Purchase (StoreKit 2). Web Stripe checkout does not unlock this app build.")
                             .font(.caption)
-                        Text("Manage or cancel: Settings → [your name] → Subscriptions → Photo Recipes Pro.")
+                        Text("Manage or cancel: Settings → [your name] → Subscriptions → Grok Camera Pro.")
                             .font(.caption)
                     }
 
