@@ -6,7 +6,7 @@ import type { Express, Request, Response } from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getGuestId } from './entitlements.ts'
+import { findEntitlementByGuestId, getGuestId } from './entitlements.ts'
 import {
   getPushPrefs,
   listAllPushPrefs,
@@ -15,8 +15,14 @@ import {
   updatePushPrefs,
 } from './pushPrefs.ts'
 import { upsertDeviceAndPushToken } from './pushDevices.ts'
-import { isPushExp1Enabled, runPushExp1Tick } from './pushScheduler.ts'
-import { isApnsEnvPresent } from './apns.ts'
+import {
+  DEEP_LINK,
+  isPushExp1Enabled,
+  runPushExp1Tick,
+  tierFromEntitlement,
+} from './pushScheduler.ts'
+import { sendApns, isApnsEnvPresent, type ApnsPayload } from './apns.ts'
+import { pickRecipeChips } from './pushCatalog.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const EVENTS_LOG = path.resolve(__dirname, 'data/push-events.jsonl')
@@ -59,6 +65,16 @@ function cronAuthorized(req: Request): boolean {
   } catch {
     return false
   }
+}
+
+/** Explicit allow header required for production APNs test-send (in addition to cron secret). */
+export const PUSH_TEST_ALLOW_PRODUCTION_HEADER = 'x-push-test-allow-production'
+
+/** True when X-Push-Test-Allow-Production is a clear truthy allow (1/true/yes). */
+export function productionTestSendAllowed(req: Request): boolean {
+  const hdr = req.headers[PUSH_TEST_ALLOW_PRODUCTION_HEADER]
+  const val = (Array.isArray(hdr) ? hdr[0] : hdr)?.trim().toLowerCase()
+  return val === '1' || val === 'true' || val === 'yes'
 }
 
 export function mountPushRoutes(app: Express) {
@@ -224,6 +240,119 @@ export function mountPushRoutes(app: Express) {
       res.status(500).json({ error: 'tick_failed' })
     }
   })
+
+  /**
+   * POST /api/push/test-send — secret-gated APNs proof (does NOT require PUSH_EXP1_ENABLED).
+   * Headers: X-Push-Cron-Secret (same as /tick). For production APNs targets also require
+   * X-Push-Test-Allow-Production: 1. Sandbox remains secret-only.
+   * Body: { guestId?, token?, environment?, title?, body? }.
+   * Resolve token from body.token or guestId's pushPrefs registry. Never puts Stripe/IAP URLs in payload.
+   */
+  app.post('/api/push/test-send', async (req: Request, res: Response) => {
+    if (!cronAuthorized(req)) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const guestId =
+      typeof body.guestId === 'string' ? body.guestId.trim() : ''
+    const tokenDirect =
+      typeof body.token === 'string' ? body.token.trim() : ''
+    const envOverride =
+      body.environment === 'production' || body.environment === 'sandbox'
+        ? (body.environment as 'sandbox' | 'production')
+        : undefined
+    const title =
+      typeof body.title === 'string' && body.title.trim()
+        ? body.title.trim()
+        : 'Shoot brief ready'
+    const alertBody =
+      typeof body.body === 'string' && body.body.trim()
+        ? body.body.trim()
+        : 'Test send — open Auto Optimize when ready.'
+
+    type Tok = { token: string; environment: 'sandbox' | 'production' }
+    let targets: Tok[] = []
+
+    if (tokenDirect) {
+      targets = [
+        {
+          token: tokenDirect,
+          environment: envOverride ?? 'sandbox',
+        },
+      ]
+    } else if (guestId) {
+      const prefs = getPushPrefs(guestId)
+      targets = prefs.apnsDeviceTokens.map((t) => ({
+        token: t.token,
+        environment: envOverride ?? t.environment,
+      }))
+    } else {
+      res.status(400).json({ error: 'Provide token or guestId' })
+      return
+    }
+
+    if (!targets.length) {
+      res.status(404).json({ error: 'no_device_token' })
+      return
+    }
+
+    const hitsProduction = targets.some((t) => t.environment === 'production')
+    if (hitsProduction && !productionTestSendAllowed(req)) {
+      res.status(403).json({
+        error: 'production_test_send_refused',
+        message:
+          'Production APNs test-send requires X-Push-Test-Allow-Production: 1 (in addition to X-Push-Cron-Secret). Sandbox needs the cron secret only.',
+      })
+      return
+    }
+
+    const chips = pickRecipeChips(guestId || 'test-send', 3)
+    const ent = guestId ? findEntitlementByGuestId(guestId) : null
+    const tier = guestId ? tierFromEntitlement(ent) : 'free'
+
+    const payload: ApnsPayload = {
+      aps: {
+        alert: { title, body: alertBody },
+        sound: 'default',
+      },
+      type: 'pre_alarm_shoot_brief',
+      deepLink: DEEP_LINK,
+      recipeChips: chips,
+      entitlementTier: tier,
+      experiment: 'push_exp1',
+    }
+
+    try {
+      const results = []
+      for (const t of targets) {
+        const r = await sendApns(t.token, payload, {
+          environment: t.environment,
+        })
+        results.push({
+          environment: t.environment,
+          tokenHint: t.token.slice(0, 8),
+          ...r,
+        })
+      }
+      const primary = results[0]!
+      res.json({
+        ok: primary.ok,
+        apnsConfigured: isApnsEnvPresent(),
+        deepLink: DEEP_LINK,
+        entitlementTier: tier,
+        chipIds: chips.map((c) => c.id),
+        results,
+      })
+    } catch (err) {
+      console.error(
+        '[push/test-send]',
+        err instanceof Error ? err.message : err,
+      )
+      res.status(500).json({ error: 'test_send_failed' })
+    }
+  })
+
 }
 
 const PROP_DENY = new Set([

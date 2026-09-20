@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import {
+  APNS_HTTP2_TIMEOUT_MS,
+  apnsHost,
   clearApnsJwtCacheForTests,
+  raceWithTimeout,
   sendApns,
   setApnsHttpPostForTests,
   isApnsEnvPresent,
@@ -153,5 +156,55 @@ describe('sendApns', () => {
     assert.equal(r.ok, false)
     if (!r.ok) assert.equal(r.error, 'invalid_device_token')
     assert.equal(called, false)
+  })
+
+  it('surfaces HTTP/2 timeout errors from post', async () => {
+    process.env.APNS_KEY_ID = 'KEYID123'
+    process.env.APNS_TEAM_ID = 'TEAMID12'
+    process.env.APNS_P8_CONTENTS = generateTestP8()
+    setApnsHttpPostForTests(async () => {
+      throw new Error(`apns_http2_timeout_${APNS_HTTP2_TIMEOUT_MS}ms`)
+    })
+    const r = await sendApns(SAMPLE_TOKEN, samplePayload)
+    assert.equal(r.ok, false)
+    if (!r.ok) assert.match(r.error, /apns_http2_timeout_/)
+  })
+})
+
+
+describe('apnsHost', () => {
+  it('returns sandbox host', () => {
+    assert.equal(apnsHost('sandbox'), 'api.sandbox.push.apple.com')
+  })
+  it('returns production host', () => {
+    assert.equal(apnsHost('production'), 'api.push.apple.com')
+  })
+})
+
+describe('APNs HTTP/2 timeout helper', () => {
+  it('APNS_HTTP2_TIMEOUT_MS is bounded 10–15s', () => {
+    assert.ok(APNS_HTTP2_TIMEOUT_MS >= 10_000)
+    assert.ok(APNS_HTTP2_TIMEOUT_MS <= 15_000)
+  })
+
+  it('raceWithTimeout rejects when promise hangs', async () => {
+    let cleaned = false
+    const hung = new Promise<string>(() => {
+      /* never settles */
+    })
+    await assert.rejects(
+      () =>
+        raceWithTimeout(hung, 30, () => {
+          cleaned = true
+        }),
+      /apns_http2_timeout_30ms/,
+    )
+    assert.equal(cleaned, true)
+  })
+
+  it('raceWithTimeout resolves when promise finishes first', async () => {
+    const fast = Promise.resolve('ok')
+    const v = await raceWithTimeout(fast, 500)
+    assert.equal(v, 'ok')
   })
 })

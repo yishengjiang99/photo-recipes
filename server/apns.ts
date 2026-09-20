@@ -114,10 +114,52 @@ function resolveEnvironment(
   return 'sandbox'
 }
 
-function apnsHost(env: ApnsEnvironment): string {
+/** APNs HTTP/2 host (no scheme) for the given environment. */
+export function apnsHost(env: ApnsEnvironment): string {
   return env === 'production'
     ? 'api.push.apple.com'
     : 'api.sandbox.push.apple.com'
+}
+
+/** Bounded wait for a single APNs HTTP/2 request (hung sockets must not stall the process). */
+export const APNS_HTTP2_TIMEOUT_MS = 12_000
+
+/**
+ * Race a promise against a timeout; calls onTimeout then rejects.
+ * Exported for unit tests (short ms) — production path uses APNS_HTTP2_TIMEOUT_MS.
+ */
+export function raceWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  onTimeout?: () => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      try {
+        onTimeout?.()
+      } catch {
+        /* ignore */
+      }
+      reject(new Error(`apns_http2_timeout_${ms}ms`))
+    }, ms)
+    promise.then(
+      (v) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (err: unknown) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
 }
 
 async function defaultHttp2Post(args: {
@@ -125,14 +167,40 @@ async function defaultHttp2Post(args: {
   path: string
   headers: Record<string, string>
   body: string
+  timeoutMs?: number
 }): Promise<ApnsHttpPostResult> {
   const authority = `https://${args.host}`
+  const timeoutMs = args.timeoutMs ?? APNS_HTTP2_TIMEOUT_MS
   return new Promise((resolve, reject) => {
     const client = http2.connect(authority)
-    client.on('error', (err) => {
-      client.close()
+    let settled = false
+
+    const cleanup = () => {
+      try {
+        client.close()
+      } catch {
+        /* ignore */
+      }
+      try {
+        client.destroy()
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const fail = (err: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      cleanup()
       reject(err)
-    })
+    }
+
+    const timer = setTimeout(() => {
+      fail(new Error(`apns_http2_timeout_${timeoutMs}ms`))
+    }, timeoutMs)
+
+    client.on('error', (err) => fail(err instanceof Error ? err : new Error(String(err))))
 
     const req = client.request({
       ':method': 'POST',
@@ -148,12 +216,12 @@ async function defaultHttp2Post(args: {
       status = typeof s === 'number' ? s : Number(s) || 0
     })
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
-    req.on('error', (err) => {
-      client.close()
-      reject(err)
-    })
+    req.on('error', (err) => fail(err instanceof Error ? err : new Error(String(err))))
     req.on('end', () => {
-      client.close()
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      cleanup()
       resolve({
         status,
         body: Buffer.concat(chunks).toString('utf8'),
