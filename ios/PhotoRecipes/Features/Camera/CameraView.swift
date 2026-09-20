@@ -44,6 +44,9 @@ struct CameraView: View {
     @State private var recommendResult: RecommendResponse?
     @State private var recommendError: String?
     @State private var showRecommendResult = false
+    /// Live SSE status.message / phase copy shown in finder chrome while streaming.
+    @State private var recommendStreamStatus: String?
+    @State private var recommendStreamPhase: String?
 
     var body: some View {
         ZStack {
@@ -242,6 +245,7 @@ struct CameraView: View {
                 result: recommendResult,
                 errorText: recommendError,
                 isLoading: isRecommending,
+                statusMessage: recommendStreamStatus,
                 onApply: { recipe in
                     showRecommendResult = false
                     _ = session.apply(recipe: recipe)
@@ -487,7 +491,7 @@ struct CameraView: View {
             AgentStatusPill(
                 phase: optimizer.phase,
                 verifyWarning: optimizer.verifyWarning,
-                statusOverride: optimizer.pillStatus,
+                statusOverride: recommendChromeStatus ?? optimizer.pillStatus,
                 onStop: { optimizer.clear() }
             )
 
@@ -745,7 +749,11 @@ struct CameraView: View {
             .buttonStyle(.plain)
             .disabled(recommendDisabled)
             .opacity(recommendDisabled ? 0.45 : 1)
-            .accessibilityLabel(isRecommending ? "Matching recipe" : "Recommend")
+            .accessibilityLabel(
+                isRecommending
+                    ? (recommendStreamStatus ?? "Matching recipe")
+                    : "Recommend"
+            )
 
             Spacer(minLength: 8)
 
@@ -893,15 +901,27 @@ struct CameraView: View {
         }
     }
 
+    /// Live chrome copy while Recommend SSE is in flight (nil when idle).
+    private var recommendChromeStatus: String? {
+        guard isRecommending else { return nil }
+        if let s = recommendStreamStatus, !s.isEmpty { return s }
+        return "Matching a recipe…"
+    }
+
     /// Coach recommend from viewfinder frame and/or scene note.
-    /// Apply writes recipe + phoneTargets via applyPhoneTargets (same as AO).
-    /// Triggered from ··· overflow — not primary finder chrome.
+    /// Uses `recommendStream` for live status; falls back to non-stream `recommend` if SSE fails to start.
+    /// Apply writes recipe + phoneTargets via applyPhoneTargets (same as AO) from the result sheet.
     private func runRecommend() async {
         recommendError = nil
         recommendResult = nil
+        recommendStreamStatus = "Matching a recipe…"
+        recommendStreamPhase = nil
         isRecommending = true
-        showRecommendResult = true
-        defer { isRecommending = false }
+        defer {
+            isRecommending = false
+            recommendStreamStatus = nil
+            recommendStreamPhase = nil
+        }
 
         let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
         var jpeg: Data?
@@ -930,26 +950,80 @@ struct CameraView: View {
             message = "From viewfinder"
         } else {
             recommendError = "Add a scene note or enable the camera"
+            showRecommendResult = true
             return
         }
 
+        let streamStarted = RecommendStreamStartFlag()
         do {
-            let response = try await APIClient.shared.recommend(
+            let response = try await APIClient.shared.recommendStream(
                 message: message,
                 favorites: Array(entitlements.favoriteIds),
                 imageJPEGData: jpeg
-            )
+            ) { event in
+                streamStarted.mark()
+                Task { @MainActor in
+                    applyRecommendStreamEvent(event)
+                }
+            }
             recommendResult = response
             recommendError = nil
+            showRecommendResult = true
             await entitlements.refresh()
         } catch let APIError.paywall(payload) {
             recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
             entitlements.showPaywall = true
+            showRecommendResult = true
             await entitlements.refresh()
         } catch let APIError.missingKey(msg) {
             recommendError = msg
+            showRecommendResult = true
         } catch {
-            recommendError = error.localizedDescription
+            if streamStarted.value {
+                recommendError = error.localizedDescription
+                showRecommendResult = true
+                return
+            }
+            // Stream failed to start — fall back to non-stream recommend.
+            recommendStreamStatus = "Matching a recipe…"
+            do {
+                let response = try await APIClient.shared.recommend(
+                    message: message,
+                    favorites: Array(entitlements.favoriteIds),
+                    imageJPEGData: jpeg
+                )
+                recommendResult = response
+                recommendError = nil
+                showRecommendResult = true
+                await entitlements.refresh()
+            } catch let APIError.paywall(payload) {
+                recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
+                entitlements.showPaywall = true
+                showRecommendResult = true
+                await entitlements.refresh()
+            } catch let APIError.missingKey(msg) {
+                recommendError = msg
+                showRecommendResult = true
+            } catch {
+                recommendError = error.localizedDescription
+                showRecommendResult = true
+            }
+        }
+    }
+
+    private func applyRecommendStreamEvent(_ event: RecommendStreamEvent) {
+        switch event {
+        case .phase(let phase):
+            recommendStreamPhase = phase
+            if let copy = RecommendStreamEvent.statusCopy(forPhase: phase) {
+                recommendStreamStatus = copy
+            }
+        case .status(let message):
+            recommendStreamStatus = message
+        case .error(let message, _):
+            recommendError = message
+        case .reasoning, .content, .result:
+            break
         }
     }
 
@@ -1204,6 +1278,8 @@ struct CameraRecommendResultSheet: View {
     let result: RecommendResponse?
     let errorText: String?
     var isLoading: Bool = false
+    /// Live SSE status copy while matching (falls back to generic copy).
+    var statusMessage: String? = nil
     var onApply: (Recipe) -> Void
     var onDismiss: () -> Void
     var onUpgrade: () -> Void
@@ -1218,7 +1294,7 @@ struct CameraRecommendResultSheet: View {
                     if isLoading && result == nil && (errorText == nil || errorText?.isEmpty == true) {
                         HStack(spacing: AppTheme.space3) {
                             ProgressView()
-                            Text("Matching a recipe…")
+                            Text(statusMessage?.isEmpty == false ? statusMessage! : "Matching a recipe…")
                                 .font(AppTheme.bodySm())
                                 .foregroundStyle(AppTheme.inkSecondary)
                         }
@@ -1387,5 +1463,19 @@ struct ApplyBurstBanner: View {
         )
         .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
         .accessibilityLabel(diffs.map { "\($0.label) \($0.before) to \($0.after)" }.joined(separator: ", "))
+    }
+}
+
+
+/// Thread-safe flag: true once any Recommend SSE event arrives (vs. fail-to-start).
+final class RecommendStreamStartFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+    var value: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return started
+    }
+    func mark() {
+        lock.lock(); started = true; lock.unlock()
     }
 }

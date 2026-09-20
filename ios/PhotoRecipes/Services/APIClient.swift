@@ -30,6 +30,17 @@ enum RecommendStreamEvent: Sendable {
     case content(String)
     case result(RecommendResponse)
     case error(String, Int?)
+
+    /// Short chrome / Ask copy for phase events (status.message overrides when present).
+    static func statusCopy(forPhase phase: String) -> String? {
+        switch phase {
+        case "started": return "Matching a recipe…"
+        case "sensing": return "Reading the scene…"
+        case "thinking": return "Grok is thinking…"
+        case "writing": return "Writing tips…"
+        default: return nil
+        }
+    }
 }
 
 final class APIClient: ObservableObject {
