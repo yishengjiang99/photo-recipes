@@ -22,8 +22,13 @@ const MAX_ROUNDS = 4
 const VISION_IMAGE_DETAIL: 'auto' | 'low' | 'high' = 'low'
 /**
  * Default path = one-shot JSON (no tools). Set RECOMMEND_TOOL_LOOP=1 for legacy multi-round tools.
+ * Text-only stays snappy; vision needs headroom (grok-4.6 often 12–35s on night scenes).
+ * Nginx proxy_read_timeout is 120s — keep well under that.
  */
-const FAST_TIMEOUT_MS = 10_000
+const FAST_TEXT_TIMEOUT_MS = 20_000
+const FAST_VISION_TIMEOUT_MS = 55_000
+/** @deprecated use FAST_TEXT / FAST_VISION — kept for exports/tests */
+const FAST_TIMEOUT_MS = FAST_VISION_TIMEOUT_MS
 
 export interface RecommendRequest {
   message: string
@@ -1220,6 +1225,7 @@ async function recommendWithToolLoop(
   req: RecommendRequest,
 ): Promise<RecommendResult> {
   const vision = Boolean(req.imageDataUrl)
+  const timeoutMs = vision ? FAST_VISION_TIMEOUT_MS : FAST_TEXT_TIMEOUT_MS
   if (!vision && !req.message.trim()) {
     throw Object.assign(new Error('Message or image is required'), { status: 400 })
   }
@@ -1611,7 +1617,7 @@ async function recommendFastOneShot(
   let imageDataUrl = req.imageDataUrl
   if (imageDataUrl) {
     const before = imageDataUrl.length
-    imageDataUrl = await shrinkVisionDataUrl(imageDataUrl)
+    imageDataUrl = await shrinkVisionDataUrl(imageDataUrl, { maxEdge: 768, quality: 60 })
     console.info(
       `[recommend] fast shrink in-memory ${before}→${imageDataUrl.length} chars (data URL)`,
     )
@@ -1632,7 +1638,7 @@ async function recommendFastOneShot(
   let modelIndex = 0
 
   const started = Date.now()
-  let response = await callXaiJson(apiKey, model, messages, FAST_TIMEOUT_MS)
+  let response = await callXaiJson(apiKey, model, messages, timeoutMs)
 
   while (
     !response.ok &&
@@ -1642,7 +1648,7 @@ async function recommendFastOneShot(
     modelIndex += 1
     model = modelQueue[modelIndex]!
     console.warn(`[recommend] fast model unavailable, falling back to ${model}`)
-    response = await callXaiJson(apiKey, model, messages, FAST_TIMEOUT_MS)
+    response = await callXaiJson(apiKey, model, messages, timeoutMs)
   }
 
   // Some models reject response_format — retry once without it.
@@ -1665,7 +1671,7 @@ async function recommendFastOneShot(
             messages,
           }),
         },
-        FAST_TIMEOUT_MS,
+        timeoutMs,
       )
     } catch (e) {
       const ex = e as Error & { status?: number }
@@ -1776,5 +1782,7 @@ export {
   MAX_ROUNDS,
   VISION_IMAGE_DETAIL,
   FAST_TIMEOUT_MS,
+  FAST_TEXT_TIMEOUT_MS,
+  FAST_VISION_TIMEOUT_MS,
   tools,
 }
