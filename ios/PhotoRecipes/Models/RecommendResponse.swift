@@ -18,13 +18,15 @@ struct RecommendResponse: Codable, Hashable {
     var coachOnly: CoachOnly?
     var panCue: PanCue?
     var senseSummary: String?
+    /// Top-level mirror of phoneTargets.creativeLook (server one-release fallback).
+    var creativeLook: CreativeLook?
 
     /// presetId with recipeId fallback (server may send either).
     var resolvedPresetId: String? { presetId ?? recipeId }
 
     enum CodingKeys: String, CodingKey {
         case presetId, recipeId, reason, tips, preset, model, vision, error, code
-        case teachWhy, phoneTargets, phoneTarget, coachOnly, panCue, senseSummary
+        case teachWhy, phoneTargets, phoneTarget, coachOnly, panCue, senseSummary, creativeLook
     }
 
     init(
@@ -41,7 +43,8 @@ struct RecommendResponse: Codable, Hashable {
         phoneTargets: PhoneTargets? = nil,
         coachOnly: CoachOnly? = nil,
         panCue: PanCue? = nil,
-        senseSummary: String? = nil
+        senseSummary: String? = nil,
+        creativeLook: CreativeLook? = nil
     ) {
         self.presetId = presetId
         self.recipeId = recipeId
@@ -57,6 +60,7 @@ struct RecommendResponse: Codable, Hashable {
         self.coachOnly = coachOnly
         self.panCue = panCue
         self.senseSummary = senseSummary
+        self.creativeLook = creativeLook
     }
 
     init(from decoder: Decoder) throws {
@@ -78,6 +82,7 @@ struct RecommendResponse: Codable, Hashable {
         coachOnly = try c.decodeIfPresent(CoachOnly.self, forKey: .coachOnly)
         panCue = try c.decodeIfPresent(PanCue.self, forKey: .panCue)
         senseSummary = try c.decodeIfPresent(String.self, forKey: .senseSummary)
+        creativeLook = try c.decodeIfPresent(CreativeLook.self, forKey: .creativeLook)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -96,6 +101,7 @@ struct RecommendResponse: Codable, Hashable {
         try c.encodeIfPresent(coachOnly, forKey: .coachOnly)
         try c.encodeIfPresent(panCue, forKey: .panCue)
         try c.encodeIfPresent(senseSummary, forKey: .senseSummary)
+        try c.encodeIfPresent(creativeLook, forKey: .creativeLook)
     }
 }
 

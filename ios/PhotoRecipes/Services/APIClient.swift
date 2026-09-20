@@ -21,8 +21,8 @@ enum APIError: LocalizedError {
     }
 }
 
-@MainActor
-
+/// Not MainActor-isolated: created off the main thread while reading URLSession bytes.
+/// Isolating this enum forced the SSE read loop onto MainActor and deferred UI event Tasks until the stream finished.
 enum RecommendStreamEvent: Sendable {
     case phase(String)
     case status(String)
@@ -38,6 +38,12 @@ enum RecommendStreamEvent: Sendable {
         case "sensing": return "Reading the scene…"
         case "thinking": return "Grok is thinking…"
         case "writing": return "Writing tips…"
+        case "done": return "Recipe ready…"
+        // Aliases if an older/newer contract slips through
+        case "start": return "Matching a recipe…"
+        case "sense": return "Reading the scene…"
+        case "reason", "reasoning": return "Grok is thinking…"
+        case "write", "content": return "Writing tips…"
         default: return nil
         }
     }

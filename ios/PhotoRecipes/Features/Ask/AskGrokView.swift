@@ -476,8 +476,12 @@ struct FieldCoachPanel: View {
                 imageJPEGData: jpeg
             ) { event in
                 streamStarted.mark()
-                Task { @MainActor in
+                if Thread.isMainThread {
                     applyAskStreamEvent(event)
+                } else {
+                    DispatchQueue.main.async {
+                        applyAskStreamEvent(event)
+                    }
                 }
             }
             result = response
@@ -522,6 +526,8 @@ struct FieldCoachPanel: View {
         case .phase(let phase):
             if let copy = RecommendStreamEvent.statusCopy(forPhase: phase) {
                 streamStatus = copy
+            } else if !phase.isEmpty, phase != "done", phase != "error" {
+                streamStatus = phase.replacingOccurrences(of: "_", with: " ").capitalized + "…"
             }
         case .status(let message):
             streamStatus = message
