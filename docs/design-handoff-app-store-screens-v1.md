@@ -5,6 +5,8 @@
 **UI source of truth:** Decluttered Camera (#76) + Palette A (Neutral Graphite + Signal Amber) + capabilities / recommend CTAs.  
 **Out of scope:** `docs/agents/*.md` edits.
 
+**Caption rule (CoS / user):** Every frame caption must **name AI-applied camera controls** (shutter, ISO, EV, WB, focus — and others when shown). Ban generic lines like “smarter photos,” “better pictures,” “AI magic.” Align with Marketing listing rewrite.
+
 ---
 
 ## Sizes (minimum)
@@ -38,27 +40,27 @@ Export both for every frame. Optional later: 6.5" / iPad if ASC asks.
 ### Frame 1 — Dial burst (HERO / slot 1)
 - **UI state:** Auto Optimize mid-apply or just after apply. Mid-finder **before→after chips** visible: shutter, ISO, EV, WB, focus (e.g. `1/500 → 1/60`, `100 → 400`). Status pill: `Applying shutter & ISO…` or `Ready to capture`.  
 - **Chrome:** Decluttered — AO pill + shutter; no tab bar.  
-- **Caption:** `Watch the dials move — shutter, ISO, focus`  
+- **Caption:** `Auto Optimize writes shutter, ISO, EV, WB & focus`  
 - **Must show:** Changing settings (the burst). **Must not:** Static empty finder; filter before/after photo.
 
 ### Frame 2 — Auto Optimize CTA + live apply
 - **UI state:** AO highlighted / pressed or immediately pre-burst with status `Reading light…` → chips starting to appear.  
-- **Caption:** `Point. Auto Optimize. Sets shutter, ISO & focus`  
+- **Caption:** `Point → Auto Optimize applies shutter, ISO, EV, WB, focus`  
 - **Must show:** AO as primary + at least one dial delta or status proving agentic apply.
 
 ### Frame 3 — Recipe dials / Teach why
 - **UI state:** Controls or Teach sheet **over** finder (or after AO) showing dial cluster with values that clearly moved; optional “Why this?” bullets naming shutter/ISO.  
-- **Caption:** `Recipe dials you can trust — and override`  
+- **Caption:** `See shutter · ISO · EV · WB · focus — then override`  
 - **Must show:** Dial readout values, not a marketing illustration of dials.
 
 ### Frame 4 — Field look chip (capture grade)
 - **UI state:** Look chip suggested or active (`goldenHour · 0.6`) **plus** core setting chips still visible (settings + grade, not grade alone).  
-- **Caption:** `Field look on the viewfinder — capture grade, not a filter`  
+- **Caption:** `Look grade + shutter/ISO/EV/WB/focus on the viewfinder`  
 - **Must not:** Beauty/skin language; aperture-as-written.
 
 ### Frame 5 — Ready + pan cue (optional sixth if ASC allows)
 - **UI state:** `Ready to capture` + soft pan ← or → chevron; shutter dominant; brief residual before→after strip OK.  
-- **Caption:** `Ready to capture · Set the shot. Then take it.`  
+- **Caption:** `Ready — shutter, ISO, focus set · then take it`  
 - If only 5 slots: drop Frame 5 OR merge Ready into Frame 1 end-state. Prefer keeping Frames 1–4 mandatory; 5 optional.
 
 **Priority order for ASC upload:** 1 → 2 → 3 → 4 → (5).
@@ -67,15 +69,16 @@ Export both for every frame. Optional later: 6.5" / iPad if ASC asks.
 
 ## Caption lock (Marketing)
 
-| # | Caption (≤~50–60 chars display) |
+| # | Caption (name the controls — no generic “smarter photos”) |
 |---|----------------------------------|
-| 1 | Watch the dials move — shutter, ISO, focus |
-| 2 | Point. Auto Optimize. Sets shutter, ISO & focus |
-| 3 | Recipe dials you can trust — and override |
-| 4 | Field look — capture grade, not a filter |
-| 5 | Ready to capture · Set the shot. Then take it. |
+| 1 | Auto Optimize writes shutter, ISO, EV, WB & focus |
+| 2 | Point → Auto Optimize applies shutter, ISO, EV, WB, focus |
+| 3 | See shutter · ISO · EV · WB · focus — then override |
+| 4 | Look grade + shutter/ISO/EV/WB/focus on the viewfinder |
+| 5 | Ready — shutter, ISO, focus set · then take it |
 
-Voice must not lead any caption.
+**Banned in captions:** smarter photos, better pictures, AI enhance/beautify, magic, filters-as-hero.
+Voice must not lead any caption. Prefer exact control names visible in the UI chips.
 
 ---
 
@@ -105,7 +108,8 @@ Voice must not lead any caption.
 - [ ] Build with decluttered Camera (tab bar hidden)  
 - [ ] Trigger AO on a textured scene; screenshot during dial burst  
 - [ ] Include shutter/ISO/EV/WB/focus deltas (no fake aperture write)  
-- [ ] Drop PNGs under `assets/marketing/app-store/raw/` with names `frame-01-dial-burst.png` etc.  
+- [ ] Drop PNGs under `assets/marketing/app-store/raw/` with names `frame-01-dial-burst.png` etc.
+- [ ] If blocked on device: interim `mock-frame-01-….png` OK for Ad Designer crops; replace with real stills before ASC  
 - [ ] Ping Ad Designer with paths + build number  
 
 ---

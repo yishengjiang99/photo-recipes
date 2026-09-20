@@ -73,17 +73,18 @@ Suggested exact string (count in editor):
 ## What’s New (iOS-first · expanded levers · field looks)
 Point at the shot — Auto Optimize from the viewfinder sets shutter, ISO, EV, WB, focus (plus expanded iOS levers: custom exposure, lens pick, WB temp/tint, torch, low-light, brackets, and more). Field looks = capture grades on the viewfinder (intensity 0–1; Auto Optimize can suggest) — not beauty filters. Aperture, ND, tripod stay coach guidance. Free Peek: 1 optimize/day. Get on TestFlight. Set the shot. Then take it.
 
-## Screenshot captions (6)
-1. Point. Auto Optimize. Sets shutter, ISO, focus
-2. From viewfinder — before → after dials on the live camera
-3. Field look / capture grade on the viewfinder (intensity you control)
-4. Pan cues when you need to reframe
-5. Skill library for serious enthusiasts · Set the shot. Then take it.
-6. Teach mode: why these settings moved · Get on TestFlight
+## Screenshot captions (5 — dial-change set; see design-handoff-app-store-screens-v1.md)
+1. Auto Optimize writes shutter, ISO, EV, WB & focus
+2. Point → Auto Optimize applies shutter, ISO, EV, WB, focus
+3. See shutter · ISO · EV · WB · focus — then override
+4. Look grade + shutter/ISO/EV/WB/focus on the viewfinder
+5. Ready — shutter, ISO, focus set · then take it
+
+Caption rule: name the AI-applied controls (shutter/ISO/EV/WB/focus). No “smarter photos” / generic AI lines.
 
 ## ASO notes
 - Subtitle options lead with “Agentic Camera Settings” or “Sets Shutter ISO Focus” for enthusiast/settings search.
-- First 3 screenshots must show viewfinder + Auto Optimize CTA + real dials (shutter/ISO/EV/WB/focus) — include at least one **looks / grade** frame; never fake aperture writes; never beauty/sky.
+- First screenshots must show viewfinder + Auto Optimize + **named** dials (shutter/ISO/EV/WB/focus) changing — captions must name those controls (no “smarter photos”); include at least one **looks / grade** frame; never fake aperture writes; never beauty/sky.
 - Lead creative with From viewfinder Auto Optimize; voice is not a caption or promo lead.
 - Primary store CTA language: **Get on TestFlight** / **Download — App Store**.
 - One coach-only disclaimer in description is enough.
