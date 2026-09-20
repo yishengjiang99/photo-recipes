@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AVFoundation
 
 struct CameraView: View {
@@ -246,9 +247,14 @@ struct CameraView: View {
 
     private var viewfinder: some View {
         GeometryReader { geo in
+            // Preview ignores safe area (full-bleed). GeometryReader does too, so
+            // geo.safeAreaInsets is typically zero — read the key window instead.
+            let safe = Self.keyWindowSafeAreaInsets()
+            let safeTop = safe.top
+            let safeBottom = safe.bottom
             let compact = isCompactChrome(width: geo.size.width, height: geo.size.height)
-            let bottomScrim: CGFloat = compact ? 112 : 136
-            let topChromeH: CGFloat = compact ? 56 : 64
+            let bottomScrim: CGFloat = (compact ? 112 : 136) + safeBottom
+            let topChromeH: CGFloat = (compact ? 56 : 64) + safeTop
             ZStack {
                 CameraPreviewView(
                     session: session.session,
@@ -285,7 +291,7 @@ struct CameraView: View {
                     ViewfinderPanCuesView(
                         cue: cue,
                         bottomInset: bottomScrim + 24,
-                        topInset: compact ? 52 : 64
+                        topInset: (compact ? 52 : 64) + safeTop
                     )
                     .allowsHitTesting(false)
                 }
@@ -300,11 +306,16 @@ struct CameraView: View {
                 }
 
                 VStack(spacing: 0) {
-                    topOverlay(compact: compact)
+                    topOverlay(compact: compact, topSafeInset: safeTop)
                         .zIndex(12)
                     Spacer(minLength: 0)
                         .allowsHitTesting(false)
-                    bottomOverlay(compact: compact, width: geo.size.width, scrimHeight: bottomScrim)
+                    bottomOverlay(
+                        compact: compact,
+                        width: geo.size.width,
+                        scrimHeight: bottomScrim,
+                        bottomSafeInset: safeBottom
+                    )
                 }
                 .zIndex(10)
 
@@ -325,6 +336,16 @@ struct CameraView: View {
         .ignoresSafeArea()
     }
 
+    /// Window safe-area insets for full-bleed viewfinders (GeometryProxy insets are zero after ignoresSafeArea).
+    private static func keyWindowSafeAreaInsets() -> UIEdgeInsets {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap { $0.windows }
+        if let key = windows.first(where: { $0.isKeyWindow }) {
+            return key.safeAreaInsets
+        }
+        return windows.first?.safeAreaInsets ?? .zero
+    }
+
     private func isCompactChrome(width: CGFloat, height: CGFloat) -> Bool {
         if horizontalSizeClass == .regular { return false }
         return width <= 375 || height < 700
@@ -343,7 +364,7 @@ struct CameraView: View {
         )
     }
 
-    private func topOverlay(compact: Bool) -> some View {
+    private func topOverlay(compact: Bool, topSafeInset: CGFloat) -> some View {
         VStack(spacing: 6) {
             HStack(spacing: 4) {
                 floatingIcon(session.flash.icon, accessibility: "Flash \(session.flash.modeCaption)") {
@@ -400,7 +421,8 @@ struct CameraView: View {
             }
         }
         .padding(.horizontal, compact ? 10 : 14)
-        .padding(.top, 8)
+        // Sit snug under status bar / Dynamic Island (inset + ~6pt clearance).
+        .padding(.top, topSafeInset + 6)
         .contentShape(Rectangle())
         .background(
             LinearGradient(
@@ -408,13 +430,13 @@ struct CameraView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 88)
+            .frame(height: 88 + topSafeInset)
             .frame(maxHeight: .infinity, alignment: .top)
             .allowsHitTesting(false)
         )
     }
 
-    private func bottomOverlay(compact: Bool, width: CGFloat, scrimHeight: CGFloat) -> some View {
+    private func bottomOverlay(compact: Bool, width: CGFloat, scrimHeight: CGFloat, bottomSafeInset: CGFloat) -> some View {
         let hPad: CGFloat = width <= 320 ? 8 : (compact ? 12 : 16)
         let ctaH: CGFloat = compact ? 40 : 44
 
@@ -556,7 +578,8 @@ struct CameraView: View {
                     .foregroundStyle(AppTheme.danger)
             }
         }
-        .padding(.bottom, 10)
+        // Keep shutter / CTAs clear of the home indicator (prior 10pt gap + inset).
+        .padding(.bottom, 10 + bottomSafeInset)
         .padding(.top, 8)
         .frame(maxWidth: .infinity)
         .background(
