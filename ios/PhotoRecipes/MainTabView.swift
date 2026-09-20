@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
+    @EnvironmentObject private var storeKit: StoreKitManager
+    @EnvironmentObject private var api: APIClient
     @EnvironmentObject private var router: CameraRouter
 
     var body: some View {
@@ -29,5 +31,12 @@ struct MainTabView: View {
         }
         .tint(AppTheme.accent)
         .toolbarBackground(AppTheme.bg, for: .tabBar)
+        // Observe EntitlementsStore directly — App-level Binding on appModel did not refresh.
+        .sheet(isPresented: $entitlements.showPaywall) {
+            PaywallView()
+                .environmentObject(entitlements)
+                .environmentObject(storeKit)
+                .environmentObject(api)
+        }
     }
 }

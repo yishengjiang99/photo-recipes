@@ -863,10 +863,13 @@ struct CameraView: View {
 
     private func runOptimize() async {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        // Quota exhausted (not Pro/unlimited): present existing Pro paywall — button stays enabled.
+        // Quota exhausted (not Pro/unlimited): paywall + visible error/toast — never silent.
         guard canOptimize else {
             print("[AO] tap → paywall (quota exhausted)")
             entitlements.showPaywall = true
+            optimizer.phase = .error("Free Peek limit reached — upgrade for more")
+            presentChromeToast("Free Peek limit — see Pro")
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "path": "camera_tap"])
             return
         }
         if optimizer.phase.isRunning {
