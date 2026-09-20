@@ -113,13 +113,8 @@ struct FieldCoachPanel: View {
                 Text("Enable the microphone to dictate scene notes for Field Coach.")
             }
             .onChange(of: voice.phase) { _, phase in
-                switch phase {
-                case .recording:
-                    voiceDictationBase = message.trimmingCharacters(in: .whitespacesAndNewlines)
-                case .error:
-                    if voice.permission == .denied { showMicDenied = true }
-                default:
-                    break
+                if case .error = phase, voice.permission == .denied {
+                    showMicDenied = true
                 }
             }
             .onDisappear { voice.cancel() }
@@ -232,6 +227,9 @@ struct FieldCoachPanel: View {
                 VoiceDictateButton(
                     controller: voice,
                     enabled: !isLoading,
+                    onWillStart: {
+                        voiceDictationBase = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    },
                     onPartial: { applyAskVoicePartial($0) },
                     onTranscript: { applyAskVoiceFinal($0) }
                 )
@@ -302,6 +300,9 @@ struct FieldCoachPanel: View {
                 VoiceDictateButton(
                     controller: voice,
                     enabled: !isLoading,
+                    onWillStart: {
+                        voiceDictationBase = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    },
                     onPartial: { applyAskVoicePartial($0) },
                     onTranscript: { applyAskVoiceFinal($0) }
                 )
