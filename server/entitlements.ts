@@ -3,6 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Request, Response, NextFunction } from 'express'
+import {
+  DEFAULT_FREE_DAILY_LIMIT,
+  getFreeDailyLimitFromOps,
+  getFreePhoneTargetsEnabled,
+  resolveOpsConfig,
+} from './opsConfig.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.resolve(__dirname, 'data')
@@ -10,26 +16,22 @@ const STORE_PATH = path.join(DATA_DIR, 'entitlements.json')
 
 const GUEST_COOKIE = 'pr_guest'
 const SUB_COOKIE = 'pr_sub'
-
-/** Default Free Peek Ask/Vision/Auto Optimize combined daily cap when FREE_DAILY_LIMIT unset. */
-const DEFAULT_FREE_DAILY_LIMIT = 5
 /** Owner email always unlimited (merged with FREE_UNLIMITED_EMAILS). */
 const DEFAULT_UNLIMITED_EMAILS = ['yisheng.jiang@gmail.com']
 
 /** Combined daily free-tier cap for STT + describe-scene (short FieldCoach clips / captions). */
 const FREE_ASSIST_PER_DAY = 20
 
-function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback
-  const n = Number.parseInt(raw.trim(), 10)
-  if (!Number.isFinite(n) || n < 0) return fallback
-  return n
+/**
+ * Free Peek Ask/Vision/Auto Optimize daily limit.
+ * Resolution: runtime Admin override → FREE_DAILY_LIMIT env → default 5.
+ */
+export function getFreeDailyLimit(): number {
+  return getFreeDailyLimitFromOps()
 }
 
-/** Env-configurable Free Peek Ask/Vision daily limit (ops: FREE_DAILY_LIMIT in /etc/photo-recipes.env). */
-export function getFreeDailyLimit(): number {
-  return parsePositiveInt(process.env.FREE_DAILY_LIMIT, DEFAULT_FREE_DAILY_LIMIT)
-}
+/** Whether free users may apply camera dials / phoneTargets (default true). */
+export { getFreePhoneTargetsEnabled }
 
 /** @deprecated Prefer getFreeDailyLimit() — kept as live getter alias for existing imports. */
 function freeAsksPerDay(): number {
@@ -341,6 +343,7 @@ export function getSubscriptionStatus(req: Request, res: Response) {
     assistLimit: skipQuota ? null : FREE_ASSIST_PER_DAY,
     assistRemaining: skipQuota ? null : Math.max(0, FREE_ASSIST_PER_DAY - assistUsed),
     freeDailyLimit: freeLimit,
+    freePhoneTargetsEnabled: getFreePhoneTargetsEnabled(),
     stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
   }
 }
@@ -445,15 +448,20 @@ export function findEntitlementByGuestId(guestId: string): Entitlement | null {
   return matches.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
 }
 
-/** Snapshot for admin dashboard / ops. */
+/** Snapshot for admin dashboard / ops (effective values + override vs env). */
 export function getQuotaConfigSnapshot() {
+  const ops = resolveOpsConfig()
   return {
-    freeDailyLimit: getFreeDailyLimit(),
+    freeDailyLimit: ops.freeDailyLimit,
+    freePhoneTargetsEnabled: ops.freePhoneTargetsEnabled,
     freeAssistPerDay: FREE_ASSIST_PER_DAY,
     unlimitedEmails: [...getUnlimitedEmails()].sort(),
     unlimitedDeviceIdCount: getUnlimitedDeviceIds().size,
+    sources: ops.sources,
+    overrides: ops.overrides,
     env: {
-      FREE_DAILY_LIMIT: process.env.FREE_DAILY_LIMIT?.trim() || null,
+      FREE_DAILY_LIMIT: ops.env.FREE_DAILY_LIMIT,
+      FREE_PHONE_TARGETS_ENABLED: ops.env.FREE_PHONE_TARGETS_ENABLED,
       FREE_UNLIMITED_EMAILS: process.env.FREE_UNLIMITED_EMAILS?.trim() || null,
       UNLIMITED_DEVICE_IDS: process.env.UNLIMITED_DEVICE_IDS?.trim()
         ? '[set]'

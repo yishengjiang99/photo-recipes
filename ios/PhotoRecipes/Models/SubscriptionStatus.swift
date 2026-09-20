@@ -16,6 +16,8 @@ struct SubscriptionStatus: Codable, Hashable {
     var asksLimit: Int?
     var asksRemaining: Int?
     var freeDailyLimit: Int?
+    /// Server ops flag: free users may write camera dials / phoneTargets (default true).
+    var freePhoneTargetsEnabled: Bool?
     var stripeConfigured: Bool
 
     static let freePeekDefault = SubscriptionStatus(
@@ -28,6 +30,7 @@ struct SubscriptionStatus: Codable, Hashable {
         asksLimit: 5,
         asksRemaining: 5,
         freeDailyLimit: 5,
+        freePhoneTargetsEnabled: true,
         stripeConfigured: false
     )
 

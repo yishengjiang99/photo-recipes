@@ -49,8 +49,10 @@ Secrets (manual on server — never auto-copied):
     PUBLIC_BASE_URL=https://your.domain
     SESSION_SECRET=long-random-string
     ADMIN_PASSWORD=choose-a-strong-password
-    # Free Peek Ask/Vision daily cap (default 5). Restart after change.
+    # Free Peek Ask/Vision daily cap (default 5). Prefer Admin panel for live overrides.
     FREE_DAILY_LIMIT=5
+    # Free dials / phoneTargets for Free Peek (default on). Prefer Admin panel override.
+    FREE_PHONE_TARGETS_ENABLED=true
     FREE_UNLIMITED_EMAILS=yisheng.jiang@gmail.com
     # Optional TestFlight guest UUIDs: UNLIMITED_DEVICE_IDS=
     STRIPE_SECRET_KEY=sk_live_…

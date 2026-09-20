@@ -47,11 +47,21 @@ type Summary = {
   }
   quota?: {
     freeDailyLimit: number
+    freePhoneTargetsEnabled: boolean
     freeAssistPerDay: number
     unlimitedEmails: string[]
     unlimitedDeviceIdCount: number
+    sources?: {
+      freeDailyLimit: 'override' | 'env' | 'default'
+      freePhoneTargetsEnabled: 'override' | 'env' | 'default'
+    }
+    overrides?: {
+      freeDailyLimit?: number
+      freePhoneTargetsEnabled?: boolean
+    }
     env: {
       FREE_DAILY_LIMIT: string | null
+      FREE_PHONE_TARGETS_ENABLED?: string | null
       FREE_UNLIMITED_EMAILS: string | null
       UNLIMITED_DEVICE_IDS: string | null
     }
@@ -147,6 +157,11 @@ export function Admin() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loadError, setLoadError] = useState('')
   const [loadingSummary, setLoadingSummary] = useState(false)
+  const [draftLimit, setDraftLimit] = useState('5')
+  const [draftDials, setDraftDials] = useState(true)
+  const [savingQuota, setSavingQuota] = useState(false)
+  const [quotaSaveMsg, setQuotaSaveMsg] = useState('')
+  const [quotaSaveError, setQuotaSaveError] = useState('')
 
   const refreshSession = useCallback(async () => {
     try {
@@ -182,6 +197,12 @@ export function Admin() {
       }
       setSummary(data)
       setAuthed(true)
+      if (data.quota) {
+        setDraftLimit(String(data.quota.freeDailyLimit))
+        setDraftDials(Boolean(data.quota.freePhoneTargetsEnabled))
+        setQuotaSaveMsg('')
+        setQuotaSaveError('')
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load summary')
     } finally {
@@ -195,6 +216,53 @@ export function Admin() {
       if (ok) await loadSummary()
     })()
   }, [refreshSession, loadSummary])
+
+  async function saveQuota() {
+    setSavingQuota(true)
+    setQuotaSaveMsg('')
+    setQuotaSaveError('')
+    try {
+      const n = Number.parseInt(draftLimit.trim(), 10)
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+        setQuotaSaveError('Daily limit must be an integer ≥ 0 (0 = no free peeks).')
+        return
+      }
+      const res = await fetch('/api/admin/quota-config', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          freeDailyLimit: n,
+          freePhoneTargetsEnabled: draftDials,
+        }),
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        error?: string
+        details?: string
+        quota?: Summary['quota']
+      }
+      if (res.status === 401) {
+        setAuthed(false)
+        setQuotaSaveError('Session expired — sign in again.')
+        return
+      }
+      if (!res.ok || !data.ok) {
+        setQuotaSaveError(data.details || data.error || `Save failed (${res.status})`)
+        return
+      }
+      if (data.quota) {
+        setSummary((prev) => (prev ? { ...prev, quota: data.quota } : prev))
+        setDraftLimit(String(data.quota.freeDailyLimit))
+        setDraftDials(Boolean(data.quota.freePhoneTargetsEnabled))
+      }
+      setQuotaSaveMsg('Saved — takes effect immediately for quota checks and dial writes.')
+    } catch (err) {
+      setQuotaSaveError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSavingQuota(false)
+    }
+  }
 
   async function onLogin(e: FormEvent) {
     e.preventDefault()
@@ -496,29 +564,98 @@ export function Admin() {
                       <h4 className="text-xs font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
                         Free Peek quota
                       </h4>
-                      <ul className="mt-2 space-y-2 text-sm">
-                        <li className="flex justify-between">
-                          <span>Daily Ask/Vision limit</span>
-                          <span className="font-mono">{summary.quota.freeDailyLimit}</span>
-                        </li>
+                      <div className="mt-3 space-y-3 text-sm">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-[var(--color-ink-tertiary)]">
+                            Daily Ask / Vision / Auto Optimize limit
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={draftLimit}
+                              onChange={(e) => setDraftLimit(e.target.value)}
+                              className="w-24 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 font-mono text-sm text-[var(--color-ink)]"
+                            />
+                            <span className="text-xs text-[var(--color-ink-tertiary)]">
+                              effective{' '}
+                              <span className="font-mono">{summary.quota.freeDailyLimit}</span>
+                              {summary.quota.sources ? (
+                                <>
+                                  {' '}
+                                  (
+                                  {summary.quota.sources.freeDailyLimit})
+                                </>
+                              ) : null}
+                            </span>
+                          </div>
+                          <span className="text-xs text-[var(--color-ink-tertiary)]">
+                            0 = no free peeks (paywall immediately).
+                          </span>
+                        </label>
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={draftDials}
+                            onChange={(e) => setDraftDials(e.target.checked)}
+                            className="mt-1"
+                          />
+                          <span>
+                            <span className="block">Free users can apply camera dials</span>
+                            <span className="text-xs text-[var(--color-ink-tertiary)]">
+                              phoneTargets / manual dial writes. Effective:{' '}
+                              <span className="font-mono">
+                                {summary.quota.freePhoneTargetsEnabled ? 'on' : 'off'}
+                              </span>
+                              {summary.quota.sources ? (
+                                <>
+                                  {' '}
+                                  ({summary.quota.sources.freePhoneTargetsEnabled})
+                                </>
+                              ) : null}
+                            </span>
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void saveQuota()}
+                          disabled={savingQuota}
+                          className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-tip)] px-3 py-1.5 text-sm font-medium text-black disabled:opacity-60"
+                        >
+                          {savingQuota ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : null}
+                          Save Free Peek settings
+                        </button>
+                        {quotaSaveMsg ? (
+                          <p className="text-xs text-[var(--color-tip)]">{quotaSaveMsg}</p>
+                        ) : null}
+                        {quotaSaveError ? (
+                          <p className="text-xs text-red-500">{quotaSaveError}</p>
+                        ) : null}
+                      </div>
+                      <ul className="mt-3 space-y-2 text-sm text-[var(--color-ink-tertiary)]">
                         <li className="flex justify-between">
                           <span>Unlimited emails</span>
                           <span className="max-w-[60%] truncate text-right font-mono text-xs">
                             {summary.quota.unlimitedEmails.join(', ') || '—'}
                           </span>
                         </li>
-                        <li className="flex justify-between text-[var(--color-ink-tertiary)]">
+                        <li className="flex justify-between">
                           <span>Unlimited device ids</span>
                           <span className="font-mono">{summary.quota.unlimitedDeviceIdCount}</span>
                         </li>
                       </ul>
                       <p className="mt-2 text-xs text-[var(--color-tip)]">
-                        Env{' '}
+                        Runtime overrides persist in{' '}
+                        <code className="font-mono">server/data/ops-config.json</code>
+                        {' '}(no restart). Env fallback{' '}
                         <code className="font-mono">FREE_DAILY_LIMIT</code>
                         {summary.quota.env.FREE_DAILY_LIMIT
                           ? `=${summary.quota.env.FREE_DAILY_LIMIT}`
                           : ' unset (default 5)'}
-                        . Restart after change.
+                        ; dials default on.
                       </p>
                     </div>
                   ) : null}

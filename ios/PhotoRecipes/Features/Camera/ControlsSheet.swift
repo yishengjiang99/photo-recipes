@@ -28,6 +28,9 @@ struct ControlsSheet: View {
     var onTeach: (() -> Void)?
     var onLookApplied: ((CreativeLook) -> Void)?
 
+    /// Server-configurable free dials (Pro always).
+    private var canApplyDials: Bool { entitlements.canApplyDials }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -88,7 +91,7 @@ struct ControlsSheet: View {
             }
             Spacer()
             Button("Reset to Auto") {
-                guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.showPaywall = true; return }
                 session.unlockExposure()
                 session.unlockFocus()
                 session.captureMode = .auto
@@ -98,7 +101,7 @@ struct ControlsSheet: View {
             }
             .font(AppTheme.bodySmMedium())
             .foregroundStyle(AppTheme.accent)
-            if !entitlements.isPro {
+            if !canApplyDials {
                 Button("Unlock") { entitlements.showPaywall = true }
                     .font(AppTheme.bodySmMedium())
                     .foregroundStyle(AppTheme.tip)
@@ -116,13 +119,15 @@ struct ControlsSheet: View {
             Text("Manual override")
                 .font(AppTheme.displayTitle())
                 .foregroundStyle(AppTheme.ink)
-            Text(entitlements.isPro
-                 ? "Agent set these — adjust anytime"
+            Text(canApplyDials
+                 ? (entitlements.isPro
+                    ? "Agent set these — adjust anytime"
+                    : "Free Peek — dials unlocked. Shared daily Optimize quota still applies.")
                  : "Free Peek shows ghost dials. Upgrade to edit.")
                 .font(AppTheme.bodySm())
                 .foregroundStyle(AppTheme.inkSecondary)
 
-            if optimizer.isDirtyOverride && entitlements.isPro {
+            if optimizer.isDirtyOverride && canApplyDials {
                 HStack {
                     Text("You changed the agent’s settings")
                         .font(AppTheme.bodySm())
@@ -137,18 +142,18 @@ struct ControlsSheet: View {
             }
 
             modeRow
-            dialScroller(title: "SHUTTER", value: RecipeCameraMapper.formatShutter(session.exposureSeconds), locked: !entitlements.isPro) {
+            dialScroller(title: "SHUTTER", value: RecipeCameraMapper.formatShutter(session.exposureSeconds), locked: !canApplyDials) {
                 ForEach(shutterStops, id: \.self) { s in
                     dialChip(RecipeCameraMapper.formatShutter(s)) {
-                        guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.showPaywall = true; return }
                         session.setShutter(s); optimizer.markDirty()
                     }
                 }
             }
-            dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !entitlements.isPro) {
+            dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !canApplyDials) {
                 ForEach(isoStops, id: \.self) { v in
                     dialChip("\(Int(v))") {
-                        guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.showPaywall = true; return }
                         session.setISO(v); optimizer.markDirty()
                     }
                 }
@@ -171,7 +176,7 @@ struct ControlsSheet: View {
             Text("MODE").font(AppTheme.overline()).foregroundStyle(AppTheme.inkTertiary)
             HStack(spacing: 8) {
                 ForEach(CameraSession.CaptureMode.allCases) { mode in
-                    let enabled = entitlements.isPro || mode == .auto
+                    let enabled = canApplyDials || mode == .auto
                     Button {
                         if enabled {
                             session.captureMode = mode
@@ -200,7 +205,7 @@ struct ControlsSheet: View {
                 Text("EV").font(AppTheme.overline()).foregroundStyle(AppTheme.inkTertiary)
                 Spacer()
                 Text(String(format: "%+.1f", session.evBias)).font(AppTheme.monoSm()).foregroundStyle(AppTheme.ink)
-                if !entitlements.isPro {
+                if !canApplyDials {
                     Image(systemName: "lock.fill").font(.caption2).foregroundStyle(AppTheme.inkTertiary)
                 }
             }
@@ -208,7 +213,7 @@ struct ControlsSheet: View {
                 value: Binding(
                     get: { Double(session.evBias) },
                     set: { newVal in
-                        guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.showPaywall = true; return }
                         session.setEV(Float(newVal)); optimizer.markDirty()
                     }
                 ),
@@ -216,7 +221,7 @@ struct ControlsSheet: View {
                 step: 0.3
             )
             .tint(AppTheme.accent)
-            .disabled(!entitlements.isPro)
+            .disabled(!canApplyDials)
         }
         .padding(AppTheme.space3)
         .background(RoundedRectangle(cornerRadius: AppTheme.radiusMd).fill(AppTheme.surface))
@@ -236,7 +241,7 @@ struct ControlsSheet: View {
                 Text(session.focusLocked ? "Locked" : "Cont.")
                     .font(AppTheme.monoSm()).foregroundStyle(AppTheme.ink)
                 Button(session.focusLocked ? "Unlock" : "Lock center") {
-                    guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                    guard canApplyDials else { entitlements.showPaywall = true; return }
                     if session.focusLocked { session.unlockFocus() }
                     else { session.focus(at: CGPoint(x: 0.5, y: 0.5), lock: true) }
                     optimizer.markDirty()
@@ -252,7 +257,7 @@ struct ControlsSheet: View {
             HStack(spacing: 8) {
                 ForEach([1.0, 2.0, 3.0], id: \.self) { z in
                     dialChip(String(format: "%.0f×", z)) {
-                        guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.showPaywall = true; return }
                         session.setZoomFactor(z); optimizer.markDirty()
                     }
                 }
@@ -294,7 +299,7 @@ struct ControlsSheet: View {
                 available: session.supportsTorch,
                 unavailable: "Not available on this camera"
             ) { on in
-                guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.showPaywall = true; return }
                 session.setTorch(on)
                 optimizer.markDirty()
             }
@@ -305,7 +310,7 @@ struct ControlsSheet: View {
                 available: session.supportsLowLightBoost,
                 unavailable: "Not available on this camera"
             ) { on in
-                guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.showPaywall = true; return }
                 session.setLowLightBoost(on)
                 optimizer.markDirty()
             }
@@ -339,7 +344,7 @@ struct ControlsSheet: View {
                 ForEach(CameraSession.LensChoice.allCases) { lens in
                     let available = session.supportsLens(lens)
                     Button {
-                        guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.showPaywall = true; return }
                         guard available else { return }
                         session.selectLens(lens)
                         optimizer.markDirty()
@@ -377,7 +382,7 @@ struct ControlsSheet: View {
                         value: Binding(
                             get: { session.lensPosition },
                             set: { v in
-                                guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                                guard canApplyDials else { entitlements.showPaywall = true; return }
                                 session.setLensPosition(v)
                                 optimizer.markDirty()
                             }
@@ -385,7 +390,7 @@ struct ControlsSheet: View {
                         in: 0...1
                     )
                     .tint(AppTheme.accent)
-                    .disabled(!entitlements.isPro)
+                    .disabled(!canApplyDials)
                 } else {
                     Text("Not available on this camera")
                         .font(AppTheme.caption())
@@ -414,7 +419,7 @@ struct ControlsSheet: View {
                 available: session.supportsVideoHDR,
                 unavailable: "Not available on this camera"
             ) { on in
-                guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.showPaywall = true; return }
                 session.setVideoHDR(on)
                 optimizer.markDirty()
             }
@@ -426,7 +431,7 @@ struct ControlsSheet: View {
                     HStack(spacing: 8) {
                         ForEach([24.0, 30.0, 60.0], id: \.self) { fps in
                             dialChip(String(format: "%.0f fps", fps)) {
-                                guard entitlements.isPro else { entitlements.showPaywall = true; return }
+                                guard canApplyDials else { entitlements.showPaywall = true; return }
                                 session.setPreferredFrameRate(fps)
                                 optimizer.markDirty()
                             }
@@ -522,7 +527,7 @@ struct ControlsSheet: View {
         let isSuggested = optimizer.suggestedLook?.id == look.id
         let isActive = session.activeCreativeLook?.id == look.id
         return Button {
-            guard entitlements.isPro else { entitlements.showPaywall = true; return }
+            guard canApplyDials else { entitlements.showPaywall = true; return }
             let applied = CreativeLook(id: look.id, intensity: lookIntensity)
             session.setActiveLook(applied)
             optimizer.dismissSuggestedLook()
@@ -622,7 +627,7 @@ struct ControlsSheet: View {
                     set: { onChange($0) }
                 ))
                 .tint(AppTheme.accent)
-                .disabled(!available || !entitlements.isPro)
+                .disabled(!available || !canApplyDials)
                 .foregroundStyle(AppTheme.ink)
                 if !available {
                     Text(unavailable)

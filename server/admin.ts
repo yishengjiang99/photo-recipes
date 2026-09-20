@@ -6,6 +6,7 @@
 import crypto from 'node:crypto'
 import type { Express, NextFunction, Request, Response } from 'express'
 import { getEntitlementIncomeSnapshot, getQuotaConfigSnapshot } from './entitlements.ts'
+import { patchOpsConfig, resolveOpsConfig } from './opsConfig.ts'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
 import { getStripe, MONTHLY_CENTS, YEARLY_CENTS } from './stripe.ts'
 import { getPushFunnelSnapshot } from './push.ts'
@@ -317,6 +318,32 @@ export function mountAdminRoutes(app: Express) {
     })().catch((err: Error) => {
       console.error('[admin] summary:', err.message)
       res.status(500).json({ error: err.message || 'summary_failed' })
+    })
+  })
+
+  /** Effective Free Peek quota + dial flags (same shape as summary.quota). */
+  app.get('/api/admin/quota-config', requireAdmin, (_req, res) => {
+    res.json({ ok: true, quota: getQuotaConfigSnapshot(), config: resolveOpsConfig() })
+  })
+
+  /**
+   * PATCH Free Peek ops overrides (persisted under server/data/ops-config.json).
+   * Body: { freeDailyLimit?: number, freePhoneTargetsEnabled?: boolean }
+   * Pass null for a key to clear that override (fall back to env/default).
+   */
+  app.patch('/api/admin/quota-config', requireAdmin, (req, res) => {
+    const result = patchOpsConfig(req.body)
+    if (!result.ok) {
+      res.status(400).json({
+        error: result.error,
+        details: result.details,
+      })
+      return
+    }
+    res.json({
+      ok: true,
+      quota: getQuotaConfigSnapshot(),
+      config: result.config,
     })
   })
 }
