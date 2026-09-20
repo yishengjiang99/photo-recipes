@@ -402,8 +402,8 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         reason:
           data.reason ||
           (opts.image
-            ? 'Grok recommended this recipe from your photo (coach — not applied on web).'
-            : 'Grok recommended this recipe for your scene (coach — not applied on web).'),
+            ? 'Grok picked this recipe from your photo. On web this is coaching only — dials apply in the iOS app.'
+            : 'Grok picked this recipe for your scene. On web this is coaching only — dials apply in the iOS app.'),
         tips: Array.isArray(data.tips) ? data.tips : [],
         fromAsk: true,
       }
