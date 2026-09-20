@@ -402,8 +402,8 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         reason:
           data.reason ||
           (opts.image
-            ? 'Grok recommended this recipe from your photo (coach — not applied on web).'
-            : 'Grok recommended this recipe for your scene (coach — not applied on web).'),
+            ? 'Grok picked this recipe from your photo. On web this is coaching only — dials apply in the iOS app.'
+            : 'Grok picked this recipe for your scene. On web this is coaching only — dials apply in the iOS app.'),
         tips: Array.isArray(data.tips) ? data.tips : [],
         fromAsk: true,
       }
@@ -511,7 +511,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         {/* Top chrome — minimal honesty + quota */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-3 pb-10 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <span className="pointer-events-auto rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/80 ring-1 ring-white/15 backdrop-blur">
-            Coach — not applied on web
+            Coach · tips only on web
           </span>
           {quotaLabel ? (
             <span className="pointer-events-auto rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-medium text-white/70 ring-1 ring-white/15 backdrop-blur">
