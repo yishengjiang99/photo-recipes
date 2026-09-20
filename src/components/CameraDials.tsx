@@ -69,7 +69,7 @@ export function CameraDials({
         <div className="flex flex-wrap items-center gap-2">
           {coachOnly ? (
             <span className="rounded-full bg-vision/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-vision ring-1 ring-vision/30">
-              Coach — not applied on web
+              Coach · tips only on web
             </span>
           ) : null}
           <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
