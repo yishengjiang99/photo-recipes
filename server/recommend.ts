@@ -1,22 +1,29 @@
 import { presets } from '../src/data/presets.ts'
 import type { RecipePreset } from '../src/types/index.ts'
+import { shrinkVisionDataUrl } from './image.ts'
+import { fetchWithTimeout } from './fetchTimeout.ts'
 
 const XAI_BASE = 'https://api.x.ai/v1'
 /** Text Ask Grok models */
 const PRIMARY_MODEL = 'grok-4'
 const FALLBACK_MODEL = 'grok-3-mini'
 /**
- * Vision + tools: grok-4.6 (current xAI frontier with image input + function calling).
+ * Vision: grok-4.6 (current xAI frontier with image input).
  * Falls back to grok-4 if grok-4.6 is unavailable (404).
+ * No separate speed-tier model in-repo — fast path is one-shot (no tools), same models.
  * @see https://docs.x.ai/developers/grok-4-6
  */
 const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
-/** Hard cap on tool rounds. If select_preset never succeeds, fail clearly. */
+/** Hard cap on legacy tool rounds. If select_preset never succeeds, fail clearly. */
 const MAX_ROUNDS = 4
-/** Vision token cost vs quality — low is much faster for Auto Optimize.
- * Image data URLs are held in memory for the tool loop only — never persisted.
+/** Vision token cost vs quality — low is much faster for Auto Optimize / Recommend.
+ * Image data URLs are held in memory only — never persisted.
  */
 const VISION_IMAGE_DETAIL: 'auto' | 'low' | 'high' = 'low'
+/**
+ * Default path = one-shot JSON (no tools). Set RECOMMEND_TOOL_LOOP=1 for legacy multi-round tools.
+ */
+const FAST_TIMEOUT_MS = 10_000
 
 export interface RecommendRequest {
   message: string
@@ -1208,7 +1215,7 @@ function isModelMissing(status: number, body: string): boolean {
   )
 }
 
-export async function recommendWithGrok(
+async function recommendWithToolLoop(
   apiKey: string,
   req: RecommendRequest,
 ): Promise<RecommendResult> {
@@ -1367,4 +1374,407 @@ export async function recommendWithGrok(
   )
 }
 
-export { VISION_MODELS, PRIMARY_MODEL, FALLBACK_MODEL, MAX_ROUNDS, VISION_IMAGE_DETAIL, tools }
+
+/** True when RECOMMEND_TOOL_LOOP=1 — legacy multi-round tool path. Default is fast one-shot. */
+export function useRecommendToolLoop(): boolean {
+  return process.env.RECOMMEND_TOOL_LOOP === '1'
+}
+
+/** Compact catalog for one-shot prompt (id + short title/when). */
+export function buildCompactRecipeCatalog(): string {
+  return presets
+    .map((p) => {
+      const when = truncate(p.whenToUse, 90) || truncate(p.blurb, 80) || ''
+      return `- ${p.id}: ${p.title}${when ? ` — ${when}` : ''}`
+    })
+    .join('\n')
+}
+
+export function buildFastSystemPrompt(favorites?: string[], vision?: boolean): string {
+  const favLine =
+    favorites && favorites.length > 0
+      ? `\nPrefer these favorited ids only when they fit equally well: ${favorites.join(', ')}.`
+      : ''
+  const sense = vision
+    ? 'Inspect the attached image plus any scene note. Infer light, motion, subject, depth, dynamic range.'
+    : "Infer light, motion, subject, and depth from the photographer's scene note."
+  const catalog = buildCompactRecipeCatalog()
+
+  return `You are the Photo Recipes field coach (one-shot Recommend).
+Primary job: ${sense} Then pick ONE catalog recipe and emit phone camera targets the app will apply (same applyPhoneTargets path as Auto Optimize).
+Tone: darkroom field notes — quiet, concrete. Never chatty. Never invent recipes.
+
+CATALOG (ids only — pick exactly one recipeId from this list):
+${catalog}
+
+RESPONSE: return ONLY a single JSON object (no markdown fences, no prose outside JSON) with this shape:
+{
+  "tips": ["short tip", "..."],          // 1–3 short field tips (required)
+  "recipeId": "<exact catalog id>",     // optional but strongly preferred
+  "phoneTargets": { ... },              // optional but strongly preferred — AVFoundation levers
+  "reason": "1–3 short sentences",      // optional coach explanation
+  "teachWhy": "1–2 sentences",          // optional Teach mode line
+  "coachOnly": { "aperture"?, "nd"?, "tripod"?, "notes"? },
+  "senseSummary": "one-line light/motion/subject",
+  "panCue": { "direction": "left"|"right"|"either", "note"? },
+  "creativeLook": { "id": "<V1 pack id>", "intensity"? }
+}
+
+phoneTargets keys (all optional; omit unsupported): shutter, exposureDurationSec, iso, ev,
+whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint {x,y},
+lensPosition, zoom, cameraDevice (ultraWide|wide|tele), torch {mode,level?}, flash, lowLightBoost,
+videoHDR, frameRate, preferFormatHint, bracket {stops,count?}, monitorSubjectAreaChange,
+maxPhotoDimensions, previewLUT (preview-only), creativeLook {id,intensity?}, simulatedAperture (OS-gated only).
+NEVER put hardware aperture in phoneTargets — use coachOnly.aperture.
+Aliases accepted: presetId≡recipeId, phoneTarget≡phoneTargets.
+
+CRITICAL:
+- Catalog only — recipeId must be an exact id from the list above (or omit).
+- You MUST still control the camera: include core phoneTargets (shutter/iso/ev/whiteBalance/focusMode) when the scene implies them — not tips-only.
+- tips: max 3. Keep JSON compact.
+- creativeLook V1 ids only: crispCool, warmGlow, warmPop, editorialRed, softVintage, monoInk, goldenHour, loFiPunch, tealOrange, blockbuster, moodyFilm, coolBlue, softDream, filmGrain.${favLine}`
+}
+
+function buildFastUserContent(req: RecommendRequest): string | ContentPart[] {
+  const note = req.message.trim()
+  const text = note
+    ? `Scene note from the photographer:\n${note}\n\nSense the scene and reply with the JSON object only.`
+    : 'Sense this photo and reply with the JSON object only (tips + optional recipeId + phoneTargets).'
+
+  if (!req.imageDataUrl) {
+    return text
+  }
+  return [
+    { type: 'text', text },
+    {
+      type: 'image_url',
+      image_url: { url: req.imageDataUrl, detail: VISION_IMAGE_DETAIL },
+    },
+  ]
+}
+
+/** Strip optional ```json fences and parse. */
+export function extractJsonObject(raw: string): unknown {
+  let s = raw.trim()
+  const fence = /^```(?:json)?\s*([\s\S]*?)```$/i.exec(s)
+  if (fence) s = fence[1]!.trim()
+  // If model prepended prose, take outermost {…}
+  if (!s.startsWith('{')) {
+    const start = s.indexOf('{')
+    const end = s.lastIndexOf('}')
+    if (start >= 0 && end > start) s = s.slice(start, end + 1)
+  }
+  return JSON.parse(s) as unknown
+}
+
+/**
+ * Normalize one-shot model JSON → SelectionPayload fields.
+ * Accepts recipeId|presetId and phoneTarget|phoneTargets aliases.
+ */
+export function parseFastRecommendPayload(raw: unknown): SelectionPayload | { error: string } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: 'Model response must be a JSON object' }
+  }
+  const args = raw as Record<string, unknown>
+
+  const recipeIdRaw =
+    asOptionalString(args.recipeId) ||
+    asOptionalString(args.presetId) ||
+    ''
+  const tips = Array.isArray(args.tips)
+    ? args.tips.map((t) => String(t)).filter(Boolean).slice(0, 3)
+    : []
+  if (tips.length === 0) {
+    return { error: 'tips: at least one short field tip is required' }
+  }
+
+  let presetId = recipeIdRaw
+  let preset = presets.find((p) => p.id === presetId)
+  if (presetId && !preset) {
+    return {
+      error: `Unknown recipeId "${presetId}". Use an id from the catalog.`,
+    }
+  }
+  if (!preset) {
+    // Soft fallback: first catalog recipe so apply path still has a preset shell.
+    preset = presets[0]
+    if (!preset) return { error: 'Recipe catalog is empty' }
+    presetId = preset.id
+  }
+
+  const reason =
+    asOptionalString(args.reason) ||
+    `Matched ${preset.title} for this scene.`
+  const teachWhy =
+    asOptionalString(args.teachWhy) ||
+    `Use ${preset.title} technique for this light and subject.`
+
+  const phoneRaw =
+    args.phoneTargets !== undefined
+      ? args.phoneTargets
+      : args.phoneTarget !== undefined
+        ? args.phoneTarget
+        : {}
+  const phoneTargets = parsePhoneTargets(phoneRaw)
+  if ('error' in phoneTargets) {
+    return { error: phoneTargets.error }
+  }
+
+  const coachRaw = args.coachOnly !== undefined ? args.coachOnly : {}
+  const coachOnly = parseCoachOnly(coachRaw)
+  if ('error' in coachOnly) {
+    return { error: coachOnly.error }
+  }
+
+  const panCue = parsePanCue(args.panCue)
+  if (panCue && 'error' in panCue) {
+    return { error: panCue.error }
+  }
+
+  const topCreativeLook = parseCreativeLook(args.creativeLook, 'creativeLook')
+  if (topCreativeLook && typeof topCreativeLook === 'object' && 'error' in topCreativeLook) {
+    return { error: topCreativeLook.error }
+  }
+  if (!phoneTargets.creativeLook && topCreativeLook && 'id' in topCreativeLook) {
+    phoneTargets.creativeLook = topCreativeLook
+  }
+  const creativeLook = phoneTargets.creativeLook
+  const senseSummary = asOptionalString(args.senseSummary)
+
+  return {
+    presetId,
+    reason: reason.trim(),
+    teachWhy: teachWhy.trim(),
+    tips,
+    phoneTargets,
+    coachOnly,
+    ...(panCue ? { panCue } : {}),
+    ...(senseSummary ? { senseSummary } : {}),
+    ...(creativeLook ? { creativeLook } : {}),
+  }
+}
+
+async function callXaiJson(
+  apiKey: string,
+  model: string,
+  messages: ChatMessage[],
+  timeoutMs: number,
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; body: string }> {
+  let res: Response
+  try {
+    res = await fetchWithTimeout(
+      `${XAI_BASE}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.3,
+          max_tokens: 900,
+          response_format: { type: 'json_object' },
+          messages,
+        }),
+      },
+      timeoutMs,
+    )
+  } catch (e) {
+    const ex = e as Error & { status?: number }
+    if (ex.status === 504) {
+      return { ok: false, status: 504, body: 'Recommend timed out' }
+    }
+    throw e
+  }
+
+  const body = await res.text()
+  if (!res.ok) {
+    return { ok: false, status: res.status, body }
+  }
+  try {
+    return { ok: true, data: JSON.parse(body) as Record<string, unknown> }
+  } catch {
+    return { ok: false, status: 502, body: 'Invalid JSON from xAI' }
+  }
+}
+
+async function recommendFastOneShot(
+  apiKey: string,
+  req: RecommendRequest,
+): Promise<RecommendResult> {
+  const vision = Boolean(req.imageDataUrl)
+  if (!vision && !req.message.trim()) {
+    throw Object.assign(new Error('Message or image is required'), { status: 400 })
+  }
+
+  let imageDataUrl = req.imageDataUrl
+  if (imageDataUrl) {
+    const before = imageDataUrl.length
+    imageDataUrl = await shrinkVisionDataUrl(imageDataUrl)
+    console.info(
+      `[recommend] fast shrink in-memory ${before}→${imageDataUrl.length} chars (data URL)`,
+    )
+  }
+
+  const messages: ChatMessage[] = [
+    { role: 'system', content: buildFastSystemPrompt(req.favorites, vision) },
+    {
+      role: 'user',
+      content: buildFastUserContent({ ...req, imageDataUrl }),
+    },
+  ]
+
+  const modelQueue = vision
+    ? [...VISION_MODELS]
+    : [PRIMARY_MODEL, FALLBACK_MODEL]
+  let model = modelQueue[0]!
+  let modelIndex = 0
+
+  const started = Date.now()
+  let response = await callXaiJson(apiKey, model, messages, FAST_TIMEOUT_MS)
+
+  while (
+    !response.ok &&
+    isModelMissing(response.status, response.body) &&
+    modelIndex < modelQueue.length - 1
+  ) {
+    modelIndex += 1
+    model = modelQueue[modelIndex]!
+    console.warn(`[recommend] fast model unavailable, falling back to ${model}`)
+    response = await callXaiJson(apiKey, model, messages, FAST_TIMEOUT_MS)
+  }
+
+  // Some models reject response_format — retry once without it.
+  if (!response.ok && (response.status === 400 || response.status === 422)) {
+    console.warn('[recommend] response_format rejected; retrying without json_object')
+    let res: Response
+    try {
+      res = await fetchWithTimeout(
+        `${XAI_BASE}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0.3,
+            max_tokens: 900,
+            messages,
+          }),
+        },
+        FAST_TIMEOUT_MS,
+      )
+    } catch (e) {
+      const ex = e as Error & { status?: number }
+      if (ex.status === 504) {
+        throw Object.assign(new Error('Recommend timed out — try again'), {
+          status: 504,
+        })
+      }
+      throw e
+    }
+    const body = await res.text()
+    if (!res.ok) {
+      response = { ok: false, status: res.status, body }
+    } else {
+      try {
+        response = { ok: true, data: JSON.parse(body) as Record<string, unknown> }
+      } catch {
+        response = { ok: false, status: 502, body: 'Invalid JSON from xAI' }
+      }
+    }
+  }
+
+  if (!response.ok) {
+    if (response.status === 504) {
+      throw Object.assign(new Error('Recommend timed out — try again'), {
+        status: 504,
+      })
+    }
+    const visionHint = vision
+      ? ' Vision models may be unavailable for this API key; try text Ask or check xAI model access.'
+      : ''
+    const err = new Error(
+      `xAI API error (${response.status}). Check model availability and API key.${visionHint}`,
+    ) as Error & { status?: number; details?: string }
+    err.status = response.status >= 400 && response.status < 600 ? response.status : 502
+    err.details = response.body.slice(0, 500)
+    throw err
+  }
+
+  const choices = response.data.choices as
+    | Array<{ message?: ChatMessage; finish_reason?: string }>
+    | undefined
+  console.info(
+    `[recommend] fast=1 model=${model} ${Date.now() - started}ms`,
+  )
+
+  const content = choices?.[0]?.message?.content
+  const contentStr =
+    typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((p) => (p && typeof p === 'object' && 'text' in p ? String((p as { text?: string }).text ?? '') : ''))
+            .join('')
+        : ''
+  if (!contentStr.trim()) {
+    throw Object.assign(new Error('Empty response from Grok'), { status: 502 })
+  }
+
+  let parsed: unknown
+  try {
+    parsed = extractJsonObject(contentStr)
+  } catch {
+    throw Object.assign(new Error('Grok did not return valid JSON for Recommend'), {
+      status: 502,
+    })
+  }
+
+  const selection = parseFastRecommendPayload(parsed)
+  if ('error' in selection) {
+    throw Object.assign(new Error(selection.error), { status: 502 })
+  }
+
+  const preset = presets.find((p) => p.id === selection.presetId)!
+  return {
+    presetId: selection.presetId,
+    reason: selection.reason,
+    teachWhy: selection.teachWhy,
+    tips: selection.tips,
+    phoneTargets: selection.phoneTargets,
+    coachOnly: selection.coachOnly,
+    panCue: selection.panCue,
+    senseSummary: selection.senseSummary,
+    ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
+    preset,
+    model,
+  }
+}
+
+/**
+ * Recommend: default = one-shot vision JSON + in-memory shrink (no tools).
+ * Legacy tool loop: set RECOMMEND_TOOL_LOOP=1.
+ */
+export async function recommendWithGrok(
+  apiKey: string,
+  req: RecommendRequest,
+): Promise<RecommendResult> {
+  if (useRecommendToolLoop()) {
+    return recommendWithToolLoop(apiKey, req)
+  }
+  return recommendFastOneShot(apiKey, req)
+}
+
+export {
+  VISION_MODELS,
+  PRIMARY_MODEL,
+  FALLBACK_MODEL,
+  MAX_ROUNDS,
+  VISION_IMAGE_DETAIL,
+  FAST_TIMEOUT_MS,
+  tools,
+}

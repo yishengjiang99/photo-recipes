@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=server-dist/index.js",
     "start": "node server-dist/index.js",
-    "test:server": "tsx --test server/phoneTargets.test.ts server/visionPassthrough.test.ts server/entitlementsQuota.test.ts",
+    "test:server": "tsx --test server/phoneTargets.test.ts server/visionPassthrough.test.ts server/entitlementsQuota.test.ts server/recommendFast.test.ts server/imageShrink.test.ts",
     "smoke:web": "node scripts/smoke-web.mjs",
     "funnel:report": "node scripts/funnel-report.mjs"
   },
@@ -27,6 +27,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
+    "sharp": "^0.34.5",
     "stripe": "^22.6.2"
   },
   "devDependencies": {

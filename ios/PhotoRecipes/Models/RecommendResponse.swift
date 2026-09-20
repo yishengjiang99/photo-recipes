@@ -3,6 +3,8 @@ import CoreGraphics
 
 struct RecommendResponse: Codable, Hashable {
     var presetId: String?
+    /// Alias of presetId (fast recommend / product lock).
+    var recipeId: String?
     var reason: String?
     var tips: [String]?
     var preset: Recipe?
@@ -16,6 +18,85 @@ struct RecommendResponse: Codable, Hashable {
     var coachOnly: CoachOnly?
     var panCue: PanCue?
     var senseSummary: String?
+
+    /// presetId with recipeId fallback (server may send either).
+    var resolvedPresetId: String? { presetId ?? recipeId }
+
+    enum CodingKeys: String, CodingKey {
+        case presetId, recipeId, reason, tips, preset, model, vision, error, code
+        case teachWhy, phoneTargets, phoneTarget, coachOnly, panCue, senseSummary
+    }
+
+    init(
+        presetId: String? = nil,
+        recipeId: String? = nil,
+        reason: String? = nil,
+        tips: [String]? = nil,
+        preset: Recipe? = nil,
+        model: String? = nil,
+        vision: Bool? = nil,
+        error: String? = nil,
+        code: String? = nil,
+        teachWhy: String? = nil,
+        phoneTargets: PhoneTargets? = nil,
+        coachOnly: CoachOnly? = nil,
+        panCue: PanCue? = nil,
+        senseSummary: String? = nil
+    ) {
+        self.presetId = presetId
+        self.recipeId = recipeId
+        self.reason = reason
+        self.tips = tips
+        self.preset = preset
+        self.model = model
+        self.vision = vision
+        self.error = error
+        self.code = code
+        self.teachWhy = teachWhy
+        self.phoneTargets = phoneTargets
+        self.coachOnly = coachOnly
+        self.panCue = panCue
+        self.senseSummary = senseSummary
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        presetId = try c.decodeIfPresent(String.self, forKey: .presetId)
+        recipeId = try c.decodeIfPresent(String.self, forKey: .recipeId)
+        reason = try c.decodeIfPresent(String.self, forKey: .reason)
+        tips = try c.decodeIfPresent([String].self, forKey: .tips)
+        preset = try c.decodeIfPresent(Recipe.self, forKey: .preset)
+        model = try c.decodeIfPresent(String.self, forKey: .model)
+        vision = try c.decodeIfPresent(Bool.self, forKey: .vision)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        code = try c.decodeIfPresent(String.self, forKey: .code)
+        teachWhy = try c.decodeIfPresent(String.self, forKey: .teachWhy)
+        // Accept phoneTargets (plural) or phoneTarget (singular product lock).
+        phoneTargets =
+            try c.decodeIfPresent(PhoneTargets.self, forKey: .phoneTargets)
+            ?? c.decodeIfPresent(PhoneTargets.self, forKey: .phoneTarget)
+        coachOnly = try c.decodeIfPresent(CoachOnly.self, forKey: .coachOnly)
+        panCue = try c.decodeIfPresent(PanCue.self, forKey: .panCue)
+        senseSummary = try c.decodeIfPresent(String.self, forKey: .senseSummary)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(presetId, forKey: .presetId)
+        try c.encodeIfPresent(recipeId, forKey: .recipeId)
+        try c.encodeIfPresent(reason, forKey: .reason)
+        try c.encodeIfPresent(tips, forKey: .tips)
+        try c.encodeIfPresent(preset, forKey: .preset)
+        try c.encodeIfPresent(model, forKey: .model)
+        try c.encodeIfPresent(vision, forKey: .vision)
+        try c.encodeIfPresent(error, forKey: .error)
+        try c.encodeIfPresent(code, forKey: .code)
+        try c.encodeIfPresent(teachWhy, forKey: .teachWhy)
+        try c.encodeIfPresent(phoneTargets, forKey: .phoneTargets)
+        try c.encodeIfPresent(coachOnly, forKey: .coachOnly)
+        try c.encodeIfPresent(panCue, forKey: .panCue)
+        try c.encodeIfPresent(senseSummary, forKey: .senseSummary)
+    }
 }
 
 /// Wire format locked to server PR #21 / main — all keys optional; unknown keys ignored.

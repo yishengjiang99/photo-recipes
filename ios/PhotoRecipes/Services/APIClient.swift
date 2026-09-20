@@ -449,8 +449,9 @@ final class APIClient: ObservableObject {
         }
     }
 
-    /// Downscale / JPEG-compress for vision uploads (~1280px long edge).
-    static func compressForVision(_ image: UIImage, maxDimension: CGFloat = 1280, quality: CGFloat = 0.72) -> Data? {
+    /// Downscale / JPEG-compress for vision uploads (~1024px long edge, ~0.65).
+    /// Server also shrinks in memory; smaller uploads keep Recommend one-shot fast.
+    static func compressForVision(_ image: UIImage, maxDimension: CGFloat = 1024, quality: CGFloat = 0.65) -> Data? {
         let size = image.size
         let longest = max(size.width, size.height)
         let scale = longest > maxDimension ? maxDimension / longest : 1

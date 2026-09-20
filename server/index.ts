@@ -170,6 +170,8 @@ function runRecommend(
       // Never echo image bytes back
       res.json({
         presetId: result.presetId,
+        // Alias for clients / product lock (recipeId ≡ presetId)
+        recipeId: result.presetId,
         reason: result.reason,
         teachWhy: result.teachWhy,
         tips: result.tips,
@@ -203,8 +205,9 @@ function runRecommend(
 
 /**
  * POST /api/recommend — text Ask Grok and/or Photo Vision (multipart or JSON).
- * Vision: in-memory pass-through to xAI (see visionPassthrough.ts). No disk/DB image store.
- * Response shape unchanged for iOS Build 2/3.
+ * Default: one-shot vision JSON (shrink in memory, recipes in prompt, no tools).
+ * Legacy tool loop: RECOMMEND_TOOL_LOOP=1. Vision: never disk/DB image store.
+ * Response: tips + presetId/recipeId + phoneTargets (+ coach fields). iOS applyPhoneTargets.
  */
 app.post('/api/recommend', (req, res) => {
   const ct = (req.headers['content-type'] || '').toLowerCase()
