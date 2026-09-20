@@ -1,20 +1,61 @@
-# Photo Recipes
+# Photo Recipes — iOS Field Camera
 
-A mobile-friendly web app of photography field presets, transcribed from pages of a “30 Recipes” photography book. Use it on location for steps, gear checklists, and educational camera dials — or ask Grok which recipe fits your scene.
+A native iOS camera app that turns a pocket field guide into live camera settings. Photo Recipes bundles five classic photography recipes, then uses on-device intelligence + Grok vision to **set exposure, focus, white balance, and zoom** on a real AVFoundation camera session.
 
-**Soft funnel:** browsing presets is always free (Free Peek). Ask Grok **and Photo Vision** share **5 free asks/day** (env `FREE_DAILY_LIMIT`, default 5) on Free Peek; **Photo Recipes Pro** unlocks unlimited Ask Grok + Photo Vision + interactive field checklists via Stripe Checkout (7-day trial).
+Built for photographers who want the recipe *and* the dial position.
 
-## Stack
+- **Camera-first:** the viewfinder is the home screen.
+- **Auto Optimize:** one tap analyzes the scene and applies the best recipe locally, with an optional cloud refine.
+- **Ask Grok / Photo Vision:** describe a scene or show the camera a photo and get a coached recommendation.
+- **Pro:** manual A/S/M dials, apply recipe to live settings, full teach mode, and interactive field checklists.
 
-- Vite + React 19 + TypeScript
-- Tailwind CSS v4
-- React Router
-- Express + tsx API (`server/`) with xAI Grok tool-calling (text + vision)
-- Stripe Checkout subscriptions + webhook entitlements
-- Favorites & checklist progress in `localStorage`
-- Entitlements / Ask quota in gitignored `server/data/entitlements.json`
+> **iOS:** Pro is unlocked through **App Store subscriptions only** (StoreKit 2). No Stripe checkout inside the app.
+> Web users can subscribe via Stripe on the companion web app.
 
-## Presets (from book pages)
+## Download / TestFlight
+
+The iOS app is the primary product. The repo contains the full Xcode project under [`ios/`](./ios/).
+
+| | |
+|---|---|
+| Project | `cd ios && open PhotoRecipes.xcodeproj` |
+| Platform | iOS 17+ |
+| Bundle ID | `com.ragnus.mvp` |
+| TestFlight | Run the **iOS TestFlight** GitHub Action, or archive locally with team `83D36RPMUM` |
+
+Full App Store Connect setup, local StoreKit testing, and TestFlight checklist: **[ios/README.md](./ios/README.md)**.
+
+## What it does
+
+1. **Browse recipes** — five faithful presets transcribed from a “30 Recipes” photography book.
+2. **Auto Optimize** — tap the pill above the shutter; the app senses the scene, picks the best recipe, and applies phone-friendly targets (shutter, ISO, EV, WB, focus, zoom, torch/flash).
+3. **Recommend a recipe** — describe the scene or pick a photo; Grok returns the best recipe plus coaching.
+4. **Shoot** — full-bleed live viewfinder with edge-to-edge overlays, pan cues, and a shutter that saves to Camera Roll.
+5. **Learn** — each recipe includes steps, tips, gear, phone/advanced notes, and a “Why this?” teach sheet.
+
+## Free Peek vs Photo Recipes Pro
+
+| Feature | Free Peek | Pro |
+|---|---|---|
+| Live viewfinder + shutter → Camera Roll | ✓ | ✓ |
+| Auto mode capture | ✓ | ✓ |
+| Read-only recipe dials / pan cues | ✓ | ✓ |
+| Auto Optimize Pass 1 (local, instant) | ✓ | ✓ |
+| Auto Optimize Pass 2 (cloud refine) | 5 / day combined with Ask/Vision | Unlimited |
+| Ask Grok / Photo Vision | 5 combined / day | Unlimited |
+| Apply recipe → live exposure/focus/WB | — | ✓ |
+| Manual A/S/M dials | — | ✓ |
+| Full Teach mode | teaser | full |
+| Interactive field checklist | — | ✓ |
+
+**Pricing**
+
+| Plan | Product ID | Price | Trial |
+|---|---|---|---|
+| **Yearly (primary CTA)** | `com.ragnus.mvp.pro.yearly` | **$59.99/yr** | 7-day free |
+| Monthly | `com.ragnus.mvp.pro.monthly` | $7.99/mo | 7-day free |
+
+## The five recipes
 
 | Page | Recipe | Tags |
 |------|--------|------|
@@ -24,30 +65,53 @@ A mobile-friendly web app of photography field presets, transcribed from pages o
 | 40 | Shake Up Your Perspective by Getting Down Low | Composition |
 | 44 | Capture all the Brights and Darks With HDR | HDR (phone + camera methods) |
 
-Preset data lives in `src/data/presets.ts` (shared with the API).
+Preset data lives in `src/data/presets.ts` and is mirrored in `ios/PhotoRecipes/Data/BundledPresets.swift`.
 
-## Pricing (Photo Recipes Pro)
+## Repo layout
 
-| Plan | Amount | Notes |
-|------|--------|--------|
-| Monthly | **$7.99**/mo (799¢ USD) | 7-day free trial |
-| Annual | **$59.99**/yr (5999¢ USD) | **Primary CTA / Best value**, 7-day free trial |
+```
+ios/                  # SwiftUI iOS app (primary)
+  PhotoRecipes.xcodeproj
+  PhotoRecipes/
+    PhotoRecipesApp.swift
+    MainTabView.swift
+    Features/Camera/        # viewfinder, dials, Auto Optimize, teach sheet
+    Services/               # CameraSession, LocalAutoOptimizeEngine, APIClient
+    Resources/Info.plist    # camera / photo library / microphone permissions
+src/                  # Vite + React 19 web app (companion)
+server/               # Express API (Grok, Stripe web, IAP verify, telemetry)
+deploy/               # nginx + systemd templates
+docs/                 # design handoffs and telemetry docs
+```
 
-- Free Peek: browse presets; Ask Grok **or** Photo Vision **5 combined/day** (configurable)
-- Pro: unlimited Ask Grok + Photo Vision + field checklists
+## Web companion
 
-**Ops (env only — restart OK):** `/etc/photo-recipes.env` (see `.env.example`):
-- `FREE_DAILY_LIMIT` — Free Peek combined Ask/Vision/Auto Optimize per UTC day (default **5**)
-- `FREE_UNLIMITED_EMAILS` — comma-separated emails with unlimited quota (owner `yisheng.jiang@gmail.com` always included)
-- `UNLIMITED_DEVICE_IDS` — optional unsigned `pr_guest` UUIDs / `X-Device-Id` for TestFlight without login
-- `ADMIN_TOKEN` as `Authorization: Bearer` or `X-Admin-Token` also skips quota
+The same recipes and subscription tiers are also available as a mobile-friendly web app. Web Pro is handled through Stripe Checkout; iOS Pro is handled through StoreKit 2.
 
+```bash
+cd /workspace/photo-recipes
+npm install
+npm run dev:all
+```
+
+- Web: [http://localhost:5173](http://localhost:5173)
+- API: [http://localhost:8787](http://localhost:8787)
+
+Build and deploy details, API examples, and server secrets are preserved in the sections below for operators and contributors.
+
+## Stack
+
+- **iOS:** SwiftUI, AVFoundation, StoreKit 2, Vision
+- **Web:** Vite + React 19 + TypeScript + Tailwind CSS v4
+- **API:** Express + tsx with xAI Grok tool-calling (text + vision)
+- **Billing:** Stripe Checkout (web) + StoreKit 2 IAP (iOS)
+- **State:** `UserDefaults` on iOS; `localStorage` on web; `server/data/entitlements.json` for server-side quota
 
 ## Telemetry & App Privacy
 
 In-house MySQL funnel analytics (`POST /api/telemetry`) — **no** TelemetryDeck/Sentry/session replay. Events are allowlisted; props never include photos or PII. Analytics are anonymized (`anon_id`). See [`docs/telemetry.md`](./docs/telemetry.md) and [`docs/telemetry-funnels.md`](./docs/telemetry-funnels.md).
 
-Configure `MYSQL_*` + optional `TELEMETRY_READ_KEY` in `.env` / `/etc/photo-recipes.env`. App builds and runs when MySQL is unset.
+Configure `MYSQL_*` + optional `TELEMETRY_READ_KEY` in `.env` / `/etc/photo-recipes.env`. The app builds and runs when MySQL is unset.
 
 ## Environment
 
@@ -78,117 +142,12 @@ STRIPE_PRICE_YEARLY=
 
 Without `XAI_API_KEY`, `POST /api/recommend` returns **503**. Without Stripe keys, checkout endpoints return **503** (browsing still works).
 
-## Run locally (frontend + API)
-
-```bash
-cd /workspace/photo-recipes
-npm install
-npm run dev:all
-```
-
-- Web: [http://localhost:5173](http://localhost:5173) (Vite proxies `/api` → API)
-- API: [http://localhost:8787](http://localhost:8787)
-
-### Stripe webhook (local)
-
-```bash
-stripe listen --forward-to localhost:8787/api/stripe-webhook
-# put the whsec_… value into STRIPE_WEBHOOK_SECRET and restart the API
-```
-
-Production webhook URL (nginx proxies `/api`):
-
-```
-https://YOUR_DOMAIN/api/stripe-webhook
-```
-
-Subscribe to at least: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`.
-
-### Example API calls
-
-Health:
-
-```bash
-curl -s http://localhost:8787/api/health
-```
-
-Subscription status (sets guest cookie):
-
-```bash
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/subscription-status
-```
-
-Create Checkout (yearly = primary CTA):
-
-```bash
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/create-checkout-session \
-  -H 'Content-Type: application/json' \
-  -d '{"plan":"yearly"}'
-# → { "sessionId", "url", "plan" } — open url in browser
-```
-
-Verify after redirect to `/success?session_id=…`:
-
-```bash
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/verify-checkout-session \
-  -H 'Content-Type: application/json' \
-  -d '{"sessionId":"cs_test_…"}'
-```
-
-Billing portal (requires Pro cookie from verify/webhook):
-
-```bash
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/billing-portal \
-  -X POST -H 'Content-Type: application/json' -d '{}'
-```
-
-Ask Grok (Free Peek: 5 combined Ask/Photo Vision per day (env `FREE_DAILY_LIMIT`); then **402** paywall JSON):
-
-```bash
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"sunset canyon with dark foreground","favorites":[]}'
-```
-
-Photo Vision — JSON with base64 / data URL (client compresses to JPEG ~1280px first):
-
-```bash
-# tiny 1×1 jpeg as a smoke test (replace with a real scene photo)
-IMG=$(python3 -c "import base64; print('data:image/jpeg;base64,'+base64.b64encode(open('/path/to/scene.jpg','rb').read()).decode())")
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
-  -H 'Content-Type: application/json' \
-  -d "{\"message\":\"keep the subject sharp\",\"image\":\"$IMG\"}"
-```
-
-Photo Vision — multipart:
-
-```bash
-curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
-  -F 'image=@./scene.jpg;type=image/jpeg' \
-  -F 'message=want silky water'
-```
-
-Vision uses **grok-4.6** (image + tools), falling back to `grok-4` if a model id is unavailable. MIME allowlist: `image/jpeg|png|webp` (max ~4MB). JPEG EXIF is stripped server-side; never log image bytes.
-
 ## Build
 
 ```bash
 npm run build
 npm run preview
 ```
-
-## Features
-
-- Preset library cards (title, blurb, gear icons, key settings)
-- **Ask Grok** — Free Peek 5 combined/day with Photo Vision; Pro unlimited; soft 402 paywall modal CTA
-- **Photo Vision** — drag-drop / file picker / mobile camera; Grok vision + same tool loop → preset detail
-- Detail view: steps, tips, equipment, when-to-use, phone/advanced notes + AI reason banner
-- Field checklist / step-by-step mode (Pro-gated; steps remain readable)
-- Simulated camera dials for recommended settings
-- Filter by technique tags + favorites
-- Upgrade / Pricing modal (yearly highlighted + trial badge), Free/Pro badge, Manage billing
-- `/success?session_id=` verify → httpOnly signed Pro cookie
-- Dark photo-app aesthetic
 
 ## Deploy (Ubuntu + nginx + systemd)
 
@@ -262,20 +221,76 @@ Local production smoke test (after `npm run build`):
 npm start   # API on :8787; use vite preview or any static server for dist/
 ```
 
+## Example API calls
+
+Health:
+
+```bash
+curl -s http://localhost:8787/api/health
+```
+
+Subscription status (sets guest cookie):
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/subscription-status
+```
+
+Create Checkout (yearly = primary CTA):
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/create-checkout-session \
+  -H 'Content-Type: application/json' \
+  -d '{"plan":"yearly"}'
+# → { "sessionId", "url", "plan" } — open url in browser
+```
+
+Verify after redirect to `/success?session_id=…`:
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/verify-checkout-session \
+  -H 'Content-Type: application/json' \
+  -d '{"sessionId":"cs_test_…"}'
+```
+
+Billing portal (requires Pro cookie from verify/webhook):
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/billing-portal \
+  -X POST -H 'Content-Type: application/json' -d '{}'
+```
+
+Ask Grok (Free Peek: 5 combined Ask/Photo Vision per day (env `FREE_DAILY_LIMIT`); then **402** paywall JSON):
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"sunset canyon with dark foreground","favorites":[]}'
+```
+
+Photo Vision — JSON with base64 / data URL (client compresses to JPEG ~1280px first):
+
+```bash
+# tiny 1×1 jpeg as a smoke test (replace with a real scene photo)
+IMG=$(python3 -c "import base64; print('data:image/jpeg;base64,'+base64.b64encode(open('/path/to/scene.jpg','rb').read()).decode())")
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
+  -H 'Content-Type: application/json' \
+  -d "{\"message\":\"keep the subject sharp\",\"image\":\"$IMG\"}"
+```
+
+Photo Vision — multipart:
+
+```bash
+curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
+  -F 'image=@./scene.jpg;type=image/jpeg' \
+  -F 'message=want silky water'
+```
+
+Vision uses **grok-4.6** (image + tools), falling back to `grok-4` if a model id is unavailable. MIME allowlist: `image/jpeg|png|webp` (max ~4MB). JPEG EXIF is stripped server-side; never log image bytes.
+
 ## License / attribution
 
 Educational personal-use transcription of book recipes. Not affiliated with the book’s publisher or author.
 
-## iOS app (SwiftUI)
+## iOS details
 
-Native iOS 17+ client lives in [`ios/`](./ios/). **Camera-first field camera**: live AVFoundation viewfinder, recipe→settings apply, and **Auto Optimize** (vision recommend → settable exposure/focus/WB). Soft TestFlight: Free Peek browse + 1 Auto Optimize/day; Pro unlocks manual dials, apply-to-live, unlimited optimize via **StoreKit 2 IAP only** (not Stripe-in-app). See `ios/README.md` and `docs/design-handoff-camera-v1.md` / `docs/design-handoff-agentic-v1.md`.md` / `docs/design-handoff-agentic-v1.md`.
-
-| | |
-|--|--|
-| Open | `cd ios && open PhotoRecipes.xcodeproj` |
-| Bundle ID | `com.ragnus.mvp` |
-| IAP yearly (primary) | `com.ragnus.mvp.pro.yearly` ($59.99/yr, 7-day trial) |
-| IAP monthly | `com.ragnus.mvp.pro.monthly` ($7.99/mo, 7-day trial) |
-| Verify | `POST /api/iap/verify` (see `server/iap.ts`) |
-
-Full setup, ASC checklist, and TestFlight steps: **[ios/README.md](./ios/README.md)**.
+For build instructions, architecture, IAP verify, push/deep-link setup, and the TestFlight device test plan, see **[ios/README.md](./ios/README.md)**.
