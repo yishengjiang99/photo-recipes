@@ -50,6 +50,54 @@ struct PhoneTargets: Codable, Hashable {
         case maxPhotoDimensions, previewLUT, creativeLook, simulatedAperture
     }
 
+    init(
+        shutter: String? = nil,
+        exposureDurationSec: Double? = nil,
+        iso: String? = nil,
+        ev: String? = nil,
+        whiteBalance: WhiteBalanceTarget? = nil,
+        focusMode: String? = nil,
+        zoom: Double? = nil,
+        focusPoint: FocusPointNorm? = nil,
+        lensPosition: Double? = nil,
+        torch: TorchTarget? = nil,
+        flash: String? = nil,
+        lowLightBoost: Bool? = nil,
+        videoHDR: Bool? = nil,
+        cameraDevice: String? = nil,
+        frameRate: Double? = nil,
+        preferFormatHint: String? = nil,
+        bracket: BracketTarget? = nil,
+        monitorSubjectAreaChange: Bool? = nil,
+        maxPhotoDimensions: MaxPhotoDimensions? = nil,
+        previewLUT: String? = nil,
+        creativeLook: CreativeLook? = nil,
+        simulatedAperture: Double? = nil
+    ) {
+        self.shutter = shutter
+        self.exposureDurationSec = exposureDurationSec
+        self.iso = iso
+        self.ev = ev
+        self.whiteBalance = whiteBalance
+        self.focusMode = focusMode
+        self.zoom = zoom
+        self.focusPoint = focusPoint
+        self.lensPosition = lensPosition
+        self.torch = torch
+        self.flash = flash
+        self.lowLightBoost = lowLightBoost
+        self.videoHDR = videoHDR
+        self.cameraDevice = cameraDevice
+        self.frameRate = frameRate
+        self.preferFormatHint = preferFormatHint
+        self.bracket = bracket
+        self.monitorSubjectAreaChange = monitorSubjectAreaChange
+        self.maxPhotoDimensions = maxPhotoDimensions
+        self.previewLUT = previewLUT
+        self.creativeLook = creativeLook
+        self.simulatedAperture = simulatedAperture
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         shutter = try c.decodeIfPresent(String.self, forKey: .shutter)
@@ -166,6 +214,11 @@ struct BracketTarget: Codable, Hashable {
     var count: Int?
 
     enum CodingKeys: String, CodingKey { case stops, count }
+
+    init(stops: [Double]? = nil, count: Int? = nil) {
+        self.stops = stops
+        self.count = count
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

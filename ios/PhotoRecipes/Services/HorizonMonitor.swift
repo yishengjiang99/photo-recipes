@@ -5,6 +5,8 @@ import Combine
 @MainActor
 final class HorizonMonitor: ObservableObject {
     @Published var rollDegrees: Double = 0
+    /// Attitude pitch in degrees — used by local AO for low-angle heuristics.
+    @Published var pitchDegrees: Double = 0
     @Published var isLevel = true
     @Published var isAvailable = false
 
@@ -18,8 +20,10 @@ final class HorizonMonitor: ObservableObject {
         motion.startDeviceMotionUpdates(to: queue) { [weak self] data, _ in
             guard let data else { return }
             let roll = data.attitude.roll * 180 / .pi
+            let pitch = data.attitude.pitch * 180 / .pi
             Task { @MainActor in
                 self?.rollDegrees = roll
+                self?.pitchDegrees = pitch
                 self?.isLevel = abs(roll) < 1.0
             }
         }
