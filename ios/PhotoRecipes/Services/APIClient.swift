@@ -32,8 +32,13 @@ final class APIClient: ObservableObject {
     }
 
     private static let baseURLKey = "api.baseURL"
-    /// Placeholder production host — replace in Settings or Debug.xcconfig.
-    private static let defaultBaseURL = "https://photo-recipes.example.com"
+    /// Production API (photo.grepawk.com). Settings can override for staging.
+    private static let defaultBaseURL = "https://photo.grepawk.com"
+    private static let legacyPlaceholderHosts: Set<String> = [
+        "https://photo-recipes.example.com",
+        "http://photo-recipes.example.com",
+        "https://photo-recipes.example.com/",
+    ]
 
     private let session: URLSession
     private let decoder: JSONDecoder = {
@@ -43,8 +48,13 @@ final class APIClient: ObservableObject {
     private let encoder = JSONEncoder()
 
     init(session: URLSession? = nil) {
-        let stored = UserDefaults.standard.string(forKey: Self.baseURLKey)
-        self.baseURLString = (stored?.isEmpty == false) ? stored! : Self.defaultBaseURL
+        let stored = UserDefaults.standard.string(forKey: Self.baseURLKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let stored, !stored.isEmpty, !Self.legacyPlaceholderHosts.contains(stored) {
+            self.baseURLString = stored
+        } else {
+            self.baseURLString = Self.defaultBaseURL
+        }
 
         if let session {
             self.session = session

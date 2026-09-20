@@ -1025,14 +1025,31 @@ final class CameraSession: NSObject, ObservableObject {
 
     /// When false, photo delegate skips Creative Look bake (probe / vision frames).
     private var bakeLookOnNextCapture = true
+    /// Session-queue flag to reject overlapping capturePhoto calls.
 
     func capturePhoto(bakeLook: Bool = true) async throws -> Data {
         bakeLookOnNextCapture = bakeLook
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
+                guard self.session.isRunning else {
+                    cont.resume(throwing: CamError.captureFailed)
+                    return
+                }
+                guard !self.photoOutput.connections.isEmpty else {
+                    cont.resume(throwing: CamError.badOutput)
+                    return
+                }
                 Task { @MainActor in self.photoCont = cont }
                 let settings = AVCapturePhotoSettings()
+                // Must match photoOutput.maxPhotoQualityPrioritization or AVFoundation aborts (SIGABRT).
+                settings.photoQualityPrioritization = self.photoOutput.maxPhotoQualityPrioritization
+                if #available(iOS 16.0, *) {
+                    let dims = self.photoOutput.maxPhotoDimensions
+                    if dims.width > 0, dims.height > 0 {
+                        settings.maxPhotoDimensions = dims
+                    }
+                }
                 if self.photoOutput.supportedFlashModes.contains(self.flash.av) {
                     settings.flashMode = self.flash.av
                 }
@@ -1040,6 +1057,7 @@ final class CameraSession: NSObject, ObservableObject {
             }
         }
     }
+
 
     func captureProbeFrame() async throws -> Data { try await capturePhoto(bakeLook: false) }
 
