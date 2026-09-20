@@ -657,7 +657,7 @@ export function Admin() {
               </div>
               <p className="mt-2 text-xs text-[var(--color-ink-tertiary)]">
                 nginx-level 413 HTML never reaches Node — after deploy, body limits are
-                25MB so normal phone JPEGs should hit JSON errors here instead.
+                100MB so normal phone JPEGs should hit JSON errors here instead.
               </p>
             </section>
           </>

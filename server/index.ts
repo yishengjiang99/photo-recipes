@@ -52,8 +52,8 @@ app.use(cookieParser())
 mountStripeWebhook(app)
 
 // JSON body: text asks or base64 vision frames (phone JPEG as data URL).
-// 25mb matches nginx client_max_body_size + MAX_IMAGE_BYTES (~25MB binary).
-app.use(express.json({ limit: '25mb' }))
+// 100mb matches nginx client_max_body_size + MAX_IMAGE_BYTES (~100MB binary).
+app.use(express.json({ limit: '100mb' }))
 app.use(identityMiddleware)
 
 mountStripeRoutes(app)
