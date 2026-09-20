@@ -45,6 +45,31 @@ type Summary = {
     byPlan: { monthly: number; yearly: number; unknown: number }
     totalRecords: number
   }
+  push: {
+    experimentEnabled: boolean
+    apnsEnvConfigured: boolean
+    days: number
+    registry: {
+      guests: number
+      withToken: number
+      optIn: number
+      holdout: number
+      withShootWindow: number
+      briefsSentThisWeek: number
+    }
+    funnel: {
+      permissionPrompt: number
+      permissionAccepted: number
+      permissionDenied: number
+      acceptRate: number | null
+      pushSent: number
+      pushOpened: number
+      openRate: number | null
+      paywallFromPush: number
+      subscribe: number
+    }
+    note: string
+  }
 }
 
 function money(cents: number, currency = 'usd'): string {
@@ -486,6 +511,72 @@ export function Admin() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                Push funnel (Exp1)
+                <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                  {summary.push.experimentEnabled ? 'flag on' : 'flag off'}
+                  {summary.push.apnsEnvConfigured ? ' · APNs env' : ' · APNs unset'}
+                </span>
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Kpi
+                  label="Devices w/ token"
+                  value={summary.push.registry.withToken}
+                  hint={`${summary.push.registry.guests} prefs · ${summary.push.registry.optIn} opt-in`}
+                />
+                <Kpi
+                  label="Permission accept"
+                  value={
+                    summary.push.funnel.acceptRate != null
+                      ? `${Math.round(summary.push.funnel.acceptRate * 100)}%`
+                      : '—'
+                  }
+                  hint={`${summary.push.funnel.permissionAccepted} / ${summary.push.funnel.permissionPrompt} prompts · 7d`}
+                />
+                <Kpi
+                  label="Push open rate"
+                  value={
+                    summary.push.funnel.openRate != null
+                      ? `${Math.round(summary.push.funnel.openRate * 100)}%`
+                      : '—'
+                  }
+                  hint={`${summary.push.funnel.pushOpened} opens / ${summary.push.funnel.pushSent} sent · 7d`}
+                />
+                <Kpi
+                  label="Paywall from push"
+                  value={summary.push.funnel.paywallFromPush}
+                  hint={`${summary.push.funnel.subscribe} subscribe events · 7d`}
+                />
+              </div>
+              <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-secondary)]">
+                  Registry &amp; 7d events
+                </div>
+                <div className="grid gap-2 p-3 text-sm sm:grid-cols-2">
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-ink-tertiary)]">Shoot window set</span>
+                    <span className="font-mono">{summary.push.registry.withShootWindow}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-ink-tertiary)]">Holdout</span>
+                    <span className="font-mono">{summary.push.registry.holdout}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-ink-tertiary)]">Briefs sent this week</span>
+                    <span className="font-mono">{summary.push.registry.briefsSentThisWeek}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-ink-tertiary)]">Permission denied (7d)</span>
+                    <span className="font-mono">{summary.push.funnel.permissionDenied}</span>
+                  </div>
+                </div>
+                <p className="border-t border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-tip)]">
+                  {summary.push.note}
+                </p>
               </div>
             </section>
           </>

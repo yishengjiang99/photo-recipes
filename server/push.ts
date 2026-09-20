@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { getGuestId } from './entitlements.ts'
 import {
   getPushPrefs,
+  listAllPushPrefs,
   publicPrefsView,
   registerApnsToken,
   updatePushPrefs,
@@ -217,6 +218,105 @@ function sanitizeProps(props: Record<string, unknown>): Record<string, unknown> 
     }
   }
   return out
+}
+
+
+const FUNNEL_EVENTS = [
+  'push_permission_prompt_shown',
+  'push_permission_accepted',
+  'push_permission_denied',
+  'push_sent',
+  'push_opened',
+  'paywall_from_push',
+  'trial_start',
+  'day_pass_purchase',
+  'subscribe',
+  'push_opt_out',
+  'auto_optimize_started',
+] as const
+
+/** Admin KPIs: local prefs registry + push-events.jsonl (not ASC). Soft-empty on errors. */
+export function getPushFunnelSnapshot(days = 7) {
+  const prefs = listAllPushPrefs()
+  let withToken = 0
+  let optIn = 0
+  let holdout = 0
+  let withShootWindow = 0
+  let briefsSentThisWeek = 0
+  for (const p of prefs) {
+    if (p.apnsDeviceTokens?.length) withToken++
+    if (p.pushOptIn) optIn++
+    if (p.experimentHoldout) holdout++
+    if (p.shootWindow) withShootWindow++
+    briefsSentThisWeek += p.sentThisWeek?.length ?? 0
+  }
+
+  const eventCounts: Record<string, number> = {}
+  for (const e of FUNNEL_EVENTS) eventCounts[e] = 0
+  let eventsScanned = 0
+  let eventsInWindow = 0
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+
+  try {
+    if (fs.existsSync(EVENTS_LOG)) {
+      const raw = fs.readFileSync(EVENTS_LOG, 'utf8')
+      for (const line of raw.split('\n')) {
+        if (!line.trim()) continue
+        eventsScanned++
+        try {
+          const row = JSON.parse(line) as { at?: string; event?: string }
+          const t = row.at ? Date.parse(row.at) : NaN
+          if (!Number.isFinite(t) || t < cutoff) continue
+          eventsInWindow++
+          const name = typeof row.event === 'string' ? row.event : ''
+          if (name && name in eventCounts) eventCounts[name]++
+          else if (name) eventCounts[name] = (eventCounts[name] ?? 0) + 1
+        } catch {
+          /* skip bad line */
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[admin/push] events read failed:',
+      err instanceof Error ? err.message : err,
+    )
+  }
+
+  const prompt = eventCounts.push_permission_prompt_shown || 0
+  const accepted = eventCounts.push_permission_accepted || 0
+  const denied = eventCounts.push_permission_denied || 0
+  const opened = eventCounts.push_opened || 0
+  const sent = eventCounts.push_sent || 0
+
+  return {
+    experimentEnabled: isPushExp1Enabled(),
+    apnsEnvConfigured: isApnsEnvPresent(),
+    days,
+    registry: {
+      guests: prefs.length,
+      withToken,
+      optIn,
+      holdout,
+      withShootWindow,
+      briefsSentThisWeek,
+    },
+    events7d: eventCounts,
+    funnel: {
+      permissionPrompt: prompt,
+      permissionAccepted: accepted,
+      permissionDenied: denied,
+      acceptRate: prompt > 0 ? accepted / prompt : null,
+      pushSent: sent,
+      pushOpened: opened,
+      openRate: sent > 0 ? opened / sent : null,
+      paywallFromPush: eventCounts.paywall_from_push || 0,
+      subscribe: eventCounts.subscribe || 0,
+    },
+    eventsScanned,
+    eventsInWindow,
+    note: 'Push funnel from local push-events.jsonl + prefs registry — not App Store analytics.',
+  }
 }
 
 export function pushHealthSnippet() {
