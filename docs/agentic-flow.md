@@ -1,9 +1,10 @@
 # Agentic Auto Optimize — flow charts
 
-How Photo Recipes runs **Sense → Reason → Act → Verify** for from-viewfinder Auto Optimize.  
+How Photo Recipes runs **Sense → Reason → Act → Verify** for from-viewfinder Auto Optimize.
+**Verify** is a mental check before `select_preset` (not a fourth tool).  
 Voice/STT is an **alternate input** into the same apply path — never the product lead.
 
-Canonical schema/prompt: [`agentic-prompt-v2.md`](./agentic-prompt-v2.md) · iOS apply: `applyPhoneTargets`.
+Canonical schema/prompt: [`agentic-prompt-v2.md`](./agentic-prompt-v2.md) · iOS apply: [`CameraSession.applyPhoneTargets`](../ios/PhotoRecipes/Services/CameraSession.swift).
 
 ---
 
@@ -53,13 +54,22 @@ flowchart TB
   APPLY --> UI
 ```
 
+Clients: **iOS** Auto Optimize / Ask · **web** Ask & Photo Vision. Same API; only iOS runs `applyPhoneTargets` on AVCapture.
+
+### Pass 1 vs Pass 2
+
+| Pass | Where | What |
+|------|-------|------|
+| **1** | On-device | Instant local sense / recipe pick (no Grok) |
+| **2** | Cloud | This tool loop via `/api/recommend` (quota-gated) |
+
 ---
 
 ## 3. Server tool loop (bounded)
 
 ```mermaid
 sequenceDiagram
-  participant App as iOS / web
+  participant App as iOS Auto Optimize / Ask · web Ask
   participant API as recommend.ts
   participant Grok as Grok
   participant Tools as Tool executor
@@ -79,6 +89,28 @@ sequenceDiagram
 ```
 
 **Bounds:** `MAX_ROUNDS = 4`. Finish with `select_preset` promptly — do not re-list.
+
+**Verify:** before calling `select_preset`, the model mentally checks targets vs scene — there is **no** `verify_*` tool.
+
+### Failure / bound paths
+
+```mermaid
+flowchart TB
+  REQ[POST /api/recommend] --> Q{Quota OK?}
+  Q -->|no| E402[402 Free Peek / Pro required]
+  Q -->|yes| LOOP[Grok tool loop]
+  LOOP --> SEL{select_preset in time?}
+  SEL -->|yes| OK[200 + phoneTargets]
+  SEL -->|MAX_ROUNDS exceeded| E502a[502 did not call select_preset]
+  LOOP --> XAI{xAI OK?}
+  XAI -->|error| E502b[502 / upstream status]
+```
+
+| Outcome | Typical cause |
+|---------|----------------|
+| `402` | Free Peek daily limit |
+| `502` — no `select_preset` | Model never finalized within `MAX_ROUNDS` |
+| `502` / `4xx` from xAI | Model/key/vision availability |
 
 ---
 
@@ -149,7 +181,7 @@ flowchart LR
   E --> H[Bound wall-clock]
 ```
 
-Typical vision wall time after these knobs: ~tens of seconds (not sub-second). Client timeouts: 60s request / 120s resource.
+Rough wall times after these knobs: **text ~5–10s** · **vision ~20–40s** (not sub-second). Client timeouts: **60s** request / **120s** resource.
 
 ---
 
