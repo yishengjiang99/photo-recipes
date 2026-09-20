@@ -338,3 +338,48 @@ export function findEntitlementByGuestId(guestId: string): Entitlement | null {
 }
 
 export { GUEST_COOKIE, SUB_COOKIE, FREE_ASKS_PER_DAY, FREE_ASSIST_PER_DAY }
+
+/** Admin income snapshot from local entitlement store (not ASC payouts). */
+export function getEntitlementIncomeSnapshot() {
+  const store = readStore()
+  const all = Object.values(store.entitlements)
+  let proActive = 0
+  let proTrialing = 0
+  let stripePro = 0
+  let iapPro = 0
+  let monthly = 0
+  let yearly = 0
+  let unknownPlan = 0
+
+  for (const e of all) {
+    if (!isProStatus(e.status)) continue
+    if (e.status === 'active') proActive++
+    if (e.status === 'trialing') proTrialing++
+
+    // IAP verify stamps id as iap_<guest>_<product>; Stripe uses UUID + customer ids.
+    const isIap = e.id.startsWith('iap_')
+    if (isIap) iapPro++
+    else stripePro++
+
+    if (e.plan === 'monthly') monthly++
+    else if (e.plan === 'yearly') yearly++
+    else unknownPlan++
+  }
+
+  return {
+    proTotal: proActive + proTrialing,
+    proActive,
+    proTrialing,
+    /** Local Pro unlocks via Stripe web checkout (has Stripe customer/sub ids). */
+    stripePro,
+    /**
+     * Local Pro unlocks via App Store IAP verify (id iap_* or no Stripe ids).
+     * These are entitlement counts — NOT App Store Connect payout amounts.
+     */
+    iapPro,
+    iapNote:
+      'IAP counts are local Pro entitlements from StoreKit verify — not ASC payouts or proceeds.',
+    byPlan: { monthly, yearly, unknown: unknownPlan },
+    totalRecords: all.length,
+  }
+}
