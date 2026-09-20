@@ -21,7 +21,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>11</string>
+	<string>12</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -61,6 +61,8 @@
 	<string>Photo Recipes uses motion to show a horizon level while shooting.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Photo Recipes uses the microphone so you can dictate a scene description for Field Coach and Auto Optimize.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Photo Recipes uses on-device speech recognition so your scene dictation appears in the text field as you speak.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

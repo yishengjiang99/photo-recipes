@@ -1,8 +1,10 @@
 import AVFoundation
 import Foundation
+import Speech
 
-/// Tap-to-talk: record m4a → POST /api/stt (Grok) → transcript.
-/// Pattern: tap mic to start, tap Stop to upload & commit. No live partials in v1 (batch STT).
+/// Tap-to-talk dictation with live partials in the bound text field.
+/// Default: on-device `SFSpeechRecognizer` (`requiresOnDeviceRecognition` when supported).
+/// Silent fallback: Grok `/api/stt` batch when on-device Speech is unavailable.
 @MainActor
 final class VoiceCaptureController: ObservableObject {
     enum Phase: Equatable {
@@ -16,20 +18,39 @@ final class VoiceCaptureController: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var permission: AVAudioSession.RecordPermission = .undetermined
 
+    private let api: APIClient
+
+    // On-device Speech
+    private var speechRecognizer: SFSpeechRecognizer?
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var audioEngine: AVAudioEngine?
+    private var latestTranscript = ""
+    private var didEmitFinal = false
+    private var usingOnDevice = false
+
+    // Grok batch fallback
     private var recorder: AVAudioRecorder?
     private var recordURL: URL?
-    private let api: APIClient
+
+    private var onPartial: ((String) -> Void)?
+    private var onTranscript: ((String) -> Void)?
 
     init(api: APIClient = .shared) {
         self.api = api
         self.permission = AVAudioSession.sharedInstance().recordPermission
     }
 
-    func toggle(onTranscript: @escaping (String) -> Void) {
+    func toggle(
+        onPartial: @escaping (String) -> Void = { _ in },
+        onTranscript: @escaping (String) -> Void
+    ) {
         switch phase {
         case .recording:
-            Task { await stopAndTranscribe(onTranscript: onTranscript) }
+            Task { await stopAndFinalize() }
         case .idle, .error:
+            self.onPartial = onPartial
+            self.onTranscript = onTranscript
             Task { await start() }
         case .requestingPermission, .uploading:
             break
@@ -37,22 +58,112 @@ final class VoiceCaptureController: ObservableObject {
     }
 
     func cancel() {
-        recorder?.stop()
-        recorder = nil
-        if let url = recordURL { try? FileManager.default.removeItem(at: url) }
-        recordURL = nil
+        tearDownSpeech(emitFinal: false)
+        tearDownRecorder()
+        latestTranscript = ""
+        didEmitFinal = false
+        usingOnDevice = false
+        onPartial = nil
+        onTranscript = nil
         phase = .idle
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    // MARK: - Start
+
     private func start() async {
         phase = .requestingPermission
-        let granted = await requestMic()
+        latestTranscript = ""
+        didEmitFinal = false
+
+        let micOK = await requestMic()
         permission = AVAudioSession.sharedInstance().recordPermission
-        guard granted else {
+        guard micOK else {
             phase = .error("Microphone is off")
             return
         }
+
+        let speechOK = await requestSpeechAuth()
+        if speechOK, await startOnDeviceSpeech() {
+            return
+        }
+
+        // On-device unavailable / failed → silent Grok batch (no live partials).
+        await startGrokRecording()
+    }
+
+    private func startOnDeviceSpeech() async -> Bool {
+        let recognizer = SFSpeechRecognizer(locale: .current)
+            ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        guard let recognizer, recognizer.isAvailable else { return false }
+
+        let onDevice = recognizer.supportsOnDeviceRecognition
+        guard onDevice else { return false }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            request.requiresOnDeviceRecognition = true
+            if #available(iOS 16.0, *) {
+                request.addsPunctuation = true
+            }
+
+            let engine = AVAudioEngine()
+            let input = engine.inputNode
+            let format = input.outputFormat(forBus: 0)
+            guard format.sampleRate > 0, format.channelCount > 0 else { return false }
+
+            input.removeTap(onBus: 0)
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                request.append(buffer)
+            }
+
+            engine.prepare()
+            try engine.start()
+
+            speechRecognizer = recognizer
+            recognitionRequest = request
+            audioEngine = engine
+            usingOnDevice = true
+            phase = .recording
+
+            recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    guard self.usingOnDevice, self.phase == .recording || self.phase == .uploading else { return }
+
+                    if let result {
+                        let text = result.bestTranscription.formattedString
+                        self.latestTranscript = text
+                        // Stream every update into the field; commit final only on Stop
+                        // so Auto Optimize / finalize aren't fired mid-utterance.
+                        if !text.isEmpty {
+                            self.onPartial?(text)
+                        }
+                    }
+
+                    if let error, self.phase == .recording {
+                        // Ignore benign end-of-audio noise; Stop path commits explicitly.
+                        let ns = error as NSError
+                        if ns.domain == "kAFAssistantErrorDomain", ns.code == 1110 {
+                            return
+                        }
+                    }
+                }
+            }
+            return true
+        } catch {
+            tearDownSpeech(emitFinal: false)
+            return false
+        }
+    }
+
+    private func startGrokRecording() async {
+        usingOnDevice = false
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
@@ -78,7 +189,51 @@ final class VoiceCaptureController: ObservableObject {
         }
     }
 
-    private func stopAndTranscribe(onTranscript: @escaping (String) -> Void) async {
+    // MARK: - Stop / finalize
+
+    private func stopAndFinalize() async {
+        if usingOnDevice {
+            await stopOnDeviceAndFinalize()
+        } else {
+            await stopGrokAndTranscribe()
+        }
+    }
+
+    private func stopOnDeviceAndFinalize() async {
+        // Keep phase as recording until we have text — avoid flash-empty via uploading UI.
+        recognitionRequest?.endAudio()
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+
+        // Brief window for Speech to deliver isFinal; then commit latest partial.
+        try? await Task.sleep(nanoseconds: 350_000_000)
+        emitFinalIfNeeded(latestTranscript)
+
+        tearDownSpeech(emitFinal: false)
+        usingOnDevice = false
+        if phase != .error {
+            phase = .idle
+        }
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func emitFinalIfNeeded(_ text: String) {
+        guard !didEmitFinal else { return }
+        didEmitFinal = true
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            // Don't wipe partials already shown — leave field as-is; surface soft error.
+            phase = .error("Didn't catch that — try again")
+            return
+        }
+        // Final replaces the same utterance segment the partials already painted (views use base+text).
+        onPartial?(trimmed)
+        onTranscript?(trimmed)
+    }
+
+    private func stopGrokAndTranscribe() async {
         guard let rec = recorder, let url = recordURL else {
             phase = .idle
             return
@@ -103,7 +258,7 @@ final class VoiceCaptureController: ObservableObject {
                 phase = .error("Didn't catch that — try again")
                 return
             }
-            onTranscript(trimmed)
+            onTranscript?(trimmed)
             phase = .idle
         } catch let APIError.missingKey(msg) {
             phase = .error(msg)
@@ -114,6 +269,35 @@ final class VoiceCaptureController: ObservableObject {
         }
     }
 
+    // MARK: - Teardown
+
+    private func tearDownSpeech(emitFinal: Bool) {
+        if emitFinal {
+            emitFinalIfNeeded(latestTranscript)
+        }
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        if let engine = audioEngine {
+            if engine.isRunning {
+                engine.inputNode.removeTap(onBus: 0)
+                engine.stop()
+            }
+        }
+        audioEngine = nil
+        speechRecognizer = nil
+    }
+
+    private func tearDownRecorder() {
+        recorder?.stop()
+        recorder = nil
+        if let url = recordURL { try? FileManager.default.removeItem(at: url) }
+        recordURL = nil
+    }
+
+    // MARK: - Permissions
+
     private func requestMic() async -> Bool {
         let session = AVAudioSession.sharedInstance()
         switch session.recordPermission {
@@ -122,6 +306,22 @@ final class VoiceCaptureController: ObservableObject {
         case .undetermined:
             return await withCheckedContinuation { cont in
                 session.requestRecordPermission { cont.resume(returning: $0) }
+            }
+        @unknown default:
+            return false
+        }
+    }
+
+    private func requestSpeechAuth() async -> Bool {
+        let status = SFSpeechRecognizer.authorizationStatus()
+        switch status {
+        case .authorized: return true
+        case .denied, .restricted: return false
+        case .notDetermined:
+            return await withCheckedContinuation { cont in
+                SFSpeechRecognizer.requestAuthorization { newStatus in
+                    cont.resume(returning: newStatus == .authorized)
+                }
             }
         @unknown default:
             return false

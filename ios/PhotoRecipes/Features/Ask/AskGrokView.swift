@@ -50,6 +50,8 @@ struct FieldCoachPanel: View {
     @State private var mode: FieldCoachMode = .describe
     @State private var message = ""
     @StateObject private var voice = VoiceCaptureController()
+    /// Snapshot of message when dictation starts — partials replace utterance, not append.
+    @State private var voiceDictationBase = ""
     @State private var showMicDenied = false
     @State private var pickerItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
@@ -111,7 +113,14 @@ struct FieldCoachPanel: View {
                 Text("Enable the microphone to dictate scene notes for Field Coach.")
             }
             .onChange(of: voice.phase) { _, phase in
-                if case .error = phase, voice.permission == .denied { showMicDenied = true }
+                switch phase {
+                case .recording:
+                    voiceDictationBase = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                case .error:
+                    if voice.permission == .denied { showMicDenied = true }
+                default:
+                    break
+                }
             }
             .onDisappear { voice.cancel() }
             .navigationDestination(item: $navigateRecipe) { recipe in
@@ -220,9 +229,12 @@ struct FieldCoachPanel: View {
                                     .stroke(AppTheme.border, lineWidth: 1)
                             )
                     )
-                VoiceDictateButton(controller: voice, enabled: !isLoading) { text in
-                    appendVoice(text)
-                }
+                VoiceDictateButton(
+                    controller: voice,
+                    enabled: !isLoading,
+                    onPartial: { applyAskVoicePartial($0) },
+                    onTranscript: { applyAskVoiceFinal($0) }
+                )
             }
             VoiceStatusCaption(controller: voice)
         }
@@ -287,19 +299,30 @@ struct FieldCoachPanel: View {
                                     .stroke(AppTheme.border, lineWidth: 1)
                             )
                     )
-                VoiceDictateButton(controller: voice, enabled: !isLoading) { text in
-                    appendVoice(text)
-                }
+                VoiceDictateButton(
+                    controller: voice,
+                    enabled: !isLoading,
+                    onPartial: { applyAskVoicePartial($0) },
+                    onTranscript: { applyAskVoiceFinal($0) }
+                )
             }
         }
     }
 
     
-    private func appendVoice(_ text: String) {
+    private func applyAskVoicePartial(_ text: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        let cur = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        message = cur.isEmpty ? t : cur + " " + t
+        if voiceDictationBase.isEmpty {
+            message = t
+        } else if t.isEmpty {
+            message = voiceDictationBase
+        } else {
+            message = voiceDictationBase + " " + t
+        }
+    }
+
+    private func applyAskVoiceFinal(_ text: String) {
+        applyAskVoicePartial(text)
     }
 
     private var canSubmit: Bool {

@@ -2,10 +2,14 @@ import SwiftUI
 
 /// Quiet mic control (design-handoff-voice-v1).
 /// Idle: ink-secondary ghost circle. Recording: accent ring soft opacity pulse 1.2s.
-/// Tap to talk / tap Stop. Reduce Motion → static accent ring.
+/// Tap to talk / tap Stop. Live partials stream into the bound field via onPartial.
+/// Reduce Motion → static accent ring.
 struct VoiceDictateButton: View {
     @ObservedObject var controller: VoiceCaptureController
     var enabled: Bool = true
+    /// Interim / partial transcript for the current utterance (live in the text field).
+    var onPartial: ((String) -> Void)? = nil
+    /// Final utterance — commit cleanly; Camera also kicks Auto Optimize from here.
     var onTranscript: (String) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -14,7 +18,10 @@ struct VoiceDictateButton: View {
     var body: some View {
         Button {
             guard enabled || isRecording else { return }
-            controller.toggle(onTranscript: onTranscript)
+            controller.toggle(
+                onPartial: { text in onPartial?(text) },
+                onTranscript: onTranscript
+            )
         } label: {
             ZStack {
                 Circle()

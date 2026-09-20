@@ -15,6 +15,8 @@ struct CameraView: View {
     @State private var sceneNote = ""
     @State private var sceneFromViewfinder = false
     @State private var sceneExpanded = false
+    /// Snapshot of sceneNote when dictation starts — partials replace utterance, not append.
+    @State private var voiceDictationBase = ""
     @State private var isDescribingScene = false
     @State private var showMicDenied = false
     @State private var describeTask: Task<Void, Never>?
@@ -125,7 +127,14 @@ struct CameraView: View {
         }
 
         .onChange(of: voice.phase) { _, phase in
-            if case .error = phase, voice.permission == .denied { showMicDenied = true }
+            switch phase {
+            case .recording:
+                voiceDictationBase = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            case .error:
+                if voice.permission == .denied { showMicDenied = true }
+            default:
+                break
+            }
         }
         .onDisappear {
             voice.cancel()
@@ -624,10 +633,10 @@ struct CameraView: View {
 
             VoiceDictateButton(
                 controller: voice,
-                enabled: !optimizer.phase.isRunning && !isDescribingScene
-            ) { text in
-                appendCameraVoice(text)
-            }
+                enabled: !optimizer.phase.isRunning && !isDescribingScene,
+                onPartial: { applyCameraVoicePartial($0) },
+                onTranscript: { applyCameraVoiceFinal($0) }
+            )
         }
     }
 
@@ -711,12 +720,24 @@ struct CameraView: View {
 
     // MARK: - Actions
 
-    private func appendCameraVoice(_ text: String) {
+    /// Live STT: paint base + current utterance (partial or final) without flash-empty.
+    private func applyCameraVoicePartial(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if voiceDictationBase.isEmpty {
+            sceneNote = t
+        } else if t.isEmpty {
+            sceneNote = voiceDictationBase
+        } else {
+            sceneNote = voiceDictationBase + " " + t
+        }
+        sceneFromViewfinder = false
+    }
+
+    /// Final utterance: commit text (same compose as partials) then Auto Optimize apply path.
+    private func applyCameraVoiceFinal(_ text: String) {
+        applyCameraVoicePartial(text)
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        let cur = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        sceneNote = cur.isEmpty ? t : cur + " " + t
-        sceneFromViewfinder = false
         // Camera mic shares Auto Optimize → applyPhoneTargets (PR #11); not text-only.
         Task { await runOptimize() }
     }
