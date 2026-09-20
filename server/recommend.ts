@@ -8,12 +8,12 @@ const XAI_BASE = 'https://api.x.ai/v1'
 const PRIMARY_MODEL = 'grok-4'
 const FALLBACK_MODEL = 'grok-3-mini'
 /**
- * Vision: grok-4.6 (current xAI frontier with image input).
- * Falls back to grok-4 if grok-4.6 is unavailable (404).
- * No separate speed-tier model in-repo — fast path is one-shot (no tools), same models.
- * @see https://docs.x.ai/developers/grok-4-6
+ * Vision coach path: prefer grok-4 (no high-reasoning tax). grok-4.6 defaults to
+ * reasoning_effort=high and routinely exceeds our budget on night scenes — only use it
+ * as fallback WITH reasoning_effort=low.
+ * @see https://docs.x.ai/docs/guides/reasoning
  */
-const VISION_MODELS = ['grok-4.6', 'grok-4'] as const
+const VISION_MODELS = ['grok-4', 'grok-4.6'] as const
 /** Hard cap on legacy tool rounds. If select_preset never succeeds, fail clearly. */
 const MAX_ROUNDS = 4
 /** Vision token cost vs quality — low is much faster for Auto Optimize / Recommend.
@@ -26,7 +26,8 @@ const VISION_IMAGE_DETAIL: 'auto' | 'low' | 'high' = 'low'
  * Nginx proxy_read_timeout is 120s — keep well under that.
  */
 const FAST_TEXT_TIMEOUT_MS = 20_000
-const FAST_VISION_TIMEOUT_MS = 55_000
+/** With reasoning_effort=low + thin JSON, vision should land in ~5–20s. */
+const FAST_VISION_TIMEOUT_MS = 35_000
 /** @deprecated use FAST_TEXT / FAST_VISION — kept for exports/tests */
 const FAST_TIMEOUT_MS = FAST_VISION_TIMEOUT_MS
 
@@ -741,25 +742,25 @@ function parseTorch(raw: unknown): TorchTarget | undefined | { error: string } {
 function parseBracket(raw: unknown): BracketTarget | undefined | { error: string } {
   if (raw == null) return undefined
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    return { error: 'phoneTargets.bracket must be an object { stops, count? }' }
+    return undefined
   }
   const o = raw as Record<string, unknown>
   if (!Array.isArray(o.stops) || o.stops.length < 1 || o.stops.length > 9) {
-    return { error: 'phoneTargets.bracket.stops must be an array of 1–9 numbers' }
+    return undefined
   }
   const stops: number[] = []
   for (const s of o.stops) {
     if (typeof s !== 'number' || !Number.isFinite(s)) {
-      return { error: 'phoneTargets.bracket.stops entries must be finite numbers' }
+      return undefined
     }
     if (s < -5 || s > 5) {
-      return { error: 'phoneTargets.bracket.stops out of range (use −5…+5 EV)' }
+      return undefined
     }
     stops.push(s)
   }
   if (o.count == null) return { stops }
   if (typeof o.count !== 'number' || !Number.isFinite(o.count) || o.count < 1 || o.count > 9) {
-    return { error: 'phoneTargets.bracket.count must be 1–9' }
+    return undefined
   }
   return { stops, count: Math.round(o.count) }
 }
@@ -1402,29 +1403,33 @@ export function buildFastSystemPrompt(favorites?: string[], vision?: boolean): s
       ? `\nPrefer these favorited ids only when they fit equally well: ${favorites.join(', ')}.`
       : ''
   const sense = vision
-    ? 'Inspect the attached image plus any scene note. Infer light, motion, subject, depth, dynamic range.'
+    ? 'Look at the image (and any note). Infer light, motion, subject, and dynamic range in one beat.'
     : "Infer light, motion, subject, and depth from the photographer's scene note."
   const catalog = buildCompactRecipeCatalog()
 
-  return `You are the Photo Recipes field coach (one-shot Recommend).
-Primary job: ${sense} Then pick ONE catalog recipe and emit phone camera targets the app will apply (same applyPhoneTargets path as Auto Optimize).
-Tone: darkroom field notes — quiet, concrete. Never chatty. Never invent recipes.
+  return `You are Photo Recipes field coach — ONE-SHOT, latency-critical.
+${sense} Pick exactly ONE catalog recipe. Do NOT invent recipes. Do NOT emit phone camera JSON.
+Tone: darkroom field notes — quiet, concrete.
 
-CATALOG (ids only — pick exactly one recipeId from this list):
-${catalog}
+CATALOG (pick recipeId from this list only):
+${catalog}${favLine}
 
-RESPONSE: return ONLY a single JSON object (no markdown fences, no prose outside JSON) with this shape:
+Return ONLY a JSON object:
 {
-  "tips": ["short tip", "..."],          // 1–3 short field tips (required)
-  "recipeId": "<exact catalog id>",     // optional but strongly preferred
-  "phoneTargets": { ... },              // optional but strongly preferred — AVFoundation levers
-  "reason": "1–3 short sentences",      // optional coach explanation
-  "teachWhy": "1–2 sentences",          // optional Teach mode line
-  "coachOnly": { "aperture"?, "nd"?, "tripod"?, "notes"? },
-  "senseSummary": "one-line light/motion/subject",
-  "panCue": { "direction": "left"|"right"|"either", "note"? },
-  "creativeLook": { "id": "<V1 pack id>", "intensity"? }
+  "recipeId": "<exact catalog id>",
+  "tips": ["short tip", "..."],   // 1–3 tips, required
+  "reason": "1–2 sentences why this recipe",
+  "teachWhy": "1 sentence technique lesson",
+  "senseSummary": "one-line light/motion/subject"
 }
+
+Rules:
+- recipeId MUST be an exact id from CATALOG.
+- tips required (1–3), each under 12 words.
+- No phoneTargets, no bracket, no tools, no markdown.
+`
+}
+
 
 phoneTargets keys (all optional; omit unsupported): shutter, exposureDurationSec, iso, ev,
 whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint {x,y},
@@ -1477,6 +1482,33 @@ export function extractJsonObject(raw: string): unknown {
  * Normalize one-shot model JSON → SelectionPayload fields.
  * Accepts recipeId|presetId and phoneTarget|phoneTargets aliases.
  */
+
+/** Map catalog dials → a light PhoneTargets shell (web coach + iOS apply fallback). */
+export function phoneTargetsFromPreset(preset: RecipePreset): PhoneTargets {
+  const d = preset.dials ?? {}
+  const out: PhoneTargets = {}
+  const iso = typeof d.iso === 'string' ? d.iso : undefined
+  if (iso && /\d/.test(iso)) {
+    const n = Number(String(iso).replace(/[^0-9.]/g, ''))
+    if (Number.isFinite(n) && n > 0) out.iso = Math.round(n)
+  }
+  const shutter = typeof d.shutter === 'string' ? d.shutter : undefined
+  if (shutter && /\d/.test(shutter) && !/auto|bracket/i.test(shutter)) {
+    out.shutter = shutter.split(/[·•|]/)[0]!.trim()
+  }
+  const notes = typeof d.notes === 'string' ? d.notes : ''
+  if (/tripod/i.test(notes) || /tripod/i.test(String(d.shutter ?? ''))) {
+    // coachOnly carries tripod; nothing to set on phoneTargets
+  }
+  if (typeof d.evBracket === 'string' && /−|\+|\d/.test(d.evBracket)) {
+    // HDR recipes: suggest a simple ±2 bracket when the book says so
+    if (/−2|\-2/.test(d.evBracket) && /\+2/.test(d.evBracket)) {
+      out.bracket = { stops: [-2, 0, 2] }
+    }
+  }
+  return out
+}
+
 export function parseFastRecommendPayload(raw: unknown): SelectionPayload | { error: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'Model response must be a JSON object' }
@@ -1521,15 +1553,24 @@ export function parseFastRecommendPayload(raw: unknown): SelectionPayload | { er
       : args.phoneTarget !== undefined
         ? args.phoneTarget
         : {}
-  const phoneTargets = parsePhoneTargets(phoneRaw)
-  if ('error' in phoneTargets) {
-    return { error: phoneTargets.error }
+  let phoneTargets: PhoneTargets = {}
+  const parsedPhone = parsePhoneTargets(phoneRaw)
+  if ('error' in parsedPhone) {
+    // Thin coach path: never fail the whole recommend on optional dial JSON.
+    console.warn('[recommend] soft-drop phoneTargets:', parsedPhone.error)
+    phoneTargets = {}
+  } else {
+    phoneTargets = parsedPhone
   }
 
   const coachRaw = args.coachOnly !== undefined ? args.coachOnly : {}
-  const coachOnly = parseCoachOnly(coachRaw)
-  if ('error' in coachOnly) {
-    return { error: coachOnly.error }
+  let coachOnly: CoachOnly = {}
+  const parsedCoach = parseCoachOnly(coachRaw)
+  if ('error' in parsedCoach) {
+    console.warn('[recommend] soft-drop coachOnly:', parsedCoach.error)
+    coachOnly = {}
+  } else {
+    coachOnly = parsedCoach
   }
 
   const panCue = parsePanCue(args.panCue)
@@ -1578,10 +1619,14 @@ async function callXaiJson(
         },
         body: JSON.stringify({
           model,
-          temperature: 0.3,
-          max_tokens: 900,
+          temperature: 0.2,
+          max_tokens: 420,
           response_format: { type: 'json_object' },
           messages,
+          // grok-4.6 defaults to reasoning_effort=high (often 30–60s). Force low on coach path.
+          ...(model.includes('4.6') || model.includes('4.5') || model.includes('4.3')
+            ? { reasoning_effort: 'low' }
+            : {}),
         }),
       },
       timeoutMs,
@@ -1618,7 +1663,7 @@ async function recommendFastOneShot(
   let imageDataUrl = req.imageDataUrl
   if (imageDataUrl) {
     const before = imageDataUrl.length
-    imageDataUrl = await shrinkVisionDataUrl(imageDataUrl, { maxEdge: 768, quality: 60 })
+    imageDataUrl = await shrinkVisionDataUrl(imageDataUrl, { maxEdge: 512, quality: 50 })
     console.info(
       `[recommend] fast shrink in-memory ${before}→${imageDataUrl.length} chars (data URL)`,
     )
@@ -1667,9 +1712,12 @@ async function recommendFastOneShot(
           },
           body: JSON.stringify({
             model,
-            temperature: 0.3,
-            max_tokens: 900,
+            temperature: 0.2,
+            max_tokens: 420,
             messages,
+            ...(model.includes('4.6') || model.includes('4.5') || model.includes('4.3')
+              ? { reasoning_effort: 'low' }
+              : {}),
           }),
         },
         timeoutMs,
@@ -1747,13 +1795,29 @@ async function recommendFastOneShot(
   }
 
   const preset = presets.find((p) => p.id === selection.presetId)!
+  const phoneTargets =
+    selection.phoneTargets && Object.keys(selection.phoneTargets).length > 0
+      ? selection.phoneTargets
+      : phoneTargetsFromPreset(preset)
+  const coachOnly =
+    selection.coachOnly && Object.keys(selection.coachOnly).length > 0
+      ? selection.coachOnly
+      : {
+          ...(typeof preset.dials?.notes === 'string'
+            ? { notes: preset.dials.notes }
+            : {}),
+          ...(/tripod/i.test(String(preset.dials?.notes ?? '')) ||
+            /tripod/i.test(String(preset.dials?.shutter ?? ''))
+            ? { tripod: true }
+            : {}),
+        }
   return {
     presetId: selection.presetId,
     reason: selection.reason,
     teachWhy: selection.teachWhy,
     tips: selection.tips,
-    phoneTargets: selection.phoneTargets,
-    coachOnly: selection.coachOnly,
+    phoneTargets,
+    coachOnly,
     panCue: selection.panCue,
     senseSummary: selection.senseSummary,
     ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
