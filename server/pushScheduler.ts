@@ -156,7 +156,7 @@ function buildCopy(
   // Free Peek — useful, no Unlimited promise
   return {
     title: 'Shoot brief ready',
-    body: `Three recipes for your window: ${names}. Open Auto Optimize (Free Peek: 1 Optimize/day).`,
+    body: `Three recipes for your window: ${names}. Open Auto Optimize (Free Peek: limited Optimize/day).`,
   }
 }
 

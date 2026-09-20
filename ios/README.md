@@ -52,13 +52,13 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 | Live viewfinder + shutter → Camera Roll | ✓ | ✓ |
 | Auto mode capture | ✓ | ✓ |
 | See recipe dials (read-only / ghost) | ✓ | ✓ |
-| **Auto Optimize** (vision → recipe → apply) | **1 / day** | Unlimited |
+| **Auto Optimize** (vision → recipe → apply) | **5 / day** | Unlimited |
 | Apply recipe → live settable exposure/focus/WB | ✗ | ✓ |
 | Manual MODE A/S/M dials | ✗ (Auto only) | ✓ |
 | Teach mode (“Why this?”) full copy | Teaser | Full |
 | Interactive field checklist while shooting | ✗ | ✓ |
 
-**Auto Optimize quota:** Free Peek gets **1 Auto Optimize/day** (parallel counter in `AutoOptimizeController`; Ask/Vision quota remains separate). Documented choice for v1.
+**Auto Optimize quota:** Free Peek gets **5 Auto Optimize/day** (parallel counter in `AutoOptimizeController`; Ask/Vision quota remains separate). Documented choice for v1.
 
 ### Agentic MVP loop
 
@@ -156,7 +156,7 @@ Services/          CameraSession, RecipeCameraMapper, AutoOptimizeController,
 
 ### Pro gating (documented choice)
 
-- **Free:** live view, shutter, Auto mode, read-only recipe dials, **1 Auto Optimize/day**, Teach teaser  
+- **Free:** live view, shutter, Auto mode, read-only recipe dials, **5 Auto Optimize/day**, Teach teaser  
 - **Pro:** Apply recipe to live session, manual A/S/M dials, unlimited Auto Optimize, full Teach, interactive checklist  
 
 
@@ -292,7 +292,7 @@ Uses automatic signing via the App Store Connect API key (`-allowProvisioningUpd
 
 | Tier | Ask Grok / Vision | Checklists |
 |------|-------------------|------------|
-| Free Peek | 1 combined / day | Steps readable; toggles locked |
+| Free Peek | 5 combined / day | Steps readable; toggles locked |
 | Pro | Unlimited | Interactive |
 
 Prices: **$7.99/mo** or **$59.99/yr** (yearly primary) + **7-day trial**.

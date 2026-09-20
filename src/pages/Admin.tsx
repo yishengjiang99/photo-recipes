@@ -45,6 +45,17 @@ type Summary = {
     byPlan: { monthly: number; yearly: number; unknown: number }
     totalRecords: number
   }
+  quota?: {
+    freeDailyLimit: number
+    freeAssistPerDay: number
+    unlimitedEmails: string[]
+    unlimitedDeviceIdCount: number
+    env: {
+      FREE_DAILY_LIMIT: string | null
+      FREE_UNLIMITED_EMAILS: string | null
+      UNLIMITED_DEVICE_IDS: string | null
+    }
+  }
   push: {
     experimentEnabled: boolean
     apnsEnvConfigured: boolean
@@ -480,6 +491,37 @@ export function Admin() {
                   <p className="mt-3 text-xs leading-relaxed text-[var(--color-tip)]">
                     {summary.entitlements.iapNote}
                   </p>
+                  {summary.quota ? (
+                    <div className="mt-4 border-t border-[var(--color-border)] pt-3">
+                      <h4 className="text-xs font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                        Free Peek quota
+                      </h4>
+                      <ul className="mt-2 space-y-2 text-sm">
+                        <li className="flex justify-between">
+                          <span>Daily Ask/Vision limit</span>
+                          <span className="font-mono">{summary.quota.freeDailyLimit}</span>
+                        </li>
+                        <li className="flex justify-between">
+                          <span>Unlimited emails</span>
+                          <span className="max-w-[60%] truncate text-right font-mono text-xs">
+                            {summary.quota.unlimitedEmails.join(', ') || '—'}
+                          </span>
+                        </li>
+                        <li className="flex justify-between text-[var(--color-ink-tertiary)]">
+                          <span>Unlimited device ids</span>
+                          <span className="font-mono">{summary.quota.unlimitedDeviceIdCount}</span>
+                        </li>
+                      </ul>
+                      <p className="mt-2 text-xs text-[var(--color-tip)]">
+                        Env{' '}
+                        <code className="font-mono">FREE_DAILY_LIMIT</code>
+                        {summary.quota.env.FREE_DAILY_LIMIT
+                          ? `=${summary.quota.env.FREE_DAILY_LIMIT}`
+                          : ' unset (default 5)'}
+                        . Restart after change.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">

@@ -7,22 +7,27 @@ enum SubscriptionPlan: String, Codable, Hashable {
 
 struct SubscriptionStatus: Codable, Hashable {
     var pro: Bool
+    /// Owner/device/admin allowlist — unlimited Ask without requiring Pro IAP
+    var unlimited: Bool?
     var status: String
     var plan: SubscriptionPlan?
     var email: String?
     var asksUsedToday: Int
     var asksLimit: Int?
     var asksRemaining: Int?
+    var freeDailyLimit: Int?
     var stripeConfigured: Bool
 
     static let freePeekDefault = SubscriptionStatus(
         pro: false,
+        unlimited: false,
         status: "inactive",
         plan: nil,
         email: nil,
         asksUsedToday: 0,
-        asksLimit: 1,
-        asksRemaining: 1,
+        asksLimit: 5,
+        asksRemaining: 5,
+        freeDailyLimit: 5,
         stripeConfigured: false
     )
 

@@ -376,7 +376,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         setPaywalled(true)
         setError(
           data.error ||
-            'Free Peek limit reached (1 Ask / Photo Vision per day). Upgrade for unlimited.',
+            'Free Peek limit reached. Upgrade for unlimited Ask Grok & Photo Vision.',
         )
         track('auto_optimize_fail', { source: 'field_coach', error_code: 'paywall' })
         track('paywall_view', { source: 'auto_optimize_limit' })
@@ -440,11 +440,12 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     (describeOpen || mode === 'describe' ? describeVoice.error : noteVoice.error) ||
     null
 
-  const quotaLabel = status?.pro
-    ? 'Unlimited'
-    : remaining !== null
-      ? `${remaining} left today`
-      : null
+  const quotaLabel =
+    status && status.asksLimit === null
+      ? 'Unlimited'
+      : remaining !== null
+        ? `${remaining} left today`
+        : null
 
   return (
     <section

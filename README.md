@@ -2,7 +2,7 @@
 
 A mobile-friendly web app of photography field presets, transcribed from pages of a “30 Recipes” photography book. Use it on location for steps, gear checklists, and educational camera dials — or ask Grok which recipe fits your scene.
 
-**Soft funnel:** browsing presets is always free (Free Peek). Ask Grok **and Photo Vision** share **1 free ask/day** on Free Peek; **Photo Recipes Pro** unlocks unlimited Ask Grok + Photo Vision + interactive field checklists via Stripe Checkout (7-day trial).
+**Soft funnel:** browsing presets is always free (Free Peek). Ask Grok **and Photo Vision** share **5 free asks/day** (env `FREE_DAILY_LIMIT`, default 5) on Free Peek; **Photo Recipes Pro** unlocks unlimited Ask Grok + Photo Vision + interactive field checklists via Stripe Checkout (7-day trial).
 
 ## Stack
 
@@ -33,8 +33,15 @@ Preset data lives in `src/data/presets.ts` (shared with the API).
 | Monthly | **$7.99**/mo (799¢ USD) | 7-day free trial |
 | Annual | **$59.99**/yr (5999¢ USD) | **Primary CTA / Best value**, 7-day free trial |
 
-- Free Peek: browse presets; Ask Grok **or** Photo Vision **1 combined/day**
+- Free Peek: browse presets; Ask Grok **or** Photo Vision **5 combined/day** (configurable)
 - Pro: unlimited Ask Grok + Photo Vision + field checklists
+
+**Ops (env only — restart OK):** `/etc/photo-recipes.env` (see `.env.example`):
+- `FREE_DAILY_LIMIT` — Free Peek combined Ask/Vision/Auto Optimize per UTC day (default **5**)
+- `FREE_UNLIMITED_EMAILS` — comma-separated emails with unlimited quota (owner `yisheng.jiang@gmail.com` always included)
+- `UNLIMITED_DEVICE_IDS` — optional unsigned `pr_guest` UUIDs / `X-Device-Id` for TestFlight without login
+- `ADMIN_TOKEN` as `Authorization: Bearer` or `X-Admin-Token` also skips quota
+
 
 ## Telemetry & App Privacy
 
@@ -135,7 +142,7 @@ curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/billing-portal \
   -X POST -H 'Content-Type: application/json' -d '{}'
 ```
 
-Ask Grok (Free Peek: 1 combined Ask/Photo Vision per day; then **402** paywall JSON):
+Ask Grok (Free Peek: 5 combined Ask/Photo Vision per day (env `FREE_DAILY_LIMIT`); then **402** paywall JSON):
 
 ```bash
 curl -s -c /tmp/pr.jar -b /tmp/pr.jar http://localhost:8787/api/recommend \
@@ -173,7 +180,7 @@ npm run preview
 ## Features
 
 - Preset library cards (title, blurb, gear icons, key settings)
-- **Ask Grok** — Free Peek 1 combined/day with Photo Vision; Pro unlimited; soft 402 paywall modal CTA
+- **Ask Grok** — Free Peek 5 combined/day with Photo Vision; Pro unlimited; soft 402 paywall modal CTA
 - **Photo Vision** — drag-drop / file picker / mobile camera; Grok vision + same tool loop → preset detail
 - Detail view: steps, tips, equipment, when-to-use, phone/advanced notes + AI reason banner
 - Field checklist / step-by-step mode (Pro-gated; steps remain readable)
