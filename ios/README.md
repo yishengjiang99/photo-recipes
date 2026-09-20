@@ -52,21 +52,30 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 | Live viewfinder + shutter → Camera Roll | ✓ | ✓ |
 | Auto mode capture | ✓ | ✓ |
 | See recipe dials (read-only / ghost) | ✓ | ✓ |
-| **Auto Optimize** (vision → recipe → apply) | **5 / day** | Unlimited |
+| **Auto Optimize** Pass 1 local (instant) + optional Pass 2 cloud refine | Pass 1 free; Pass 2 uses Ask quota (Free Peek **5 / day**) | Unlimited |
 | Apply recipe → live settable exposure/focus/WB | ✗ | ✓ |
 | Manual MODE A/S/M dials | ✗ (Auto only) | ✓ |
 | Teach mode (“Why this?”) full copy | Teaser | Full |
 | Interactive field checklist while shooting | ✗ | ✓ |
 
-**Auto Optimize quota:** Free Peek gets **5 Auto Optimize/day** (parallel counter in `AutoOptimizeController`; Ask/Vision quota remains separate). Documented choice for v1.
+**Auto Optimize quota (Build 3 hybrid):** Pass 1 (local) is **never quota-gated** — instant on-device apply. Pass 2 (cloud refine via `/api/recommend`) consumes **Ask Grok** quota on the server (`FREE_DAILY_LIMIT` env, default **5**; unlimited for `FREE_UNLIMITED_EMAILS` / `UNLIMITED_DEVICE_IDS` allowlists from #71). Soft-skips on 402/offline — never blocks shutter or Pass 1 Ready.
 
-### Agentic MVP loop
+### Agentic MVP loop (Build 3 — hybrid)
 
-1. **Sense** — capture a probe JPEG from the session  
-2. **Reason** — `POST /api/recommend` with vision + field prompt  
-3. **Act** — map preset dials via `RecipeCameraMapper` → apply **settable** AVFoundation params (custom exposure duration+ISO, EV bias, focus POI/lock, WB lock). Aperture is **guidance overlay only**.  
-4. **Verify** — soft status step only (multi-round probe loop is a hook for later, max N=1–2)  
-5. **Commit** — user taps shutter; optional Teach sheet explains why  
+**Pass 1 — LOCAL (default on AO tap, instant, no VLM):**
+
+1. **Sense** — AVFoundation metering + optional probe JPEG for Vision (faces / saliency) + luminance histogram. Pitch from `HorizonMonitor` for low-angle.  
+2. **Reason** — heuristics in `LocalAutoOptimizeEngine` → best match from the **bundled Photo Recipes catalog** (five preset IDs). Recipes are source of truth (look intensity rides on `phoneTargets`, not a parallel look system).  
+3. **Act** — `session.apply(recipe:)` + `applyPhoneTargets` (shutter / ISO / EV / WB / focus / torch / look). Mark **Ready** immediately.  
+
+**Pass 2 — CLOUD (optional, non-blocking):**
+
+4. After Ready, if Settings cloud refine is on + online + Ask quota allows, fire `POST /api/recommend` (vision pass-through #69) with scene context + **locked chosen recipe id/title** so Grok refines within that recipe’s dial space / coaching.  
+5. When the response returns, apply refinements only if still the same Optimize generation + recipe; soft-skip on 402/errors. Pill may show `Ready · refining…` — shutter stays enabled.  
+
+**Model choice (Pass 1):** pure heuristics (no `.mlmodel` in Build 3). Optional tiny Core ML classifier later (&lt;10MB). No bundled VLM weights.
+
+**Quota choice:** Pass 1 never waits on quota. Pass 2 consumes server Ask quota (`FREE_DAILY_LIMIT`, default 5; #71). Outline **Recommend** CTA still uses the same `/api/recommend` for coach-only (does not write dials until user applies a recipe).
 
 UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
 
@@ -136,8 +145,8 @@ Camera chrome is compact-aware (`GeometryReader` + `horizontalSizeClass`): on ~3
 - **Pattern:** tap to talk → tap Stop → audio uploads to `POST /api/stt` (Grok). No live partials in v1; v1.1 may add WSS `interim_results` / `smart_turn` via a server proxy.
 - **API key stays on the server** — never embedded in the app.
 - **Describe scene:** Camera on appear (and Refresh) calls `POST /api/describe-scene` with a viewfinder probe JPEG. Soft-fails to the placeholder. Chip: `From viewfinder`.
-- **Quota:** STT + describe-scene do **not** burn Ask / Auto Optimize quota. Optimize still does.
-- **Camera mic:** after STT, always runs the **same** Auto Optimize → `apply` / `applyPhoneTargets` path as the button (uses Optimize quota). Ask mic only fills the text field.
+- **Quota:** STT + describe-scene do **not** burn Ask quota. Pass 1 AO is local (ungated); Pass 2 cloud refine shares Ask quota.
+- **Camera mic:** after STT, always runs the **same** Auto Optimize → `apply` / `applyPhoneTargets` path as the button (Pass 1 local). Ask mic only fills the text field.
 - **Privacy:** voice becomes text for scene matching; we don’t keep audio clips.
 - **Permission:** `NSMicrophoneUsageDescription` in Info.plist.
 
@@ -151,13 +160,14 @@ Camera chrome is compact-aware (`GeometryReader` + `horizontalSizeClass`): on ~3
 ```
 Features/Camera/   CameraView, preview, pan cues, dials, agent chips, teach sheet
 Services/          CameraSession, RecipeCameraMapper, AutoOptimizeController,
+                   LocalSceneAnalyzer, LocalAutoOptimizeEngine,
                    CameraRouter, HorizonMonitor, PhotoLibrarySaver
 ```
 
 ### Pro gating (documented choice)
 
-- **Free:** live view, shutter, Auto mode, read-only recipe dials, **5 Auto Optimize/day**, Teach teaser  
-- **Pro:** Apply recipe to live session, manual A/S/M dials, unlimited Auto Optimize, full Teach, interactive checklist  
+- **Free:** live view, shutter, Auto mode, read-only recipe dials, **Pass 1 AO unlimited locally** + Pass 2 cloud refine within Ask quota (**5 / day** via `FREE_DAILY_LIMIT`), Teach teaser  
+- **Pro / unlimited allowlist:** Apply recipe to live session, manual A/S/M dials, unlimited Ask + Pass 2 refine, full Teach, interactive checklist  
 
 
 ## Architecture

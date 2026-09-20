@@ -696,7 +696,8 @@ struct CameraView: View {
             session: session,
             entitlements: entitlements,
             preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId,
-            sceneNote: sceneNote
+            sceneNote: sceneNote,
+            devicePitchDegrees: horizon.isAvailable ? horizon.pitchDegrees : nil
         )
     }
 

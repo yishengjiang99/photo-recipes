@@ -7,6 +7,7 @@ struct SettingsView: View {
 
     @State private var healthText = ""
     @State private var isChecking = false
+    @State private var deepCoachEnabled = AutoOptimizeController.deepCoachEnabled
 
     var body: some View {
         NavigationStack {
@@ -68,6 +69,13 @@ struct SettingsView: View {
                             CameraCoachMarksStore.requestReplay()
                         }
                         Text("Replays the 3 field tips on the Camera tab (Auto Optimize → chips → Controls).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Toggle("Cloud refine (Grok)", isOn: $deepCoachEnabled)
+                            .onChange(of: deepCoachEnabled) { _, on in
+                                AutoOptimizeController.cloudRefineEnabled = on
+                            }
+                        Text("On by default. Pass 1 Auto Optimize is always on-device (instant). Pass 2 optionally calls /api/recommend to refine dials within the chosen recipe — never blocks shutter. Uses Ask quota when free; soft-skips on 402/offline.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
