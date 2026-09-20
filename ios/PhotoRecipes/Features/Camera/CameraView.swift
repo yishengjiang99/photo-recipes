@@ -171,6 +171,18 @@ struct CameraView: View {
             CameraOverflowSheet(
                 showGrid: $session.showGrid,
                 canTeach: optimizer.phase == .ready || optimizer.teachOneLiner != nil,
+                onLibrary: {
+                    showOverflow = false
+                    router.selectedTab = .library
+                },
+                onCoach: {
+                    showOverflow = false
+                    router.selectedTab = .ask
+                },
+                onSettings: {
+                    showOverflow = false
+                    router.selectedTab = .settings
+                },
                 onDials: {
                     showOverflow = false
                     controlsTab = .core
@@ -843,6 +855,9 @@ struct CameraView: View {
 struct CameraOverflowSheet: View {
     @Binding var showGrid: Bool
     var canTeach: Bool
+    var onLibrary: () -> Void
+    var onCoach: () -> Void
+    var onSettings: () -> Void
     var onDials: () -> Void
     var onTeach: () -> Void
     var onRecipes: () -> Void
@@ -852,19 +867,38 @@ struct CameraOverflowSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Button("Controls…", action: onDials)
-                if canTeach {
-                    Button("Why this? (Teach)", action: onTeach)
+                Section {
+                    Button {
+                        onLibrary()
+                    } label: {
+                        Label("Library", systemImage: "books.vertical.fill")
+                    }
+                    Button {
+                        onCoach()
+                    } label: {
+                        Label("Coach", systemImage: "text.bubble.fill")
+                    }
+                    Button {
+                        onSettings()
+                    } label: {
+                        Label("Settings", systemImage: "gearshape.fill")
+                    }
                 }
-                Button("Recipes", action: onRecipes)
-                Toggle("Rule of thirds grid", isOn: $showGrid)
-                if let onClearRecipe {
-                    Button("Clear recipe", role: .destructive, action: onClearRecipe)
+                Section {
+                    Button("Controls…", action: onDials)
+                    if canTeach {
+                        Button("Why this? (Teach)", action: onTeach)
+                    }
+                    Button("Recipes", action: onRecipes)
+                    Toggle("Rule of thirds grid", isOn: $showGrid)
+                    if let onClearRecipe {
+                        Button("Clear recipe", role: .destructive, action: onClearRecipe)
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(AppTheme.bg)
-            .navigationTitle("Camera")
+            .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
