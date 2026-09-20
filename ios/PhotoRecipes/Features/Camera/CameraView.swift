@@ -37,6 +37,12 @@ struct CameraView: View {
     @State private var showApplyBurst = false
     @State private var applyBurstTask: Task<Void, Never>?
 
+    /// Coach Recommend via ··· overflow (not primary finder chrome).
+    @State private var isRecommending = false
+    @State private var recommendResult: RecommendResponse?
+    @State private var recommendError: String?
+    @State private var showRecommendResult = false
+
     var body: some View {
         ZStack {
             AppTheme.bg.ignoresSafeArea()
@@ -174,6 +180,8 @@ struct CameraView: View {
             CameraOverflowSheet(
                 showGrid: $session.showGrid,
                 canTeach: optimizer.phase == .ready || optimizer.teachOneLiner != nil,
+                recommendDisabled: isRecommending || optimizer.phase.isRunning,
+                isRecommending: isRecommending,
                 onLibrary: {
                     showOverflow = false
                     router.selectedTab = .library
@@ -199,6 +207,10 @@ struct CameraView: View {
                     showOverflow = false
                     showRecipePicker = true
                 },
+                onRecommend: {
+                    showOverflow = false
+                    Task { await runRecommend() }
+                },
                 onClearRecipe: session.appliedRecipeTitle == nil ? nil : {
                     showOverflow = false
                     showClearConfirm = true
@@ -212,6 +224,29 @@ struct CameraView: View {
                 optimizer.clear()
             }
             Button("Keep", role: .cancel) {}
+        }
+        .sheet(isPresented: $showRecommendResult) {
+            CameraRecommendResultSheet(
+                result: recommendResult,
+                errorText: recommendError,
+                isLoading: isRecommending,
+                onApply: { recipe in
+                    showRecommendResult = false
+                    _ = session.apply(recipe: recipe)
+                },
+                onDismiss: {
+                    showRecommendResult = false
+                    recommendResult = nil
+                    recommendError = nil
+                },
+                onUpgrade: {
+                    showRecommendResult = false
+                    entitlements.showPaywall = true
+                }
+            )
+            .environmentObject(entitlements)
+            .environmentObject(router)
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -723,6 +758,65 @@ struct CameraView: View {
         )
     }
 
+    /// Coach recommend from viewfinder frame and/or scene note. Does not write dials (AO does).
+    /// Triggered from ··· overflow — not primary finder chrome.
+    private func runRecommend() async {
+        recommendError = nil
+        recommendResult = nil
+        isRecommending = true
+        showRecommendResult = true
+        defer { isRecommending = false }
+
+        let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        var jpeg: Data?
+        do {
+            let raw = try await session.captureProbeFrame()
+            if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
+                jpeg = c
+            } else if !raw.isEmpty {
+                jpeg = raw
+            }
+        } catch {
+            // Soft-fail probe; may still recommend from scene note alone.
+        }
+
+        let hadHeldFrame = jpeg != nil
+        Analytics.shared.track("recommend_cta_tap", props: [
+            "surface": "camera",
+            "source": "overflow",
+            "had_held_frame": hadHeldFrame ? "true" : "false",
+        ])
+
+        let message: String
+        if !note.isEmpty {
+            message = note
+        } else if jpeg != nil {
+            message = "From viewfinder"
+        } else {
+            recommendError = "Add a scene note or enable the camera"
+            return
+        }
+
+        do {
+            let response = try await APIClient.shared.recommend(
+                message: message,
+                favorites: Array(entitlements.favoriteIds),
+                imageJPEGData: jpeg
+            )
+            recommendResult = response
+            recommendError = nil
+            await entitlements.refresh()
+        } catch let APIError.paywall(payload) {
+            recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
+            entitlements.showPaywall = true
+            await entitlements.refresh()
+        } catch let APIError.missingKey(msg) {
+            recommendError = msg
+        } catch {
+            recommendError = error.localizedDescription
+        }
+    }
+
     private func takePhoto() async {
         isCapturing = true
         captureError = nil
@@ -861,12 +955,15 @@ struct CameraView: View {
 struct CameraOverflowSheet: View {
     @Binding var showGrid: Bool
     var canTeach: Bool
+    var recommendDisabled: Bool = false
+    var isRecommending: Bool = false
     var onLibrary: () -> Void
     var onCoach: () -> Void
     var onSettings: () -> Void
     var onDials: () -> Void
     var onTeach: () -> Void
     var onRecipes: () -> Void
+    var onRecommend: () -> Void
     var onClearRecipe: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
@@ -896,6 +993,22 @@ struct CameraOverflowSheet: View {
                         Button("Why this? (Teach)", action: onTeach)
                     }
                     Button("Recipes", action: onRecipes)
+                    Button {
+                        onRecommend()
+                    } label: {
+                        HStack {
+                            Label(
+                                isRecommending ? "Matching…" : "Recommend recipe",
+                                systemImage: "sparkles"
+                            )
+                            if isRecommending {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(recommendDisabled)
+                    .accessibilityLabel("Recommend recipe")
                     Toggle("Rule of thirds grid", isOn: $showGrid)
                     if let onClearRecipe {
                         Button("Clear recipe", role: .destructive, action: onClearRecipe)
@@ -941,6 +1054,141 @@ struct RecipePickerSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+
+/// Coach recommend result from Camera ··· overflow (does not auto-apply dials).
+struct CameraRecommendResultSheet: View {
+    let result: RecommendResponse?
+    let errorText: String?
+    var isLoading: Bool = false
+    var onApply: (Recipe) -> Void
+    var onDismiss: () -> Void
+    var onUpgrade: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var navigateRecipe: Recipe?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.space4) {
+                    if isLoading && result == nil && (errorText == nil || errorText?.isEmpty == true) {
+                        HStack(spacing: AppTheme.space3) {
+                            ProgressView()
+                            Text("Matching a recipe…")
+                                .font(AppTheme.bodySm())
+                                .foregroundStyle(AppTheme.inkSecondary)
+                        }
+                        .padding(AppTheme.space3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let errorText, !errorText.isEmpty {
+                        VStack(alignment: .leading, spacing: AppTheme.space2) {
+                            Text(errorText)
+                                .font(AppTheme.bodySm())
+                                .foregroundStyle(AppTheme.inkSecondary)
+                            if errorText.lowercased().contains("limit") || errorText.lowercased().contains("upgrade") {
+                                Button("Upgrade · 7-day trial", action: onUpgrade)
+                                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                            }
+                        }
+                        .padding(AppTheme.space3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                                .fill(AppTheme.surface2)
+                        )
+                    }
+
+                    if let r = result {
+                        resultCard(r)
+                    }
+                }
+                .padding(AppTheme.space4)
+            }
+            .background(AppTheme.bg.ignoresSafeArea())
+            .navigationTitle("Recommendation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        onDismiss()
+                        dismiss()
+                    }
+                }
+            }
+            .navigationDestination(item: $navigateRecipe) { recipe in
+                RecipeDetailView(recipe: recipe)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func resultCard(_ r: RecommendResponse) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.space3) {
+            HStack(spacing: 6) {
+                if r.vision == true {
+                    Circle().fill(AppTheme.vision).frame(width: 6, height: 6)
+                }
+                Text(r.vision == true ? "From viewfinder" : "Recommendation")
+                    .font(AppTheme.overline())
+                    .tracking(0.8)
+                    .foregroundStyle(AppTheme.inkTertiary)
+            }
+
+            let recipe = r.preset ?? BundledPresets.recipe(id: r.presetId ?? "")
+            if let recipe {
+                Text(recipe.title)
+                    .font(AppTheme.displayTitle())
+                    .foregroundStyle(AppTheme.ink)
+            }
+
+            if let reason = r.reason {
+                Text(reason)
+                    .font(AppTheme.bodySm())
+                    .foregroundStyle(AppTheme.inkSecondary)
+            }
+
+            HStack(spacing: AppTheme.space2) {
+                if let recipe {
+                    Button {
+                        navigateRecipe = recipe
+                    } label: {
+                        Text("Open recipe")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+
+                    Button {
+                        onApply(recipe)
+                        dismiss()
+                    } label: {
+                        Label("Apply to Camera", systemImage: "camera.fill")
+                    }
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                }
+                Button {
+                    onDismiss()
+                    dismiss()
+                } label: {
+                    Text("Try another")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle(filled: false))
+            }
+        }
+        .padding(AppTheme.space4)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                .fill(AppTheme.surface2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                        .stroke(AppTheme.border, lineWidth: 1)
+                )
+        )
     }
 }
 
