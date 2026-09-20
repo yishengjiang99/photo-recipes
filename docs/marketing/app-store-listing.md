@@ -10,10 +10,10 @@ Bundle ID: `com.ragnus.mvp`
 | Bundle ID | **LOCKED** | `com.ragnus.mvp` — leave as-is |
 | Subtitle | **DRAFT** | Primary below — paste-ready (≤30) |
 | Promotional Text | **DRAFT** | Paste-ready (≤170; rotatable without resubmit) |
-| Description | **DRAFT** | Paste-ready — dials lead after elevator |
+| Description | **DRAFT** | Paste-ready — AI Auto Optimize + dials lead |
 | Keywords | **DRAFT** | Verify count in ASC editor before submit |
 | What’s New | **DRAFT** | Paste-ready |
-| Screenshot captions (6) | **DRAFT** | Sync with Designer/Ads |
+| Screenshot captions (5) | **LOCKED** | Exact captions below — do not change without CoS |
 
 Legend: **LOCKED** = CoS approval to change · **DRAFT** = ready for this ASC cycle.
 
@@ -21,22 +21,22 @@ Legend: **LOCKED** = CoS approval to change · **DRAFT** = ready for this ASC cy
 Photo Recipes
 
 ## Subtitle (30 char max) — DRAFT · pick one primary
-**Primary:** AI Sets Shutter ISO Focus
-Alts: AI Camera Dial Control | Agentic Camera Settings | Sets Shutter ISO Focus
+**Primary:** AI Auto: Shutter ISO Focus
+Alts: AI Sets Shutter ISO Focus | AI Camera Dial Control | Sets Shutter ISO Focus
 
 ## Promotional Text (170 char) — DRAFT · rotatable without resubmit
 AI Auto Optimize applies shutter, ISO, EV, WB & focus — real capture dials, not filters. Field looks = viewfinder grades. Free Peek: 1/day. Get on TestFlight · App Store.
 
 ## Description (full — App Store; use line breaks) — DRAFT
 
-Photo Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool. Better settings in the field, not filters afterward.
+AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. Photo Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
 
 Set the shot. Then take it.
 
 Auto Optimize senses the scene, picks a Photo Recipe, and **applies real capture dials** on your iPhone — not just filters.
 
 CONTROLS WE SET (ON DEVICE)
-Auto Optimize (AI) writes these capture dials on your iPhone:
+AI Auto Optimize writes these capture dials on your iPhone:
 • Shutter / exposure duration
 • ISO
 • EV bias
@@ -89,16 +89,15 @@ Suggested exact string (count in editor):
 ## What’s New (iOS-first · AI-applied dials · field looks) — DRAFT
 AI Auto Optimize applies shutter, ISO, EV, WB, focus lock/POI, zoom/lens, torch when needed, plus field look intensity — real capture dials on your iPhone, not filters. Aperture/ND/tripod stay coach-only. Free Peek: 1/day. Set the shot. Then take it.
 
-## Screenshot captions (6) — DRAFT · sync with Designer/Ads
-1. AI Auto Optimize applies shutter, ISO, focus
-2. Before → after: exposure, EV, WB on the live camera
-3. Focus lock / POI + zoom when the device allows
-4. Field look intensity on the viewfinder (capture grade)
-5. Torch / low-light when the scene needs it
-6. Teach mode: which dials moved · Set the shot. Then take it.
+## Screenshot captions (5) — LOCKED · exact copy
+1. Auto Optimize writes shutter, ISO, EV, WB & focus
+2. Point → Auto Optimize applies shutter, ISO, EV, WB, focus
+3. See shutter · ISO · EV · WB · focus — then override
+4. Look grade + shutter/ISO/EV/WB/focus on the viewfinder
+5. Ready — shutter, ISO, focus set · then take it
 
 ## ASO notes
-- Subtitle leads with **AI Sets Shutter ISO Focus** (or **AI Camera Dial Control**) so search hits dial/AI intent — not vague “better photos.”
+- Subtitle leads with **AI Auto: Shutter ISO Focus** so search hits AI Auto Optimize and concrete dial intent — not vague “better photos.”
 - First 3 screenshots must show viewfinder + Auto Optimize CTA + real dials (shutter/ISO/EV/WB/focus) — include at least one **looks / grade** frame; never fake aperture writes; never beauty/sky.
 - Lead creative with From viewfinder Auto Optimize applying dials; voice is not a caption or promo lead.
 - Primary store CTA language: **Get on TestFlight** / **Download — App Store**.
