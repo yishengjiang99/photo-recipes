@@ -1,0 +1,11 @@
+{
+  "name": "app-store-build16",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "node export.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Grok Camera — App Store screenshots Build 16</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* Palette A — Signal Amber */
+    --bg: #111111;
+    --surface: #1C1C1E;
+    --surface-2: #2C2C2E;
+    --border: #3A3A3C;
+    --border-strong: #545456;
+    --ink: #F5F5F7;
+    --ink-secondary: #C7C7CC;
+    --ink-tertiary: #8E8E93;
+    --accent: #E0A812;
+    --accent-soft: #F5C518;
+    --accent-on: #121212;
+    --success: #30D158;
+    --agent-bg: rgba(0,0,0,0.55);
+    --chrome-bg: rgba(0,0,0,0.52);
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+    background: #0c0c0f; color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  #ad {
+    position: relative;
+    width: 1290px; height: 2796px;
+    overflow: hidden;
+    background: #0c0c0f;
+  }
+
+  .phone { position: absolute; inset: 0; background: #000; }
+  .vf {
+    position: absolute; inset: 0;
+    background: url("assets/viewfinder-scene.jpg") center/cover no-repeat;
+  }
+  /* Hue-neutral viewfinder chrome — no amber wash */
+  .vf::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.58) 0%, transparent 16%, transparent 46%, rgba(0,0,0,0.90) 100%);
+  }
+
+  .caption-band {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+    padding: 72px 56px 28px;
+    background: linear-gradient(180deg, rgba(12,12,15,0.94) 0%, rgba(12,12,15,0.72) 70%, transparent 100%);
+  }
+  .wordmark {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.18em;
+    text-transform: uppercase; color: rgba(245,245,247,0.48);
+    margin-bottom: 14px;
+  }
+  .caption {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 44px; line-height: 1.15;
+    color: var(--ink);
+    max-width: 1100px;
+  }
+  #ad.size-61 .caption { font-size: 38px; }
+  #ad.size-61 .caption-band { padding: 64px 48px 24px; }
+
+  .top-chrome {
+    position: absolute; top: 220px; left: 0; right: 0; z-index: 12;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 28px;
+  }
+  #ad.size-61 .top-chrome { top: 200px; padding: 0 22px; }
+  .ico {
+    width: 40px; height: 40px; border-radius: 12px;
+    background: var(--chrome-bg);
+    border: 1px solid rgba(58,58,60,0.9);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ico svg { width: 18px; height: 18px; stroke: var(--ink); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .recipe-badge {
+    margin-left: auto;
+    font-size: 13px; font-weight: 500; color: var(--ink);
+    padding: 6px 12px; border-radius: 999px;
+    background: rgba(28,28,30,0.82);
+    border: 1px solid rgba(84,84,86,0.75);
+  }
+  .spacer { flex: 1; }
+
+  /* Frame 1 — AO dial burst */
+  .burst {
+    position: absolute; left: 40px; right: 40px; top: 42%; z-index: 15;
+    transform: translateY(-50%);
+    padding: 18px 20px;
+    border-radius: 16px;
+    background: var(--agent-bg);
+    border: 1.5px solid rgba(245,245,247,0.22);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+    backdrop-filter: blur(12px);
+    display: none;
+  }
+  #ad.size-61 .burst { left: 32px; right: 32px; }
+  .burst-head {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 12px;
+    font-size: 15px; font-weight: 600;
+  }
+  .burst-head .bolt { color: var(--accent); font-size: 14px; }
+  .diff-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+  .diff-row:last-child { margin-bottom: 0; }
+  .diff-lab {
+    width: 64px; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-tertiary);
+  }
+  .diff-before {
+    font-family: var(--mono); font-weight: 600; font-size: 15px;
+    color: var(--ink-tertiary); text-decoration: line-through;
+  }
+  .diff-arr { color: var(--ink-tertiary); font-size: 13px; }
+  .diff-after {
+    font-family: var(--mono); font-weight: 600; font-size: 15px;
+    color: var(--ink);
+  }
+
+  /* Frame 2 — Recommend labeled lower-left + recipe apply */
+  .recommend-callout {
+    position: absolute; left: 36px; bottom: 320px; z-index: 16;
+    display: none;
+    flex-direction: column; align-items: flex-start; gap: 10px;
+  }
+  #ad.size-61 .recommend-callout { left: 28px; bottom: 290px; }
+  .recommend-label {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+  }
+  .recommend-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 44px; padding: 0 18px; border-radius: 999px;
+    background: var(--chrome-bg);
+    border: 2px solid var(--accent);
+    font-size: 15px; font-weight: 600; color: var(--ink);
+    box-shadow: 0 0 0 6px rgba(224,168,18,0.18), 0 10px 28px rgba(0,0,0,0.45);
+  }
+  .recommend-pill .spark { color: var(--accent); }
+  .recipe-apply-card {
+    position: absolute; left: 40px; right: 40px; top: 36%; z-index: 14;
+    display: none;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: rgba(28,28,30,0.92);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  #ad.size-61 .recipe-apply-card { left: 32px; right: 32px; }
+  .recipe-apply-card .title {
+    font-size: 13px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 10px;
+  }
+  .recipe-apply-card .name {
+    font-size: 20px; font-weight: 700; color: var(--ink); margin-bottom: 12px;
+  }
+  .mini-dials {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .mini-dial {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 11px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .mini-dial .k { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-tertiary); }
+  .mini-dial .b { font-family: var(--mono); font-weight: 600; color: var(--ink-tertiary); text-decoration: line-through; }
+  .mini-dial .a { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+  .mini-dial .arr { color: var(--ink-tertiary); font-size: 11px; }
+
+  /* Frame 3 — Scene coach / optional STT (secondary) */
+  .coach-box {
+    position: absolute; left: 40px; right: 40px; top: 38%; z-index: 14;
+    display: none;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: rgba(28,28,30,0.94);
+    border: 1px solid var(--border);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  #ad.size-61 .coach-box { left: 32px; right: 32px; }
+  .coach-box .row-top {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  }
+  .coach-box .tag {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-tertiary);
+  }
+  .coach-box .optional {
+    margin-left: auto;
+    font-size: 11px; font-weight: 500; color: var(--ink-tertiary);
+    padding: 3px 8px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .coach-box .scene {
+    font-size: 17px; font-weight: 600; color: var(--ink); margin-bottom: 8px; line-height: 1.35;
+  }
+  .coach-box .hint {
+    font-size: 14px; color: var(--ink-secondary); line-height: 1.4; margin-bottom: 12px;
+  }
+  .stt-line {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-radius: 12px;
+    background: rgba(0,0,0,0.35);
+    border: 1px dashed rgba(142,142,147,0.45);
+    font-size: 13px; color: var(--ink-tertiary);
+  }
+  .stt-line .mic {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(245,245,247,0.08);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stt-line .mic svg { width: 12px; height: 12px; stroke: var(--ink-tertiary); fill: none; stroke-width: 1.8; }
+  .coach-dials {
+    margin-top: 12px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+
+  /* Frame 4 — Manual dials / Teach */
+  .dial-panel {
+    position: absolute; left: 36px; right: 36px; top: 30%; z-index: 14;
+    display: none;
+    padding: 18px 16px;
+    border-radius: 16px;
+    background: rgba(28,28,30,0.94);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  }
+  .dial-panel .lab {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-secondary); margin-bottom: 12px;
+  }
+  .dial-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .dial-cell {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 8px; text-align: center;
+  }
+  .dial-cell.override {
+    border-color: rgba(224,168,18,0.55);
+    box-shadow: inset 0 0 0 1px rgba(224,168,18,0.2);
+  }
+  .dial-cell .k {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-tertiary); margin-bottom: 4px;
+  }
+  .dial-cell .ba {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .dial-cell .b { color: var(--ink-tertiary); text-decoration: line-through; }
+  .dial-cell .a { color: var(--ink); font-weight: 600; }
+  .dial-cell .val { color: var(--ink); font-weight: 600; font-family: var(--mono); font-size: 15px; }
+  .why {
+    margin-top: 12px; font-size: 13px; color: var(--ink-secondary); line-height: 1.4;
+  }
+  .why strong { color: var(--accent); font-weight: 600; }
+  .teach-btn {
+    margin-top: 12px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 999px;
+    background: rgba(224,168,18,0.14);
+    border: 1px solid rgba(224,168,18,0.45);
+    font-size: 13px; font-weight: 600; color: var(--accent-soft);
+  }
+
+  /* Frame 5 — Hero value prop */
+  .hero {
+    position: absolute; left: 48px; right: 48px; top: 38%; z-index: 15;
+    transform: translateY(-40%);
+    display: none;
+    text-align: center;
+  }
+  #ad.size-61 .hero { left: 40px; right: 40px; }
+  .hero .brand {
+    font-size: 14px; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: rgba(245,245,247,0.55);
+    margin-bottom: 22px;
+  }
+  .hero .slogan {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 64px; line-height: 1.12; color: var(--ink);
+    text-shadow: 0 4px 28px rgba(0,0,0,0.55);
+    margin-bottom: 28px;
+  }
+  #ad.size-61 .hero .slogan { font-size: 54px; }
+  .hero .sub {
+    font-size: 18px; color: var(--ink-secondary); line-height: 1.4;
+    max-width: 720px; margin: 0 auto 28px;
+  }
+  .hero .pill-row {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  }
+  .hero .pill {
+    padding: 8px 14px; border-radius: 999px;
+    background: var(--chrome-bg); border: 1px solid var(--border);
+    font-size: 13px; font-weight: 500; color: var(--ink);
+  }
+  .hero .pill em {
+    font-style: normal; color: var(--accent); font-weight: 600;
+  }
+
+  /* Bottom stack */
+  .stack {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 0 32px 56px;
+  }
+  #ad.size-61 .stack { padding: 0 28px 48px; gap: 10px; }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 999px;
+    background: var(--chrome-bg);
+    font-size: 15px;
+  }
+  .status .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-soft);
+    box-shadow: 0 0 8px rgba(245,197,24,0.45);
+  }
+  .status.ready .dot {
+    background: var(--success);
+    box-shadow: 0 0 8px rgba(48,209,88,0.45);
+  }
+
+  .ao {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    height: 48px; min-width: 220px; padding: 0 28px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-on);
+    font-size: 17px; font-weight: 600;
+    box-shadow: 0 8px 28px -6px rgba(224,168,18,0.55);
+  }
+  .ao svg { width: 16px; height: 16px; fill: currentColor; }
+
+  .recommend {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    height: 36px; padding: 0 18px; border-radius: 999px;
+    background: var(--chrome-bg);
+    border: 1.5px solid var(--border-strong);
+    font-size: 14px; font-weight: 500; color: var(--ink);
+  }
+
+  .shutter-row {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 420px; padding: 4px 8px 0;
+  }
+  .side {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: rgba(28,28,30,0.7); border: 1px solid rgba(58,58,60,0.7);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .side.svg-on svg { width: 18px; height: 18px; stroke: rgba(245,245,247,0.72); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .side svg { width: 18px; height: 18px; stroke: rgba(245,245,247,0.72); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .shutter {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 3px solid rgba(245,245,247,0.92);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .shutter .core {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Visibility toggles */
+  .show-burst .burst { display: block; }
+  .show-recommend-callout .recommend-callout { display: flex; }
+  .show-recipe-apply .recipe-apply-card { display: block; }
+  .show-coach .coach-box { display: block; }
+  .show-dials .dial-panel { display: block; }
+  .show-hero .hero { display: block; }
+  .hide-recommend .recommend { display: none; }
+  .hide-ao .ao { display: none; }
+  .hide-stack-chrome .status,
+  .hide-stack-chrome .ao,
+  .hide-stack-chrome .recommend { display: none; }
+  .hide-top .top-chrome { display: none; }
+  .dim-stack .stack { opacity: 0.92; }
+</style>
+</head>
+<body>
+<div id="ad">
+  <div class="phone">
+    <div class="vf"></div>
+
+    <div class="caption-band">
+      <div class="wordmark">Grok Camera</div>
+      <div class="caption" id="caption">Auto Optimize writes shutter, ISO, EV, WB &amp; focus</div>
+    </div>
+
+    <div class="top-chrome" id="topChrome">
+      <div class="ico" aria-label="Flash">
+        <svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 10-14h-7l1-6z"/></svg>
+      </div>
+      <div class="spacer"></div>
+      <div class="recipe-badge" id="recipeBadge">Golden hour walk</div>
+      <div class="ico" aria-label="Flip">
+        <svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </div>
+      <div class="ico" aria-label="More">
+        <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </div>
+    </div>
+
+    <!-- 1 AO dial burst -->
+    <div class="burst" id="burst">
+      <div class="burst-head"><span class="bolt">⚡</span> Settings applied</div>
+      <div class="diff-row"><span class="diff-lab">Shutter</span><span class="diff-before">1/500</span><span class="diff-arr">→</span><span class="diff-after">1/60</span></div>
+      <div class="diff-row"><span class="diff-lab">ISO</span><span class="diff-before">100</span><span class="diff-arr">→</span><span class="diff-after">400</span></div>
+      <div class="diff-row"><span class="diff-lab">EV</span><span class="diff-before">0.0</span><span class="diff-arr">→</span><span class="diff-after">−0.7</span></div>
+      <div class="diff-row"><span class="diff-lab">WB</span><span class="diff-before">Auto</span><span class="diff-arr">→</span><span class="diff-after">5600K</span></div>
+      <div class="diff-row"><span class="diff-lab">Focus</span><span class="diff-before">AF-C</span><span class="diff-arr">→</span><span class="diff-after">Lock</span></div>
+    </div>
+
+    <!-- 2 Recommend + recipe apply -->
+    <div class="recipe-apply-card" id="recipeApply">
+      <div class="title">Recipe applied to finder</div>
+      <div class="name">Golden hour walk</div>
+      <div class="mini-dials">
+        <div class="mini-dial"><span class="k">Shutter</span><span class="b">1/500</span><span class="arr">→</span><span class="a">1/60</span></div>
+        <div class="mini-dial"><span class="k">ISO</span><span class="b">100</span><span class="arr">→</span><span class="a">400</span></div>
+        <div class="mini-dial"><span class="k">EV</span><span class="b">0.0</span><span class="arr">→</span><span class="a">−0.7</span></div>
+        <div class="mini-dial"><span class="k">WB</span><span class="b">Auto</span><span class="arr">→</span><span class="a">5600K</span></div>
+        <div class="mini-dial"><span class="k">Focus</span><span class="b">AF-C</span><span class="arr">→</span><span class="a">Lock</span></div>
+      </div>
+    </div>
+    <div class="recommend-callout" id="recommendCallout">
+      <div class="recommend-label">Recommend</div>
+      <div class="recommend-pill"><span class="spark">✦</span> Apply recipe</div>
+    </div>
+
+    <!-- 3 Scene coach + optional STT -->
+    <div class="coach-box" id="coachBox">
+      <div class="row-top">
+        <span class="tag">Scene coach</span>
+        <span class="optional">STT optional</span>
+      </div>
+      <div class="scene">Dusk sidewalk · warm sidelight · moving subject</div>
+      <div class="hint">Hold EV slightly negative · lock focus on subject · pan with motion.</div>
+      <div class="stt-line">
+        <span class="mic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 11a7 7 0 01-14 0"/><path d="M12 18v3"/></svg></span>
+        <span>“Slow shutter for walk-by blur”</span>
+      </div>
+      <div class="coach-dials">
+        <div class="mini-dial"><span class="k">Shutter</span><span class="a">1/60</span></div>
+        <div class="mini-dial"><span class="k">ISO</span><span class="a">400</span></div>
+        <div class="mini-dial"><span class="k">EV</span><span class="a">−0.7</span></div>
+        <div class="mini-dial"><span class="k">WB</span><span class="a">5600K</span></div>
+        <div class="mini-dial"><span class="k">Focus</span><span class="a">Lock</span></div>
+      </div>
+    </div>
+
+    <!-- 4 Manual dials / Teach -->
+    <div class="dial-panel" id="dialPanel">
+      <div class="lab">Manual dials · override anytime</div>
+      <div class="dial-grid">
+        <div class="dial-cell override"><div class="k">Shutter</div><div class="val">1/125</div></div>
+        <div class="dial-cell"><div class="k">ISO</div><div class="val">400</div></div>
+        <div class="dial-cell"><div class="k">EV</div><div class="val">−0.7</div></div>
+        <div class="dial-cell"><div class="k">WB</div><div class="val">5600K</div></div>
+        <div class="dial-cell"><div class="k">Focus</div><div class="val">Lock</div></div>
+        <div class="dial-cell"><div class="k">Teach</div><div class="ba"><span class="a" style="text-decoration:none;font-family:DM Sans,sans-serif;font-size:12px">Why?</span></div></div>
+      </div>
+      <div class="why"><strong>Why this?</strong> You bumped shutter to freeze a stride — ISO stays for dusk light · focus remains locked.</div>
+      <div class="teach-btn">✦ Teach · Why this?</div>
+    </div>
+
+    <!-- 5 Hero value prop -->
+    <div class="hero" id="hero">
+      <div class="brand">Grok Camera</div>
+      <div class="slogan">Set the shot.<br/>Then take it.</div>
+      <div class="sub">AI Auto Optimize writes shutter, ISO, EV, WB &amp; focus — real capture dials, not filters.</div>
+      <div class="pill-row">
+        <span class="pill"><em>Shutter</em> · ISO · EV</span>
+        <span class="pill">WB · Focus</span>
+        <span class="pill">Recommend · Teach</span>
+      </div>
+    </div>
+
+    <div class="stack" id="stack">
+      <div class="status" id="status"><span class="dot"></span><span id="statusText">Applying shutter &amp; ISO…</span></div>
+      <div class="ao" id="aoBtn">
+        <svg viewBox="0 0 24 24"><path d="M11 2L7 13h4l-1 9 9-14h-5l2-6z"/></svg>
+        Auto Optimize
+      </div>
+      <div class="recommend" id="recommendBtn">✦ Recommend</div>
+      <div class="shutter-row">
+        <div class="side" title="Mic"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 11a7 7 0 01-14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg></div>
+        <div class="shutter"><div class="core"></div></div>
+        <div class="side" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const FRAMES = {
+    1: {
+      caption: 'Auto Optimize writes shutter, ISO, EV, WB & focus',
+      status: 'Applying shutter & ISO…',
+      ready: false,
+      classes: ['show-burst'],
+    },
+    2: {
+      caption: 'Recommend applies the recipe — dials on the finder',
+      status: 'Recipe on finder',
+      ready: true,
+      classes: ['show-recipe-apply', 'show-recommend-callout', 'hide-recommend'],
+    },
+    3: {
+      caption: 'Scene coach in the box (optional STT)',
+      status: 'Coach ready',
+      ready: true,
+      classes: ['show-coach', 'hide-recommend'],
+    },
+    4: {
+      caption: 'See shutter · ISO · EV · WB · focus — then override',
+      status: 'Manual · Teach open',
+      ready: true,
+      classes: ['show-dials', 'hide-recommend'],
+    },
+    5: {
+      caption: 'Set the shot. Then take it.',
+      status: 'Ready to capture',
+      ready: true,
+      classes: ['show-hero', 'hide-stack-chrome', 'hide-top', 'hide-ao', 'hide-recommend'],
+    },
+  };
+
+  const params = new URLSearchParams(location.search);
+  const frame = Number(params.get('frame') || '1');
+  const size = params.get('size') || '67';
+  const cfg = FRAMES[frame] || FRAMES[1];
+  const ad = document.getElementById('ad');
+
+  if (size === '61') {
+    ad.style.width = '1179px';
+    ad.style.height = '2556px';
+    ad.classList.add('size-61');
+  } else {
+    ad.style.width = '1290px';
+    ad.style.height = '2796px';
+    ad.classList.add('size-67');
+  }
+
+  cfg.classes.forEach(c => ad.classList.add(c));
+  document.getElementById('caption').textContent = cfg.caption;
+  document.getElementById('statusText').textContent = cfg.status;
+  const statusEl = document.getElementById('status');
+  if (cfg.ready) statusEl.classList.add('ready');
+
+  Promise.all([
+    document.fonts.ready,
+    new Promise(r => document.readyState === 'complete' ? r() : window.addEventListener('load', r))
+  ]).then(() => { window.__READY__ = true; });
+</script>
+</body>
+</html>
