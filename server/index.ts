@@ -26,6 +26,7 @@ import { mountDescribeSceneRoutes } from './describeScene.ts'
 import { mountWaitlistRoutes } from './waitlist.ts'
 import { mountPushRoutes, pushHealthSnippet } from './push.ts'
 import { mountTelemetryRoutes, telemetryHealthSnippet } from './telemetry.ts'
+import { mountAdminRoutes } from './admin.ts'
 import { getMysqlPool } from './mysql.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -57,6 +58,7 @@ mountDescribeSceneRoutes(app)
 mountWaitlistRoutes(app)
 mountPushRoutes(app)
 mountTelemetryRoutes(app)
+mountAdminRoutes(app)
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -83,6 +85,7 @@ app.get('/api/health', (_req, res) => {
     waitlist: Boolean(process.env.RESEND_API_KEY?.trim()),
     ...pushHealthSnippet(),
     ...telemetryHealthSnippet(),
+    admin: Boolean(process.env.ADMIN_PASSWORD?.trim() || process.env.ADMIN_TOKEN?.trim()),
   })
 })
 

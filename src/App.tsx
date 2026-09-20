@@ -6,6 +6,7 @@ import { Landing } from './pages/Landing'
 import { Library } from './pages/Library'
 import { PresetDetail } from './pages/PresetDetail'
 import { Success } from './pages/Success'
+import { Admin } from './pages/Admin'
 
 function LegacyPresetRedirect() {
   const { id } = useParams<{ id: string }>()
@@ -17,6 +18,7 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/admin" element={<Admin />} />
 
         <Route path="/app" element={<Layout />}>
           <Route index element={<CameraPage />} />
