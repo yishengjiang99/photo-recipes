@@ -615,8 +615,15 @@ export function Landing() {
             <a href="#notes" className="hover:text-ink">
               Notes
             </a>
-            <span title="Privacy policy placeholder">Privacy</span>
-            <span title="Terms placeholder">Terms</span>
+            <Link to="/privacy" className="hover:text-ink">
+              Privacy
+            </Link>
+            <Link to="/terms" className="hover:text-ink">
+              Terms
+            </Link>
+            <Link to="/support" className="hover:text-ink">
+              Support
+            </Link>
           </div>
         </div>
         <p className="mx-auto mt-8 max-w-[1120px] px-4 text-xs text-ink-tertiary sm:px-6">

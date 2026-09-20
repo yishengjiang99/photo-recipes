@@ -1,12 +1,15 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { PricingModal } from './components/PricingModal'
+import { Admin } from './pages/Admin'
 import { CameraPage } from './pages/Camera'
 import { Landing } from './pages/Landing'
 import { Library } from './pages/Library'
 import { PresetDetail } from './pages/PresetDetail'
+import { Privacy } from './pages/Privacy'
 import { Success } from './pages/Success'
-import { Admin } from './pages/Admin'
+import { Support } from './pages/Support'
+import { Terms } from './pages/Terms'
 
 function LegacyPresetRedirect() {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +21,9 @@ export default function App() {
     <>
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/support" element={<Support />} />
         <Route path="/admin" element={<Admin />} />
 
         <Route path="/app" element={<Layout />}>
