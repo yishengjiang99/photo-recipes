@@ -9,6 +9,10 @@ server {
     root DEPLOY_PATH_PLACEHOLDER/dist;
     index index.html;
 
+    # Phone Auto Optimize / vision uploads: HEIC→JPEG frames can exceed nginx's
+    # default 1m; keep in sync with Express json + MAX_IMAGE_BYTES (~25MB).
+    client_max_body_size 25m;
+
     # Hashed Vite assets — long cache
     location /assets/ {
         expires 7d;

@@ -11,6 +11,7 @@ import {
   parseDataUrl,
   toDataUrl,
 } from './image.ts'
+import { logApiError } from './telemetry.ts'
 import { checkAssistQuota } from './entitlements.ts'
 import { fetchWithTimeout } from './fetchTimeout.ts'
 
@@ -199,11 +200,18 @@ export function mountDescribeSceneRoutes(app: Express) {
             err !== null &&
             'code' in err &&
             (err as { code?: string }).code === 'LIMIT_FILE_SIZE'
-          res.status(400).json({
-            error: isSize
-              ? `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`
-              : msg,
+          const status = isSize ? 413 : 400
+          const error = isSize
+            ? `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`
+            : msg
+          logApiError(req, {
+            event: 'api_error',
+            route: '/api/describe-scene',
+            status,
+            message: error,
+            method: 'POST',
           })
+          res.status(status).json({ error })
           return
         }
         next()
@@ -245,7 +253,16 @@ export function mountDescribeSceneRoutes(app: Express) {
         (req.body ?? {}) as Record<string, unknown>,
       )
       if ('error' in parsed) {
-        res.status(400).json({ error: parsed.error })
+        const isSize = /too large/i.test(parsed.error)
+        const status = isSize ? 413 : 400
+        logApiError(req, {
+          event: 'api_error',
+          route: '/api/describe-scene',
+          status,
+          message: parsed.error,
+          method: 'POST',
+        })
+        res.status(status).json({ error: parsed.error })
         return
       }
       imageDataUrl = parsed.imageDataUrl
@@ -264,7 +281,13 @@ export function mountDescribeSceneRoutes(app: Express) {
         const ex = e as Error & { status?: number }
         const status =
           ex.status && ex.status >= 400 && ex.status < 600 ? ex.status : 502
-        console.error('[describe-scene]', ex.message)
+        logApiError(req, {
+          event: 'api_error',
+          route: '/api/describe-scene',
+          status,
+          message: ex.message || 'Scene description unavailable',
+          method: 'POST',
+        })
         res.status(status).json({
           error: ex.message || 'Scene description unavailable — try again',
         })

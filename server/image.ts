@@ -6,7 +6,8 @@ export const ALLOWED_IMAGE_MIMES = new Set([
   'image/webp',
 ])
 
-export const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+/** 25MB — matches nginx client_max_body_size + Express json limit (phone JPEG / HEIC re-encodes). */
+export const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 const MIME_FROM_EXT: Record<string, string> = {
   jpg: 'image/jpeg',

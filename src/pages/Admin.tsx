@@ -70,6 +70,16 @@ type Summary = {
     }
     note: string
   }
+  recentErrors?: Array<{
+    createdAt: string
+    event: string
+    platform: string
+    route: string
+    status: number | null
+    message: string
+    method: string | null
+    contentLength: string | null
+  }>
 }
 
 function money(cents: number, currency = 'usd'): string {
@@ -578,6 +588,77 @@ export function Admin() {
                   {summary.push.note}
                 </p>
               </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                Recent API / upload errors
+                <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                  api_error · optimize_error
+                </span>
+              </h2>
+              <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-xs text-[var(--color-ink-tertiary)]">
+                      <th className="px-3 py-2 font-medium">When</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Route</th>
+                      <th className="px-3 py-2 font-medium">Platform</th>
+                      <th className="px-3 py-2 font-medium">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!summary.recentErrors || summary.recentErrors.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="px-3 py-3 text-[var(--color-ink-tertiary)]"
+                        >
+                          No recent errors
+                          {!summary.telemetry.configured
+                            ? ' (MySQL unset — errors are not persisted)'
+                            : ''}
+                        </td>
+                      </tr>
+                    ) : (
+                      summary.recentErrors.map((row, i) => (
+                        <tr
+                          key={`${row.createdAt}-${row.route}-${i}`}
+                          className="border-t border-[var(--color-border)] align-top"
+                        >
+                          <td className="whitespace-nowrap px-3 py-2 text-xs">
+                            {fmtTime(row.createdAt)}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {row.status ?? '—'}
+                            <div className="text-[var(--color-ink-tertiary)]">
+                              {row.event}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {row.method ? `${row.method} ` : ''}
+                            {row.route || '—'}
+                          </td>
+                          <td className="px-3 py-2 text-xs">{row.platform}</td>
+                          <td className="max-w-xs px-3 py-2 text-xs text-[var(--color-ink-secondary)]">
+                            {row.message || '—'}
+                            {row.contentLength ? (
+                              <div className="mt-0.5 text-[var(--color-ink-tertiary)]">
+                                content-length {row.contentLength}
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-[var(--color-ink-tertiary)]">
+                nginx-level 413 HTML never reaches Node — after deploy, body limits are
+                25MB so normal phone JPEGs should hit JSON errors here instead.
+              </p>
             </section>
           </>
         ) : null}
