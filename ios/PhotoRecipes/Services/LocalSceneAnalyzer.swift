@@ -42,10 +42,11 @@ enum LocalSceneAnalyzer {
         sceneNote: String,
         pitchDegrees: Double? = nil
     ) async -> LocalSceneSignals {
-        session.refreshReadouts()
-        let exposure = session.exposureSeconds
-        let iso = session.iso
-        let ev = session.evBias
+        // CameraSession is @MainActor — snapshot meters on the main actor before Vision/histogram work.
+        let (exposure, iso, ev) = await MainActor.run {
+            session.refreshReadouts()
+            return (session.exposureSeconds, session.iso, session.evBias)
+        }
         let hints = parseSceneNote(sceneNote)
 
         var brightness = brightnessProxy(exposure: exposure, iso: iso)
