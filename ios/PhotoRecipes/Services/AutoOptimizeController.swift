@@ -92,7 +92,8 @@ final class AutoOptimizeController: ObservableObject {
     private let api: APIClient
     private let freeKey = "autoOptimize.freeUses.day"
     private let freeDateKey = "autoOptimize.freeUses.date"
-    static let freeDailyLimit = 1
+    /// Fallback when subscription-status has not loaded (matches server FREE_DAILY_LIMIT default).
+    static let freeDailyLimit = 5
 
     init(api: APIClient = .shared) { self.api = api }
 
@@ -101,10 +102,27 @@ final class AutoOptimizeController: ObservableObject {
         return max(0, Self.freeDailyLimit - UserDefaults.standard.integer(forKey: freeKey))
     }
 
+    /// Server asksLimit == nil → unlimited (Pro or FREE_UNLIMITED_* / device allowlist).
     func canRun(isPro: Bool) -> Bool { isPro || freeRemainingToday > 0 }
+
+    func canRun(entitlements: EntitlementsStore) -> Bool {
+        if entitlements.isPro || entitlements.status.unlimited == true { return true }
+        if entitlements.status.asksLimit == nil { return true }
+        refreshDay()
+        let limit = entitlements.status.asksLimit ?? Self.freeDailyLimit
+        let used = UserDefaults.standard.integer(forKey: freeKey)
+        return used < limit
+    }
 
     private func consumeFree(isPro: Bool) {
         guard !isPro else { return }
+        refreshDay()
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: freeKey) + 1, forKey: freeKey)
+        objectWillChange.send()
+    }
+
+    private func consumeFree(entitlements: EntitlementsStore) {
+        if entitlements.isPro || entitlements.status.unlimited == true || entitlements.status.asksLimit == nil { return }
         refreshDay()
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: freeKey) + 1, forKey: freeKey)
         objectWillChange.send()
@@ -157,7 +175,7 @@ final class AutoOptimizeController: ObservableObject {
 
     func run(session: CameraSession, entitlements: EntitlementsStore, preferStagedRecipeId: String?, sceneNote: String = "") async {
         guard !phase.isRunning else { return }
-        guard canRun(isPro: entitlements.isPro) else {
+        guard canRun(entitlements: entitlements) else {
             phase = .error("Free Peek limit reached — upgrade for unlimited Auto Optimize")
             Analytics.shared.track("auto_optimize_fail", props: ["error_code": "paywall"])
             Analytics.shared.track("paywall_view", props: ["source": "auto_optimize_limit"])
@@ -209,7 +227,7 @@ final class AutoOptimizeController: ObservableObject {
             phase = .error(error.localizedDescription); return
         }
 
-        consumeFree(isPro: entitlements.isPro)
+        consumeFree(entitlements: entitlements)
 
         var recipe: Recipe?
         if let preferred = preferStagedRecipeId.flatMap({ BundledPresets.recipe(id: $0) }) {

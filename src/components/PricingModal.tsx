@@ -6,7 +6,7 @@ import { track } from '../lib/analytics'
 const FEATURES_FREE = [
   'Browse all recipe presets',
   'Favorites & filters',
-  'Ask Grok 1× per day (Free Peek)',
+  'Ask Grok 5× per day (Free Peek)',
 ]
 
 const FEATURES_PRO = [

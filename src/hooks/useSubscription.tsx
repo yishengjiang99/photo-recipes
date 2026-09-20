@@ -11,12 +11,15 @@ import { track } from '../lib/analytics'
 
 export type SubscriptionStatus = {
   pro: boolean
+  /** Owner/device/admin allowlist — unlimited Ask without Pro badge */
+  unlimited?: boolean
   status: string
   plan: 'monthly' | 'yearly' | null
   email: string | null
   asksUsedToday: number
   asksLimit: number | null
   asksRemaining: number | null
+  freeDailyLimit?: number
   stripeConfigured: boolean
 }
 
@@ -38,8 +41,8 @@ const defaultStatus: SubscriptionStatus = {
   plan: null,
   email: null,
   asksUsedToday: 0,
-  asksLimit: 1,
-  asksRemaining: 1,
+  asksLimit: 5,
+  asksRemaining: 5,
   stripeConfigured: false,
 }
 

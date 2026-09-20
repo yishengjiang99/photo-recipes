@@ -69,12 +69,14 @@ final class EntitlementsStore: ObservableObject {
     func applyVerifiedPro(plan: SubscriptionPlan?) {
         status = SubscriptionStatus(
             pro: true,
+            unlimited: true,
             status: "active",
             plan: plan,
             email: status.email,
             asksUsedToday: status.asksUsedToday,
             asksLimit: nil,
             asksRemaining: nil,
+            freeDailyLimit: status.freeDailyLimit,
             stripeConfigured: status.stripeConfigured
         )
     }

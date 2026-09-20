@@ -5,7 +5,7 @@
  */
 import crypto from 'node:crypto'
 import type { Express, NextFunction, Request, Response } from 'express'
-import { getEntitlementIncomeSnapshot } from './entitlements.ts'
+import { getEntitlementIncomeSnapshot, getQuotaConfigSnapshot } from './entitlements.ts'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
 import { getStripe, MONTHLY_CENTS, YEARLY_CENTS } from './stripe.ts'
 import { getPushFunnelSnapshot } from './push.ts'
@@ -310,6 +310,7 @@ export function mountAdminRoutes(app: Express) {
         telemetry,
         stripe,
         entitlements,
+        quota: getQuotaConfigSnapshot(),
         push,
         recentErrors,
       })

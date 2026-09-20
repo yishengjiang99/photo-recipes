@@ -10,9 +10,111 @@ const STORE_PATH = path.join(DATA_DIR, 'entitlements.json')
 
 const GUEST_COOKIE = 'pr_guest'
 const SUB_COOKIE = 'pr_sub'
-const FREE_ASKS_PER_DAY = 1
+
+/** Default Free Peek Ask/Vision/Auto Optimize combined daily cap when FREE_DAILY_LIMIT unset. */
+const DEFAULT_FREE_DAILY_LIMIT = 5
+/** Owner email always unlimited (merged with FREE_UNLIMITED_EMAILS). */
+const DEFAULT_UNLIMITED_EMAILS = ['yisheng.jiang@gmail.com']
+
 /** Combined daily free-tier cap for STT + describe-scene (short FieldCoach clips / captions). */
 const FREE_ASSIST_PER_DAY = 20
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') return fallback
+  const n = Number.parseInt(raw.trim(), 10)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return n
+}
+
+/** Env-configurable Free Peek Ask/Vision daily limit (ops: FREE_DAILY_LIMIT in /etc/photo-recipes.env). */
+export function getFreeDailyLimit(): number {
+  return parsePositiveInt(process.env.FREE_DAILY_LIMIT, DEFAULT_FREE_DAILY_LIMIT)
+}
+
+/** @deprecated Prefer getFreeDailyLimit() — kept as live getter alias for existing imports. */
+function freeAsksPerDay(): number {
+  return getFreeDailyLimit()
+}
+
+function parseCsvLower(raw: string | undefined): string[] {
+  if (!raw?.trim()) return []
+  return raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function parseCsvExact(raw: string | undefined): string[] {
+  if (!raw?.trim()) return []
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/** Emails with unlimited Ask/Vision/assist (FREE_UNLIMITED_EMAILS + owner default). */
+export function getUnlimitedEmails(): Set<string> {
+  const fromEnv = parseCsvLower(process.env.FREE_UNLIMITED_EMAILS)
+  return new Set([...DEFAULT_UNLIMITED_EMAILS.map((e) => e.toLowerCase()), ...fromEnv])
+}
+
+/** Guest/device ids with unlimited quota (UNLIMITED_DEVICE_IDS — unsigned pr_guest UUID). */
+export function getUnlimitedDeviceIds(): Set<string> {
+  return new Set(parseCsvExact(process.env.UNLIMITED_DEVICE_IDS))
+}
+
+function bearerToken(req: Request): string | null {
+  const hdr = req.headers.authorization
+  if (typeof hdr !== 'string') return null
+  const m = /^Bearer\s+(.+)$/i.exec(hdr.trim())
+  return m?.[1]?.trim() || null
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a)
+    const bb = Buffer.from(b)
+    if (ba.length !== bb.length) return false
+    return crypto.timingSafeEqual(ba, bb)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Best-effort unlimited: entitlement email allowlist, guest/device id allowlist,
+ * or ADMIN_TOKEN via Bearer / X-Admin-Token (same as /admin).
+ * TestFlight without login: set UNLIMITED_DEVICE_IDS to the stable pr_guest UUID
+ * (from cookie after first API hit) — there is no email without Stripe/IAP entitlement.
+ */
+export function isUnlimitedIdentity(
+  req: Request,
+  ent: { email: string | null } | null,
+  guestId: string,
+): boolean {
+  const email = ent?.email?.trim().toLowerCase()
+  if (email && getUnlimitedEmails().has(email)) return true
+
+  if (guestId && getUnlimitedDeviceIds().has(guestId)) return true
+
+  // Optional client-sent device id (not spoof-proof alone — pair with allowlist)
+  const deviceHdr = req.headers['x-device-id']
+  const deviceVal = Array.isArray(deviceHdr) ? deviceHdr[0] : deviceHdr
+  if (typeof deviceVal === 'string' && deviceVal.trim() && getUnlimitedDeviceIds().has(deviceVal.trim())) {
+    return true
+  }
+
+  const adminTok = process.env.ADMIN_TOKEN?.trim()
+  if (adminTok) {
+    const bearer = bearerToken(req)
+    if (bearer && timingSafeEqualStr(bearer, adminTok)) return true
+    const hdr = req.headers['x-admin-token']
+    const hdrVal = Array.isArray(hdr) ? hdr[0] : hdr
+    if (typeof hdrVal === 'string' && timingSafeEqualStr(hdrVal.trim(), adminTok)) return true
+  }
+
+  return false
+}
 
 export type Plan = 'monthly' | 'yearly' | null
 
@@ -214,26 +316,31 @@ export function getSubscriptionStatus(req: Request, res: Response) {
   const guestId = getGuestId(req, res)
   const ent = getEntitlementFromCookie(req)
   const pro = ent ? isProStatus(ent.status) : false
+  const unlimited = isUnlimitedIdentity(req, ent, guestId)
+  const skipQuota = pro || unlimited
+  const freeLimit = getFreeDailyLimit()
   const quotaKey = pro && ent ? ent.id : guestId
   const store = readStore()
   const day = todayUtc()
   const q = store.askQuota[quotaKey]
   const used = q && q.date === day ? q.count : 0
-  const limit = pro ? null : FREE_ASKS_PER_DAY
+  const limit = skipQuota ? null : freeLimit
   // Assist quota is always keyed by guestId (free-tier voice/scene combined)
   const aq = store.assistQuota[guestId]
   const assistUsed = aq && aq.date === day ? aq.count : 0
   return {
     pro,
+    unlimited,
     status: ent?.status ?? 'inactive',
     plan: ent?.plan ?? null,
     email: ent?.email ?? null,
     asksUsedToday: used,
     asksLimit: limit,
-    asksRemaining: pro ? null : Math.max(0, FREE_ASKS_PER_DAY - used),
+    asksRemaining: skipQuota ? null : Math.max(0, freeLimit - used),
     assistUsedToday: assistUsed,
-    assistLimit: pro ? null : FREE_ASSIST_PER_DAY,
-    assistRemaining: pro ? null : Math.max(0, FREE_ASSIST_PER_DAY - assistUsed),
+    assistLimit: skipQuota ? null : FREE_ASSIST_PER_DAY,
+    assistRemaining: skipQuota ? null : Math.max(0, FREE_ASSIST_PER_DAY - assistUsed),
+    freeDailyLimit: freeLimit,
     stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
   }
 }
@@ -244,9 +351,10 @@ export function checkAskGrokQuota(
   res: Response,
 ): { allowed: true; consume: () => void } | { allowed: false; body: Record<string, unknown> } {
   const status = getSubscriptionStatus(req, res)
-  if (status.pro) {
+  if (status.pro || status.unlimited) {
     return { allowed: true, consume: () => {} }
   }
+  const freeLimit = getFreeDailyLimit()
   if ((status.asksRemaining ?? 0) > 0) {
     const guestId = getGuestId(req, res)
     return {
@@ -264,10 +372,10 @@ export function checkAskGrokQuota(
   return {
     allowed: false,
     body: {
-      error: 'Free Peek limit reached (1 Ask / Photo Vision per day). Upgrade to Photo Recipes Pro for unlimited Ask Grok & Photo Vision.',
+      error: `Free Peek limit reached (${freeLimit} Ask / Photo Vision per day). Upgrade to Photo Recipes Pro for unlimited Ask Grok & Photo Vision.`,
       code: 'paywall',
       asksUsedToday: status.asksUsedToday,
-      asksLimit: FREE_ASKS_PER_DAY,
+      asksLimit: freeLimit,
       upgrade: {
         product: 'Photo Recipes Pro',
         monthlyCents: 799,
@@ -285,7 +393,7 @@ export function checkAssistQuota(
   res: Response,
 ): { allowed: true; consume: () => void } | { allowed: false; body: Record<string, unknown> } {
   const status = getSubscriptionStatus(req, res)
-  if (status.pro) {
+  if (status.pro || status.unlimited) {
     return { allowed: true, consume: () => {} }
   }
   if ((status.assistRemaining ?? 0) > 0) {
@@ -337,7 +445,27 @@ export function findEntitlementByGuestId(guestId: string): Entitlement | null {
   return matches.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0] ?? null
 }
 
-export { GUEST_COOKIE, SUB_COOKIE, FREE_ASKS_PER_DAY, FREE_ASSIST_PER_DAY }
+/** Snapshot for admin dashboard / ops. */
+export function getQuotaConfigSnapshot() {
+  return {
+    freeDailyLimit: getFreeDailyLimit(),
+    freeAssistPerDay: FREE_ASSIST_PER_DAY,
+    unlimitedEmails: [...getUnlimitedEmails()].sort(),
+    unlimitedDeviceIdCount: getUnlimitedDeviceIds().size,
+    env: {
+      FREE_DAILY_LIMIT: process.env.FREE_DAILY_LIMIT?.trim() || null,
+      FREE_UNLIMITED_EMAILS: process.env.FREE_UNLIMITED_EMAILS?.trim() || null,
+      UNLIMITED_DEVICE_IDS: process.env.UNLIMITED_DEVICE_IDS?.trim()
+        ? '[set]'
+        : null,
+    },
+  }
+}
+
+/** Default when FREE_DAILY_LIMIT unset — prefer getFreeDailyLimit() at request time. */
+export const FREE_ASKS_PER_DAY = DEFAULT_FREE_DAILY_LIMIT
+
+export { GUEST_COOKIE, SUB_COOKIE, FREE_ASSIST_PER_DAY, freeAsksPerDay }
 
 /** Admin income snapshot from local entitlement store (not ASC payouts). */
 export function getEntitlementIncomeSnapshot() {
