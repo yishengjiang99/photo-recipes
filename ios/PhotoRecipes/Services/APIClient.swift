@@ -22,6 +22,27 @@ enum APIError: LocalizedError {
 }
 
 @MainActor
+
+enum RecommendStreamEvent: Sendable {
+    case phase(String)
+    case status(String)
+    case reasoning(String)
+    case content(String)
+    case result(RecommendResponse)
+    case error(String, Int?)
+
+    /// Short chrome / Ask copy for phase events (status.message overrides when present).
+    static func statusCopy(forPhase phase: String) -> String? {
+        switch phase {
+        case "started": return "Matching a recipe…"
+        case "sensing": return "Reading the scene…"
+        case "thinking": return "Grok is thinking…"
+        case "writing": return "Writing tips…"
+        default: return nil
+        }
+    }
+}
+
 final class APIClient: ObservableObject {
     static let shared = APIClient()
 
@@ -138,6 +159,122 @@ final class APIClient: ObservableObject {
         } catch {
             throw APIError.decoding(error)
         }
+    }
+
+
+    // MARK: - Recommend (SSE stream)
+
+    /// Shared SSE contract with web (`POST /api/recommend/stream`).
+    /// Events: phase, status, reasoning, content, result, error.
+    func recommendStream(
+        message: String,
+        favorites: [String] = [],
+        imageJPEGData: Data? = nil,
+        onEvent: @escaping @Sendable (RecommendStreamEvent) -> Void
+    ) async throws -> RecommendResponse {
+        var body = RecommendRequest(
+            message: message,
+            favorites: favorites,
+            image: nil
+        )
+        if let data = imageJPEGData {
+            let b64 = data.base64EncodedString()
+            body.image = "data:image/jpeg;base64,\(b64)"
+        }
+
+        var req = URLRequest(url: try url("/api/recommend/stream"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        req.httpBody = try encoder.encode(body)
+        req.timeoutInterval = 90
+
+        let (bytes, response) = try await session.bytes(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.http(-1, "No HTTP response")
+        }
+        if http.statusCode == 402 {
+            // Drain a small error payload if present
+            var data = Data()
+            for try await b in bytes {
+                data.append(b)
+                if data.count > 4096 { break }
+            }
+            let payload = (try? decoder.decode(PaywallPayload.self, from: data))
+                ?? PaywallPayload(error: String(data: data, encoding: .utf8), code: "paywall")
+            throw APIError.paywall(payload)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.http(http.statusCode, "Recommend stream failed (\(http.statusCode))")
+        }
+
+        var eventName = "message"
+        var dataLines: [String] = []
+        var finalResult: RecommendResponse?
+
+        func flushEvent() throws {
+            defer {
+                eventName = "message"
+                dataLines.removeAll(keepingCapacity: true)
+            }
+            guard !dataLines.isEmpty else { return }
+            let raw = dataLines.joined(separator: "\n")
+            guard let payloadData = raw.data(using: .utf8) else { return }
+            switch eventName {
+            case "phase":
+                if let obj = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                   let phase = obj["phase"] as? String {
+                    onEvent(.phase(phase))
+                }
+            case "status":
+                if let obj = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                   let message = obj["message"] as? String {
+                    onEvent(.status(message))
+                }
+            case "reasoning":
+                if let obj = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                   let delta = obj["delta"] as? String {
+                    onEvent(.reasoning(delta))
+                }
+            case "content":
+                if let obj = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                   let delta = obj["delta"] as? String {
+                    onEvent(.content(delta))
+                }
+            case "result":
+                let decoded = try decoder.decode(RecommendResponse.self, from: payloadData)
+                finalResult = decoded
+                onEvent(.result(decoded))
+            case "error":
+                if let obj = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+                   let error = obj["error"] as? String {
+                    let status = obj["status"] as? Int
+                    onEvent(.error(error, status))
+                    throw APIError.http(status ?? 502, error)
+                }
+                throw APIError.http(502, "Recommend stream error")
+            default:
+                break
+            }
+        }
+
+        for try await line in bytes.lines {
+            if line.isEmpty {
+                try flushEvent()
+                continue
+            }
+            if line.hasPrefix("event:") {
+                eventName = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+            } else if line.hasPrefix("data:") {
+                dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+            }
+        }
+        try flushEvent()
+
+        guard let result = finalResult else {
+            throw APIError.http(502, "Stream ended without a recipe")
+        }
+        return result
     }
 
     // MARK: - IAP verify

@@ -55,6 +55,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [streamStatus, setStreamStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [paywalled, setPaywalled] = useState(false)
   const [captioning, setCaptioning] = useState(false)
@@ -345,34 +346,65 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     const trimmed = opts.text?.trim()
 
     setLoading(true)
+    setStreamStatus('Starting…')
     setError(null)
     setPaywalled(false)
     track('auto_optimize_start', {
       source: 'field_coach',
       has_image: Boolean(opts.image),
+      stream: true,
     })
 
+    const body = {
+      message: trimmed || undefined,
+      image: opts.image,
+      favorites: favorites.length ? favorites : undefined,
+    }
+
+    const finishWithResult = (data: {
+      presetId?: string
+      reason?: string
+      tips?: string[]
+    }) => {
+      if (!data.presetId) {
+        track('auto_optimize_fail', { source: 'field_coach', error_code: 'no_preset' })
+        throw new Error('No preset returned from Grok')
+      }
+      const state: AiRecommendState = {
+        reason:
+          data.reason ||
+          (opts.image
+            ? 'Grok picked this recipe from your photo. On web this is coaching only — dials apply in the iOS app.'
+            : 'Grok picked this recipe for your scene. On web this is coaching only — dials apply in the iOS app.'),
+        tips: Array.isArray(data.tips) ? data.tips : [],
+        fromAsk: true,
+      }
+      track('auto_optimize_success', {
+        source: 'field_coach',
+        recipe_id: data.presetId,
+        stream: true,
+      })
+      void refresh()
+      stopCamera()
+      navigate(`/app/preset/${data.presetId}`, { state })
+    }
+
     try {
-      const res = await fetch('/api/recommend', {
+      const res = await fetch('/api/recommend/stream', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: trimmed || undefined,
-          image: opts.image,
-          favorites: favorites.length ? favorites : undefined,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(body),
       })
 
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string
-        code?: string
-        presetId?: string
-        reason?: string
-        tips?: string[]
-      }
-
-      if (res.status === 402 || data.code === 'paywall') {
+      if (res.status === 402) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string
+          code?: string
+        }
         setPaywalled(true)
         setError(
           data.error ||
@@ -385,36 +417,77 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         return
       }
 
-      if (!res.ok) {
-        track('auto_optimize_fail', {
-          source: 'field_coach',
-          error_code: String(res.status),
-        })
-        throw new Error(data.error || `Request failed (${res.status})`)
+      // Non-SSE fallback (proxy/old server)
+      const ct = res.headers.get('content-type') || ''
+      if (!res.ok || !ct.includes('text/event-stream') || !res.body) {
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string }
+          track('auto_optimize_fail', {
+            source: 'field_coach',
+            error_code: String(res.status),
+          })
+          throw new Error(data.error || `Request failed (${res.status})`)
+        }
+        // ok but not stream — try JSON
+        const data = (await res.json().catch(() => ({}))) as {
+          presetId?: string
+          reason?: string
+          tips?: string[]
+          error?: string
+        }
+        if (data.error) throw new Error(data.error)
+        finishWithResult(data)
+        return
       }
 
-      if (!data.presetId) {
-        track('auto_optimize_fail', { source: 'field_coach', error_code: 'no_preset' })
-        throw new Error('No preset returned from Grok')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let sawResult = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const parts = buf.split('\n\n')
+        buf = parts.pop() ?? ''
+        for (const part of parts) {
+          const lines = part.split('\n')
+          let event = 'message'
+          const dataLines: string[] = []
+          for (const line of lines) {
+            if (line.startsWith('event:')) event = line.slice(6).trim()
+            else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+          }
+          if (!dataLines.length) continue
+          let payload: Record<string, unknown> = {}
+          try {
+            payload = JSON.parse(dataLines.join('\n')) as Record<string, unknown>
+          } catch {
+            continue
+          }
+          if (event === 'status' && typeof payload.message === 'string') {
+            setStreamStatus(payload.message)
+          } else if (event === 'phase' && typeof payload.phase === 'string') {
+            if (payload.phase === 'thinking') setStreamStatus('Grok is thinking…')
+            if (payload.phase === 'writing') setStreamStatus('Writing tips…')
+            if (payload.phase === 'sensing') setStreamStatus('Reading the scene…')
+          } else if (event === 'result') {
+            sawResult = true
+            finishWithResult(payload as { presetId?: string; reason?: string; tips?: string[] })
+          } else if (event === 'error') {
+            const err =
+              typeof payload.error === 'string'
+                ? payload.error
+                : 'Recommend failed'
+            throw new Error(err)
+          }
+        }
       }
 
-      const state: AiRecommendState = {
-        reason:
-          data.reason ||
-          (opts.image
-            ? 'Grok picked this recipe from your photo. On web this is coaching only — dials apply in the iOS app.'
-            : 'Grok picked this recipe for your scene. On web this is coaching only — dials apply in the iOS app.'),
-        tips: Array.isArray(data.tips) ? data.tips : [],
-        fromAsk: true,
+      if (!sawResult) {
+        throw new Error('Stream ended without a recipe')
       }
-
-      track('auto_optimize_success', {
-        source: 'field_coach',
-        recipe_id: data.presetId,
-      })
-      void refresh()
-      stopCamera()
-      navigate(`/app/preset/${data.presetId}`, { state })
     } catch (err) {
       track('auto_optimize_fail', {
         source: 'field_coach',
@@ -423,6 +496,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)
+      setStreamStatus(null)
     }
   }
 
@@ -622,6 +696,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
                   {cameraStarting
                     ? 'Starting…'
                     : loading
+                    // streamStatus shown below
                       ? 'Matching…'
                       : preparing
                         ? 'Capturing…'
@@ -747,7 +822,12 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
 
       {(cameraError || error || voiceError) && !describeOpen ? (
         <div
-          role={error ? 'alert' : 'status'}
+          role=      {loading && streamStatus ? (
+        <p className="px-4 py-1 text-center text-xs text-white/70" role="status" aria-live="polite">
+          {streamStatus}
+        </p>
+      ) : null}
+{error ? 'alert' : 'status'}
           className={`absolute inset-x-3 top-14 z-30 rounded-xl px-3 py-2.5 text-sm backdrop-blur ${
             paywalled
               ? 'border border-white/15 bg-black/80 text-white/80'

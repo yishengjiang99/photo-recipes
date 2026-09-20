@@ -13,6 +13,10 @@ import {
 } from './image.ts'
 import { recommendWithGrok } from './recommend.ts'
 import {
+  recommendWithGrokStream,
+  writeSse,
+} from './recommendStream.ts'
+import {
   dataUrlFromMultipartFile,
   parseImageFromJsonBody,
   releaseMultipartImageBuffer,
@@ -309,6 +313,180 @@ app.post('/api/recommend', (req, res) => {
 })
 
 /**
+ * POST /api/recommend/stream — same input as /api/recommend; SSE progress + final result.
+ * Shared contract for web Field Coach + iOS:
+ *   event: phase | status | reasoning | content | result | error
+ */
+app.post('/api/recommend/stream', (req, res) => {
+  const ct = (req.headers['content-type'] || '').toLowerCase()
+
+  const startStream = (parsed: ParsedRecommend) => {
+    const quota = checkAskGrokQuota(req, res)
+    if (!quota.allowed) {
+      res.status(402).json(quota.body)
+      return
+    }
+    const apiKey = process.env.XAI_API_KEY?.trim()
+    if (!apiKey) {
+      res.status(503).json({
+        error:
+          'XAI_API_KEY is not set. Add it to .env (see .env.example) and restart the API server.',
+      })
+      return
+    }
+
+    res.status(200)
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+    if (typeof (res as { flushHeaders?: () => void }).flushHeaders === 'function') {
+      ;(res as { flushHeaders: () => void }).flushHeaders()
+    }
+
+    const ac = new AbortController()
+    req.on('close', () => ac.abort())
+
+    void recommendWithGrokStream(
+      apiKey,
+      {
+        message:
+          parsed.message ||
+          (parsed.imageDataUrl ? 'Recommend a recipe for this photo.' : ''),
+        favorites: parsed.favorites,
+        imageDataUrl: parsed.imageDataUrl,
+      },
+      {
+        onPhase: (phase) => writeSse(res, 'phase', { phase }),
+        onStatus: (message) => writeSse(res, 'status', { message }),
+        onReasoning: (delta) => writeSse(res, 'reasoning', { delta }),
+        onContent: (delta) => writeSse(res, 'content', { delta }),
+        onResult: (result) => {
+          quota.consume()
+          writeSse(res, 'result', result)
+        },
+        onError: (error, status) => {
+          writeSse(res, 'error', { error, status })
+          logApiError(req, {
+            event: parsed.imageDataUrl ? 'optimize_error' : 'api_error',
+            route: '/api/recommend/stream',
+            status: status && status >= 400 && status < 600 ? status : 502,
+            message: error,
+            method: 'POST',
+          })
+        },
+      },
+      { signal: ac.signal },
+    )
+      .catch((err: Error & { status?: number }) => {
+        if (!res.writableEnded) {
+          writeSse(res, 'error', {
+            error: err.message || 'Recommendation failed',
+            status: err.status,
+          })
+        }
+      })
+      .finally(() => {
+        if (!res.writableEnded) res.end()
+      })
+  }
+
+  if (ct.includes('multipart/form-data')) {
+    upload.single('image')(req, res, (err: unknown) => {
+      if (err) {
+        const msg = err instanceof Error ? err.message : 'Invalid multipart upload'
+        const isSize =
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code?: string }).code === 'LIMIT_FILE_SIZE'
+        const status = isSize ? 413 : 400
+        const error = isSize
+          ? `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`
+          : msg
+        logApiError(req, {
+          event: 'optimize_error',
+          route: '/api/recommend/stream',
+          status,
+          message: error,
+          method: 'POST',
+        })
+        res.status(status).json({ error })
+        return
+      }
+
+      const message =
+        typeof req.body?.message === 'string'
+          ? req.body.message.trim()
+          : typeof req.body?.note === 'string'
+            ? req.body.note.trim()
+            : ''
+
+      let favorites: string[] | undefined
+      if (typeof req.body?.favorites === 'string' && req.body.favorites.trim()) {
+        try {
+          const parsedFav = JSON.parse(req.body.favorites) as unknown
+          if (Array.isArray(parsedFav)) {
+            favorites = parsedFav.filter((f): f is string => typeof f === 'string')
+          }
+        } catch {
+          favorites = undefined
+        }
+      }
+
+      let imageDataUrl: string | undefined
+      if (req.file) {
+        const parsedImg = dataUrlFromMultipartFile(req.file)
+        if ('error' in parsedImg) {
+          const isSize = /too large/i.test(parsedImg.error)
+          const status = isSize ? 413 : 400
+          logApiError(req, {
+            event: 'optimize_error',
+            route: '/api/recommend/stream',
+            status,
+            message: parsedImg.error,
+            method: 'POST',
+          })
+          res.status(status).json({ error: parsedImg.error })
+          return
+        }
+        imageDataUrl = parsedImg.imageDataUrl
+        releaseMultipartImageBuffer(req)
+        scrubImageFieldsFromBody(req.body as Record<string, unknown>)
+      }
+
+      if (!message && !imageDataUrl) {
+        res.status(400).json({
+          error: 'Multipart body must include an image file and/or a message field.',
+        })
+        return
+      }
+      startStream({ message, favorites, imageDataUrl })
+    })
+    return
+  }
+
+  const parsed = parseJsonRecommend((req.body ?? {}) as Record<string, unknown>)
+  if ('error' in parsed) {
+    const isSize = /too large/i.test(parsed.error)
+    const status = isSize ? 413 : 400
+    if (isSize || /image|base64|multipart/i.test(parsed.error)) {
+      logApiError(req, {
+        event: 'optimize_error',
+        route: '/api/recommend/stream',
+        status,
+        message: parsed.error,
+        method: 'POST',
+      })
+    }
+    res.status(status).json({ error: parsed.error })
+    return
+  }
+  startStream(parsed)
+})
+
+
+/**
  * Prefer JSON over Express/HTML default pages for body-too-large and unhandled errors.
  * nginx 413 HTML still wins if the request never reaches Node — raise client_max_body_size.
  */
@@ -389,7 +567,7 @@ async function start() {
     console.log(
       process.env.XAI_API_KEY?.trim()
         ? 'XAI_API_KEY: present'
-        : 'XAI_API_KEY: missing (POST /api/recommend, /api/stt, /api/describe-scene will return 503)',
+        : 'XAI_API_KEY: missing (POST /api/recommend, /api/recommend/stream, /api/stt, /api/describe-scene will return 503)',
     )
     console.log(
       process.env.SESSION_SECRET?.trim()

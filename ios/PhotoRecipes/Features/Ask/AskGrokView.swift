@@ -60,6 +60,8 @@ struct FieldCoachPanel: View {
     @State private var result: RecommendResponse?
     @State private var navigateRecipe: Recipe?
     @State private var showPaywallFromQuota = false
+    /// Live SSE status.message / phase copy while Recommend streams.
+    @State private var streamStatus: String?
 
     private let suggestions = [
         "Silky waterfall, sharp rocks",
@@ -83,9 +85,18 @@ struct FieldCoachPanel: View {
 
             // Filled primary always visible (enabled when note or photo)
             submitButton(
-                title: isLoading ? "Matching a recipe…" : "Recommend a recipe",
+                title: isLoading
+                    ? (streamStatus?.isEmpty == false ? streamStatus! : "Matching a recipe…")
+                    : "Recommend a recipe",
                 enabled: canSubmit
             )
+
+            if isLoading, let streamStatus, !streamStatus.isEmpty {
+                Text(streamStatus)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.inkSecondary)
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
 
             if let errorText {
                 errorBanner(errorText)
@@ -438,8 +449,12 @@ struct FieldCoachPanel: View {
         errorText = nil
         result = nil
         showPaywallFromQuota = false
+        streamStatus = "Matching a recipe…"
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            streamStatus = nil
+        }
         // Prefer attached photo when present (mode only shapes input UI)
         let jpeg: Data? = selectedImage.flatMap { APIClient.compressForVision($0) }
         Analytics.shared.track("recommend_cta_tap", props: [
@@ -451,12 +466,20 @@ struct FieldCoachPanel: View {
             errorText = "Add a scene note or choose a photo"
             return
         }
+        let prompt = trimmed.isEmpty ? "From photo" : trimmed
+        let favorites = Array(entitlements.favoriteIds)
+        let streamStarted = RecommendStreamStartFlag()
         do {
-            let response = try await api.recommend(
-                message: trimmed.isEmpty ? "From photo" : trimmed,
-                favorites: Array(entitlements.favoriteIds),
+            let response = try await api.recommendStream(
+                message: prompt,
+                favorites: favorites,
                 imageJPEGData: jpeg
-            )
+            ) { event in
+                streamStarted.mark()
+                Task { @MainActor in
+                    applyAskStreamEvent(event)
+                }
+            }
             result = response
             await entitlements.refresh()
         } catch let APIError.paywall(payload) {
@@ -467,7 +490,45 @@ struct FieldCoachPanel: View {
         } catch let APIError.missingKey(msg) {
             errorText = msg
         } catch {
-            errorText = error.localizedDescription
+            if streamStarted.value {
+                errorText = error.localizedDescription
+                return
+            }
+            // Stream failed to start — fall back to non-stream recommend.
+            streamStatus = "Matching a recipe…"
+            do {
+                let response = try await api.recommend(
+                    message: prompt,
+                    favorites: favorites,
+                    imageJPEGData: jpeg
+                )
+                result = response
+                await entitlements.refresh()
+            } catch let APIError.paywall(payload) {
+                errorText = payload.error
+                showPaywallFromQuota = true
+                entitlements.showPaywall = true
+                await entitlements.refresh()
+            } catch let APIError.missingKey(msg) {
+                errorText = msg
+            } catch {
+                errorText = error.localizedDescription
+            }
+        }
+    }
+
+    private func applyAskStreamEvent(_ event: RecommendStreamEvent) {
+        switch event {
+        case .phase(let phase):
+            if let copy = RecommendStreamEvent.statusCopy(forPhase: phase) {
+                streamStatus = copy
+            }
+        case .status(let message):
+            streamStatus = message
+        case .error(let message, _):
+            errorText = message
+        case .reasoning, .content, .result:
+            break
         }
     }
 }
