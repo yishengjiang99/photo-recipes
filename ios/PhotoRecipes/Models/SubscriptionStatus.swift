@@ -21,8 +21,8 @@ struct SubscriptionStatus: Codable, Hashable {
         plan: nil,
         email: nil,
         asksUsedToday: 0,
-        asksLimit: 1,
-        asksRemaining: 1,
+        asksLimit: 5,
+        asksRemaining: 5,
         stripeConfigured: false
     )
 

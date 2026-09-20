@@ -10,9 +10,20 @@ const STORE_PATH = path.join(DATA_DIR, 'entitlements.json')
 
 const GUEST_COOKIE = 'pr_guest'
 const SUB_COOKIE = 'pr_sub'
-const FREE_ASKS_PER_DAY = 1
+/** Free Ask / Photo Vision / AO Pass-2 refine per day. Override with FREE_ASKS_PER_DAY env. */
+const FREE_ASKS_PER_DAY = (() => {
+  const n = Number(process.env.FREE_ASKS_PER_DAY ?? 5)
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 5
+})()
 /** Combined daily free-tier cap for STT + describe-scene (short FieldCoach clips / captions). */
 const FREE_ASSIST_PER_DAY = 20
+/** Comma-separated emails with unlimited Ask (Pass 2 / Recommend). */
+const UNLIMITED_ASK_EMAILS = new Set(
+  (process.env.UNLIMITED_ASK_EMAILS ?? 'yisheng.jiang@gmail.com')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+)
 
 export type Plan = 'monthly' | 'yearly' | null
 
@@ -219,7 +230,9 @@ export function getSubscriptionStatus(req: Request, res: Response) {
   const day = todayUtc()
   const q = store.askQuota[quotaKey]
   const used = q && q.date === day ? q.count : 0
-  const limit = pro ? null : FREE_ASKS_PER_DAY
+  const email = ent?.email ?? null
+  const unlimitedAsk = Boolean(email && UNLIMITED_ASK_EMAILS.has(email.trim().toLowerCase()))
+  const limit = pro || unlimitedAsk ? null : FREE_ASKS_PER_DAY
   // Assist quota is always keyed by guestId (free-tier voice/scene combined)
   const aq = store.assistQuota[guestId]
   const assistUsed = aq && aq.date === day ? aq.count : 0
@@ -227,10 +240,10 @@ export function getSubscriptionStatus(req: Request, res: Response) {
     pro,
     status: ent?.status ?? 'inactive',
     plan: ent?.plan ?? null,
-    email: ent?.email ?? null,
+    email,
     asksUsedToday: used,
     asksLimit: limit,
-    asksRemaining: pro ? null : Math.max(0, FREE_ASKS_PER_DAY - used),
+    asksRemaining: pro || unlimitedAsk ? null : Math.max(0, FREE_ASKS_PER_DAY - used),
     assistUsedToday: assistUsed,
     assistLimit: pro ? null : FREE_ASSIST_PER_DAY,
     assistRemaining: pro ? null : Math.max(0, FREE_ASSIST_PER_DAY - assistUsed),
@@ -245,6 +258,10 @@ export function checkAskGrokQuota(
 ): { allowed: true; consume: () => void } | { allowed: false; body: Record<string, unknown> } {
   const status = getSubscriptionStatus(req, res)
   if (status.pro) {
+    return { allowed: true, consume: () => {} }
+  }
+  const email = (status.email ?? '').trim().toLowerCase()
+  if (email && UNLIMITED_ASK_EMAILS.has(email)) {
     return { allowed: true, consume: () => {} }
   }
   if ((status.asksRemaining ?? 0) > 0) {
@@ -264,7 +281,7 @@ export function checkAskGrokQuota(
   return {
     allowed: false,
     body: {
-      error: 'Free Peek limit reached (1 Ask / Photo Vision per day). Upgrade to Photo Recipes Pro for unlimited Ask Grok & Photo Vision.',
+      error: 'Free Peek limit reached (Ask / Photo Vision / AO cloud refine for today). Upgrade to Photo Recipes Pro for unlimited Ask Grok & Photo Vision.',
       code: 'paywall',
       asksUsedToday: status.asksUsedToday,
       asksLimit: FREE_ASKS_PER_DAY,

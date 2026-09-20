@@ -52,27 +52,30 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 | Live viewfinder + shutter → Camera Roll | ✓ | ✓ |
 | Auto mode capture | ✓ | ✓ |
 | See recipe dials (read-only / ghost) | ✓ | ✓ |
-| **Auto Optimize** (on-device metering + Vision → recipe → apply) | **1 / day** | Unlimited |
+| **Auto Optimize** Pass 1 local (instant) + optional Pass 2 cloud refine | Pass 1 free; Pass 2 uses Ask quota | Unlimited |
 | Apply recipe → live settable exposure/focus/WB | ✗ | ✓ |
 | Manual MODE A/S/M dials | ✗ (Auto only) | ✓ |
 | Teach mode (“Why this?”) full copy | Teaser | Full |
 | Interactive field checklist while shooting | ✗ | ✓ |
 
-**Auto Optimize quota:** Free Peek gets **1 Auto Optimize/day** (parallel counter in `AutoOptimizeController`; Ask/Vision quota remains separate). Documented choice for v1.
+**Auto Optimize quota (Build 3 hybrid):** Pass 1 (local) is **never quota-gated** — instant on-device apply. Pass 2 (cloud refine via `/api/recommend`) consumes **Ask Grok** quota on the server (`FREE_ASKS_PER_DAY` env, default 5; unlimited for allowlisted emails). Soft-skips on 402/offline — never blocks shutter or Pass 1 Ready.
 
-### Agentic MVP loop (Build 3 — local-first)
+### Agentic MVP loop (Build 3 — hybrid)
 
-Default **Auto Optimize runs entirely on-device** — no network on the happy path, no VLM.
+**Pass 1 — LOCAL (default on AO tap, instant, no VLM):**
 
-1. **Sense** — AVFoundation metering (ISO / exposure duration / EV) + optional probe JPEG for **Vision** (face rectangles, attention saliency) and a small luminance histogram (brightness / contrast / warm bias). Pitch from `HorizonMonitor` feeds low-angle cues.  
-2. **Reason** — **heuristics only** in `LocalAutoOptimizeEngine` (no Core ML `.mlmodel` in Build 3; no Grok / `/api/recommend`). Maps signals → one of the five bundled preset IDs + `PhoneTargets` + `teachWhy` / look suggest.  
-3. **Act** — `session.apply(recipe:)` then `session.applyPhoneTargets` (same path as Build 2). Aperture remains **guidance only**. Look is chip-suggested, never silent.  
-4. **Verify** — soft status step only (handshake warning when shutter ≤ 1/60s).  
-5. **Commit** — user taps shutter; optional Teach sheet explains why  
+1. **Sense** — AVFoundation metering + optional probe JPEG for Vision (faces / saliency) + luminance histogram. Pitch from `HorizonMonitor` for low-angle.  
+2. **Reason** — heuristics in `LocalAutoOptimizeEngine` → best match from the **bundled Photo Recipes catalog** (five preset IDs). Recipes are source of truth (look intensity rides on `phoneTargets`, not a parallel look system).  
+3. **Act** — `session.apply(recipe:)` + `applyPhoneTargets` (shutter / ISO / EV / WB / focus / torch / look). Mark **Ready** immediately.  
 
-**Model choice:** pure heuristics (scene-note keywords + metering + Vision faces/saliency + histogram). No bundled multimodal / VLM weights. A tiny Apple-friendly Core ML **classifier** (scene labels → presets) may be added later if heuristics plateaus; keep any `.mlmodel` small (&lt;10MB).
+**Pass 2 — CLOUD (optional, non-blocking):**
 
-**vs old Grok path:** Build 2 AO uploaded a probe to `POST /api/recommend`. Build 3 AO never calls that on the critical path. Outline **Recommend** on Camera still uses the cloud coach API (does not write dials). Settings → **Deep coach (Grok)** is off by default and unused on the AO path (hook reserved for optional coach copy later).
+4. After Ready, if Settings cloud refine is on + online + Ask quota allows, fire `POST /api/recommend` (vision pass-through #69) with scene context + **locked chosen recipe id/title** so Grok refines within that recipe’s dial space / coaching.  
+5. When the response returns, apply refinements only if still the same Optimize generation + recipe; soft-skip on 402/errors. Pill may show `Ready · refining…` — shutter stays enabled.  
+
+**Model choice (Pass 1):** pure heuristics (no `.mlmodel` in Build 3). Optional tiny Core ML classifier later (&lt;10MB). No bundled VLM weights.
+
+**Quota choice:** Pass 1 never waits on quota. Pass 2 consumes server Ask quota (`FREE_ASKS_PER_DAY`, default 5). Outline **Recommend** CTA still uses the same `/api/recommend` for coach-only (does not write dials until user applies a recipe).
 
 UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
 

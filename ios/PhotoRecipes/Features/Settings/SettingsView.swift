@@ -71,11 +71,11 @@ struct SettingsView: View {
                         Text("Replays the 3 field tips on the Camera tab (Auto Optimize → chips → Controls).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Toggle("Deep coach (Grok)", isOn: $deepCoachEnabled)
+                        Toggle("Cloud refine (Grok)", isOn: $deepCoachEnabled)
                             .onChange(of: deepCoachEnabled) { _, on in
-                                AutoOptimizeController.deepCoachEnabled = on
+                                AutoOptimizeController.cloudRefineEnabled = on
                             }
-                        Text("Off by default. Auto Optimize always runs on-device (metering + Vision + heuristics). Deep coach does not block shutter or dial apply; reserved for optional coach copy later — not used on the AO path in Build 3.")
+                        Text("On by default. Pass 1 Auto Optimize is always on-device (instant). Pass 2 optionally calls /api/recommend to refine dials within the chosen recipe — never blocks shutter. Uses Ask quota when free; soft-skips on 402/offline.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

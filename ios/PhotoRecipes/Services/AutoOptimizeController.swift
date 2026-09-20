@@ -3,8 +3,9 @@ import UIKit
 import Combine
 
 /// Sense → Reason → Apply → Verify (soft) → Ready
-/// Build 3: default path is **local-first** (AVFoundation metering + Vision + heuristics).
-/// No network / no VLM / no `/api/recommend` on the happy path.
+/// Build 3 hybrid:
+///   Pass 1 — local (AVFoundation metering + Vision + heuristics) → apply → Ready (no VLM).
+///   Pass 2 — optional non-blocking `/api/recommend` refine within the chosen recipe (never blocks shutter).
 @MainActor
 final class AutoOptimizeController: ObservableObject {
     enum Phase: Equatable {
@@ -76,12 +77,28 @@ final class AutoOptimizeController: ObservableObject {
     /// Suggested look from Auto Optimize — never silent apply (Apply / Dismiss chip).
     @Published var suggestedLook: CreativeLook?
 
-    /// Optional Grok “deep coach” — Settings toggle; default OFF. Never blocks AO / shutter.
-    static let deepCoachDefaultsKey = "autoOptimize.deepCoachEnabled"
-    static var deepCoachEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: deepCoachDefaultsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: deepCoachDefaultsKey) }
+    /// Pass 2 cloud refine — Settings can disable. Default ON (hybrid). Never blocks AO / shutter.
+    static let cloudRefineDefaultsKey = "autoOptimize.cloudRefineEnabled"
+    /// Back-compat alias for Settings binding.
+    static let deepCoachDefaultsKey = cloudRefineDefaultsKey
+    static var cloudRefineEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: cloudRefineDefaultsKey) == nil { return true }
+            return UserDefaults.standard.bool(forKey: cloudRefineDefaultsKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: cloudRefineDefaultsKey) }
     }
+    static var deepCoachEnabled: Bool {
+        get { cloudRefineEnabled }
+        set { cloudRefineEnabled = newValue }
+    }
+
+    /// Pass 2 in flight — pill shows “Ready · refining…”; shutter stays enabled.
+    @Published var isCloudRefining = false
+
+    /// Monotonic run id so late Pass 2 responses cannot clobber a newer Optimize.
+    private var runGeneration = 0
+    private var cloudRefineTask: Task<Void, Never>?
 
     var teachOneLiner: String? {
         let tw = teachWhy?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -92,6 +109,7 @@ final class AutoOptimizeController: ObservableObject {
     /// Status for AgentStatusPill (Ready · look suggested when chip pending).
     var pillStatus: String {
         if let verifyWarning, !verifyWarning.isEmpty { return verifyWarning }
+        if case .ready = phase, isCloudRefining { return "Ready · refining…" }
         if case .ready = phase, suggestedLook != nil { return "Ready · look suggested" }
         return phase.statusCopy
     }
@@ -99,24 +117,24 @@ final class AutoOptimizeController: ObservableObject {
     var coreDiffs: [DiffLine] { diffs.filter { $0.tier == .core } }
 
     private let api: APIClient
+    /// Legacy local counter keys (unused for gating Pass 1). Pass 2 consumes server Ask quota.
     private let freeKey = "autoOptimize.freeUses.day"
     private let freeDateKey = "autoOptimize.freeUses.date"
     static let freeDailyLimit = 1
 
     init(api: APIClient = .shared) { self.api = api }
 
+    /// Pass 1 is local and never quota-gated. Kept for UI badges that still read remaining.
     var freeRemainingToday: Int {
+        // Surface server Ask remaining when known; else show local leftover (compat).
         refreshDay()
         return max(0, Self.freeDailyLimit - UserDefaults.standard.integer(forKey: freeKey))
     }
 
-    func canRun(isPro: Bool) -> Bool { isPro || freeRemainingToday > 0 }
-
-    private func consumeFree(isPro: Bool) {
-        guard !isPro else { return }
-        refreshDay()
-        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: freeKey) + 1, forKey: freeKey)
-        objectWillChange.send()
+    /// Pass 1 always allowed. Pro still gates *writing* dials via `asPro` in apply paths.
+    func canRun(isPro: Bool) -> Bool {
+        _ = isPro
+        return true
     }
 
     private func refreshDay() {
@@ -156,6 +174,10 @@ final class AutoOptimizeController: ObservableObject {
     }
 
     func clear() {
+        cloudRefineTask?.cancel()
+        cloudRefineTask = nil
+        isCloudRefining = false
+        runGeneration &+= 1
         phase = .idle
         beforeSnapshot = nil; afterSnapshot = nil; diffs = []; advancedDiffs = []
         reasonNote = nil; tips = []; chosenRecipeId = nil; chosenRecipeTitle = nil
@@ -173,16 +195,14 @@ final class AutoOptimizeController: ObservableObject {
         devicePitchDegrees: Double? = nil
     ) async {
         guard !phase.isRunning else { return }
-        guard canRun(isPro: entitlements.isPro) else {
-            phase = .error("Free Peek limit reached — upgrade for unlimited Auto Optimize")
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "paywall"])
-            Analytics.shared.track("paywall_view", props: ["source": "auto_optimize_limit"])
-            entitlements.showPaywall = true
-            return
-        }
+
+        cloudRefineTask?.cancel()
+        isCloudRefining = false
+        runGeneration &+= 1
+        let generation = runGeneration
 
         PushAnalytics.shared.track(.autoOptimizeStarted)
-        Analytics.shared.track("auto_optimize_start", props: ["source": "ios_local"])
+        Analytics.shared.track("auto_optimize_start", props: ["source": "ios_hybrid_pass1"])
         verifyWarning = nil; diffs = []; advancedDiffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
@@ -232,8 +252,6 @@ final class AutoOptimizeController: ObservableObject {
             return
         }
 
-        consumeFree(isPro: entitlements.isPro)
-
         chosenRecipeId = recipe.id
         chosenRecipeTitle = recipe.title
         reasonNote = local.reason
@@ -275,7 +293,15 @@ final class AutoOptimizeController: ObservableObject {
                 "path": "local",
             ])
             PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
-            scheduleDeepCoachHookIfEnabled(session: session, recipeId: recipe.id)
+            schedulePass2CloudRefine(
+                session: session,
+                entitlements: entitlements,
+                recipe: recipe,
+                sceneNote: sceneNote,
+                probeJPEG: probe,
+                generation: generation,
+                wroteDials: false
+            )
             return
         }
 
@@ -298,24 +324,149 @@ final class AutoOptimizeController: ObservableObject {
             "path": "local",
         ])
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
-        scheduleDeepCoachHookIfEnabled(session: session, recipeId: recipe.id)
+        schedulePass2CloudRefine(
+            session: session,
+            entitlements: entitlements,
+            recipe: recipe,
+            sceneNote: sceneNote,
+            probeJPEG: probe,
+            generation: generation,
+            wroteDials: true
+        )
     }
 
-    /// Deep coach is **off by default**. When enabled in Settings, this is a no-op stub:
-    /// Grok `/api/recommend` must never sit on the AO critical path (no VLM in Optimize).
-    private func scheduleDeepCoachHookIfEnabled(session: CameraSession, recipeId: String) {
-        guard Self.deepCoachEnabled else { return }
-        // Hook reserved for a future non-blocking coach-text enricher.
-        // Intentionally does **not** call api.recommend / any VLM here.
-        Analytics.shared.track("deep_coach_skipped", props: [
-            "reason": "local_first_no_vlm",
-            "recipe_id": recipeId,
-        ])
-        _ = session
-        /*
-         // Future (optional): fire-and-forget coach copy only — never gate shutter/AO.
-         // Task { await enrichTeachWhyFromCloud(recipeId: recipeId) }
-         */
+    // MARK: - Pass 2 (cloud refine, non-blocking)
+
+    /// After Pass 1 Ready: optionally call `/api/recommend` to refine dials **within** the chosen recipe.
+    /// Never blocks shutter. Soft-fails offline / 402 / errors. Applies only if still same generation + recipe.
+    private func schedulePass2CloudRefine(
+        session: CameraSession,
+        entitlements: EntitlementsStore,
+        recipe: Recipe,
+        sceneNote: String,
+        probeJPEG: Data?,
+        generation: Int,
+        wroteDials: Bool
+    ) {
+        guard Self.cloudRefineEnabled else {
+            Analytics.shared.track("cloud_refine_skipped", props: ["reason": "disabled", "recipe_id": recipe.id])
+            return
+        }
+        cloudRefineTask?.cancel()
+        let recipeId = recipe.id
+        let recipeTitle = recipe.title
+        let note = sceneNote
+        let probe = probeJPEG
+        let favorites = Array(entitlements.favoriteIds)
+        let isPro = entitlements.isPro
+
+        cloudRefineTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isCloudRefining = true
+            defer {
+                if self.runGeneration == generation {
+                    self.isCloudRefining = false
+                }
+            }
+
+            let message = """
+            Pass-2 refine for Photo Recipes Auto Optimize.
+            Locked recipe: "\(recipeTitle)" (id: \(recipeId)).
+            Stay on this preset — refine phoneTargets (shutter/ISO/EV/WB/focus/torch/look intensity) within its dial space and coaching only. Do not switch to a different presetId.
+            Sense (on-device): \(self.senseSummary ?? "n/a")
+            Photographer note: \(note.isEmpty ? "(none)" : note)
+            Focus on exposure triangle and technique — no beauty filters or sky replacement.
+            """
+
+            let response: RecommendResponse
+            do {
+                response = try await self.api.recommend(
+                    message: message,
+                    favorites: favorites,
+                    imageJPEGData: probe
+                )
+            } catch is CancellationError {
+                return
+            } catch let APIError.paywall(_) {
+                Analytics.shared.track("cloud_refine_skipped", props: [
+                    "reason": "quota",
+                    "recipe_id": recipeId,
+                ])
+                return
+            } catch {
+                Analytics.shared.track("cloud_refine_fail", props: [
+                    "error": error.localizedDescription,
+                    "recipe_id": recipeId,
+                ])
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            guard self.runGeneration == generation else { return }
+            guard self.chosenRecipeId == recipeId else { return }
+            guard case .ready = self.phase else { return }
+
+            // Prefer staying on Pass 1 recipe; ignore cloud preset switches.
+            let cloudPresetId = response.presetId ?? response.preset?.id
+            if let cloudPresetId, cloudPresetId != recipeId {
+                Analytics.shared.track("cloud_refine_preset_ignored", props: [
+                    "local": recipeId,
+                    "cloud": cloudPresetId,
+                ])
+            }
+
+            if let tw = response.teachWhy?.trimmingCharacters(in: .whitespacesAndNewlines), !tw.isEmpty {
+                self.teachWhy = tw
+            }
+            if let reason = response.reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty {
+                self.reasonNote = reason
+            }
+            if let tips = response.tips, !tips.isEmpty {
+                self.tips = tips
+            }
+            if let coach = response.coachOnly {
+                self.coachOnly = coach
+            }
+            if let pan = response.panCue {
+                self.panCue = pan
+            }
+            if let sense = response.senseSummary, !sense.isEmpty {
+                self.senseSummary = sense
+            }
+
+            if let targets = response.phoneTargets {
+                let notesBefore = session.applyNotes
+                if wroteDials || isPro {
+                    _ = session.applyPhoneTargets(targets, asPro: isPro)
+                }
+                // Look chip: recipes remain source of truth; look is optional intensity on phoneTargets.
+                if let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
+                    var suggested = look
+                    if suggested.intensity == nil {
+                        suggested.intensity = CreativeLookCatalog.defaultIntensity
+                    }
+                    self.suggestedLook = suggested
+                    Analytics.shared.track("look_suggested", props: ["look_id": suggested.id, "source": "cloud_refine"])
+                }
+                session.optimizeReason = self.teachOneLiner ?? self.reasonNote
+                self.advancedDiffs = self.buildAdvancedDiffs(
+                    beforeNotes: notesBefore,
+                    afterNotes: session.applyNotes,
+                    session: session
+                )
+                if isPro {
+                    session.refreshReadouts()
+                    self.afterSnapshot = self.snap(session)
+                    self.diffs = self.buildDiffs(self.beforeSnapshot, self.afterSnapshot, session.clampMessages)
+                    self.agentBaseline = self.afterSnapshot
+                }
+            }
+
+            Analytics.shared.track("cloud_refine_success", props: [
+                "recipe_id": recipeId,
+                "wrote": (wroteDials || isPro) ? "true" : "false",
+            ])
+        }
     }
 
     private func snap(_ session: CameraSession) -> SettingsSnapshot {
