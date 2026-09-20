@@ -15,8 +15,8 @@ struct CameraCoachMarksView: View {
             "See exactly what changed. Tap to tweak."
         ),
         (
-            "Controls",
-            "Light, lens, capture tools, and Looks live here — so the finder stays clear."
+            "More ···",
+            "Library, Coach, and Settings live under ···. Controls (dials & Looks) stay one tap away."
         ),
     ]
 

@@ -384,8 +384,11 @@ final class CameraSession: NSObject, ObservableObject {
         focusPoint = nil
     }
 
+    /// Writes phone-settable dials for Free Peek and Pro alike.
+    /// Soft paywall is Optimize quota (`AutoOptimizeController.canRun`), not dial writes.
+    /// Coach-only levers (aperture / ND / tripod) stay guidance via mapper notes — never forced as phone settings.
     @discardableResult
-    func apply(recipe: Recipe, dials: DialSettings? = nil, asPro: Bool) -> Bool {
+    func apply(recipe: Recipe, dials: DialSettings? = nil) -> Bool {
         let dials = dials ?? recipe.dials
         appliedRecipeId = recipe.id
         appliedRecipeTitle = recipe.title
@@ -394,11 +397,6 @@ final class CameraSession: NSObject, ObservableObject {
         let mapped = RecipeCameraMapper.map(dials: dials, capabilities: capabilities)
         apertureGuidance = mapped.apertureGuidance
         applyNotes = mapped.notes + mapped.unsupported
-
-        guard asPro else {
-            applyNotes.insert("Free Peek: recipe staged as guidance. Upgrade to write settable exposure/focus.", at: 0)
-            return false
-        }
 
         switch dials.mode {
         case .auto, .phoneHdr: captureMode = .auto
@@ -420,13 +418,10 @@ final class CameraSession: NSObject, ObservableObject {
 
 
     /// Shared with Auto Optimize button + Camera voice. Wire keys locked to server #21.
-    /// Capability-gate every lever; skip unsupported; never pretend aperture was set.
+    /// Always writes phone-settable levers (Free Peek + Pro). Capability-gate every lever;
+    /// skip unsupported; never pretend aperture was set. Quota lives in AutoOptimizeController.
     @discardableResult
-    func applyPhoneTargets(_ targets: PhoneTargets, asPro: Bool) -> Bool {
-        guard asPro else {
-            clampMessages.append("Pro required to write phoneTargets (shutter/ISO/EV/focus/zoom).")
-            return false
-        }
+    func applyPhoneTargets(_ targets: PhoneTargets) -> Bool {
         var wrote = false
 
         // Prefer optical cameraDevice over zoom-only.

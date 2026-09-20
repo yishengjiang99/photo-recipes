@@ -164,14 +164,25 @@ struct CameraView: View {
         .sheet(isPresented: $showRecipePicker) {
             RecipePickerSheet { recipe in
                 showRecipePicker = false
-                let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
-                if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+                _ = session.apply(recipe: recipe)
             }
         }
         .sheet(isPresented: $showOverflow) {
             CameraOverflowSheet(
                 showGrid: $session.showGrid,
                 canTeach: optimizer.phase == .ready || optimizer.teachOneLiner != nil,
+                onLibrary: {
+                    showOverflow = false
+                    router.selectedTab = .library
+                },
+                onCoach: {
+                    showOverflow = false
+                    router.selectedTab = .ask
+                },
+                onSettings: {
+                    showOverflow = false
+                    router.selectedTab = .settings
+                },
                 onDials: {
                     showOverflow = false
                     controlsTab = .core
@@ -205,8 +216,7 @@ struct CameraView: View {
                 errorText: recommendError,
                 onApply: { recipe in
                     showRecommendResult = false
-                    let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
-                    if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+                    _ = session.apply(recipe: recipe)
                 },
                 onDismiss: {
                     showRecommendResult = false
@@ -794,8 +804,7 @@ struct CameraView: View {
         guard let id = router.stagedRecipeId,
               let recipe = BundledPresets.recipe(id: id) else { return }
         if router.pendingApply {
-            let ok = session.apply(recipe: recipe, asPro: entitlements.isPro)
-            if !ok && !entitlements.isPro { entitlements.showPaywall = true }
+            _ = session.apply(recipe: recipe)
             router.pendingApply = false
         } else {
             session.appliedRecipeId = recipe.id
@@ -846,6 +855,9 @@ struct CameraView: View {
 struct CameraOverflowSheet: View {
     @Binding var showGrid: Bool
     var canTeach: Bool
+    var onLibrary: () -> Void
+    var onCoach: () -> Void
+    var onSettings: () -> Void
     var onDials: () -> Void
     var onTeach: () -> Void
     var onRecipes: () -> Void
@@ -855,19 +867,38 @@ struct CameraOverflowSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Button("Controls…", action: onDials)
-                if canTeach {
-                    Button("Why this? (Teach)", action: onTeach)
+                Section {
+                    Button {
+                        onLibrary()
+                    } label: {
+                        Label("Library", systemImage: "books.vertical.fill")
+                    }
+                    Button {
+                        onCoach()
+                    } label: {
+                        Label("Coach", systemImage: "text.bubble.fill")
+                    }
+                    Button {
+                        onSettings()
+                    } label: {
+                        Label("Settings", systemImage: "gearshape.fill")
+                    }
                 }
-                Button("Recipes", action: onRecipes)
-                Toggle("Rule of thirds grid", isOn: $showGrid)
-                if let onClearRecipe {
-                    Button("Clear recipe", role: .destructive, action: onClearRecipe)
+                Section {
+                    Button("Controls…", action: onDials)
+                    if canTeach {
+                        Button("Why this? (Teach)", action: onTeach)
+                    }
+                    Button("Recipes", action: onRecipes)
+                    Toggle("Rule of thirds grid", isOn: $showGrid)
+                    if let onClearRecipe {
+                        Button("Clear recipe", role: .destructive, action: onClearRecipe)
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(AppTheme.bg)
-            .navigationTitle("Camera")
+            .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
