@@ -7,6 +7,7 @@ struct SettingsView: View {
 
     @State private var healthText = ""
     @State private var isChecking = false
+    @State private var deepCoachEnabled = AutoOptimizeController.deepCoachEnabled
 
     var body: some View {
         NavigationStack {
@@ -68,6 +69,13 @@ struct SettingsView: View {
                             CameraCoachMarksStore.requestReplay()
                         }
                         Text("Replays the 3 field tips on the Camera tab (Auto Optimize → chips → Controls).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Toggle("Deep coach (Grok)", isOn: $deepCoachEnabled)
+                            .onChange(of: deepCoachEnabled) { _, on in
+                                AutoOptimizeController.deepCoachEnabled = on
+                            }
+                        Text("Off by default. Auto Optimize always runs on-device (metering + Vision + heuristics). Deep coach does not block shutter or dial apply; reserved for optional coach copy later — not used on the AO path in Build 3.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

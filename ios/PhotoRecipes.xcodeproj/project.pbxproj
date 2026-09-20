@@ -46,6 +46,8 @@
 		B2C3D4E5F6471806COACHMARKBF /* CameraCoachMarksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64705COACHMARK1 /* CameraCoachMarksView.swift */; };
 		B2C3D4E5F6471808CREATIVEBF /* CreativeLook.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64707CREATIVE1 /* CreativeLook.swift */; };
 		B2C3D4E5F647180ALOOKENGINBF /* CreativeLookEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */; };
+		BB721C28ACC84FA486C3F89A /* LocalSceneAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01D9FEBC567B4577BFE30A41 /* LocalSceneAnalyzer.swift */; };
+		2C7E3B979B154396BAA2E244 /* LocalAutoOptimizeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -92,6 +94,8 @@
 		A1B2C3D4E5F64705COACHMARK1 /* CameraCoachMarksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCoachMarksView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F64707CREATIVE1 /* CreativeLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLook.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLookEngine.swift; sourceTree = "<group>"; };
+		01D9FEBC567B4577BFE30A41 /* LocalSceneAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSceneAnalyzer.swift; sourceTree = "<group>"; };
+		1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAutoOptimizeEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -204,6 +208,8 @@
 				959973059EE74D68BA9CB789 /* CameraSession.swift */,
 				F9748FD9A4FC4ADA8CD75462 /* RecipeCameraMapper.swift */,
 				F71036156851482B84D96223 /* AutoOptimizeController.swift */,
+				01D9FEBC567B4577BFE30A41 /* LocalSceneAnalyzer.swift */,
+				1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */,
 				A0BAF6BA50984B678FC1982D /* CameraRouter.swift */,
 				BA99C92B807247B092E8E181 /* HorizonMonitor.swift */,
 				3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */,);
@@ -342,6 +348,8 @@
 				C57CB26B218D4FBC97EED001 /* CameraSession.swift in Sources */,
 				9122EA254BBA4753B0454BB7 /* RecipeCameraMapper.swift in Sources */,
 				2735CA93C7B3464C934F7276 /* AutoOptimizeController.swift in Sources */,
+				BB721C28ACC84FA486C3F89A /* LocalSceneAnalyzer.swift in Sources */,
+				2C7E3B979B154396BAA2E244 /* LocalAutoOptimizeEngine.swift in Sources */,
 				D8EA24FBDCD84972938AA600 /* CameraRouter.swift in Sources */,
 				5DD56E7FD5DE4E4CA7328F14 /* HorizonMonitor.swift in Sources */,
 				EB257FBDAD654EAFA1E52D66 /* PhotoLibrarySaver.swift in Sources */,
@@ -393,7 +401,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -420,7 +428,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

@@ -3,6 +3,8 @@ import UIKit
 import Combine
 
 /// Sense → Reason → Apply → Verify (soft) → Ready
+/// Build 3: default path is **local-first** (AVFoundation metering + Vision + heuristics).
+/// No network / no VLM / no `/api/recommend` on the happy path.
 @MainActor
 final class AutoOptimizeController: ObservableObject {
     enum Phase: Equatable {
@@ -73,6 +75,13 @@ final class AutoOptimizeController: ObservableObject {
     @Published var senseSummary: String?
     /// Suggested look from Auto Optimize — never silent apply (Apply / Dismiss chip).
     @Published var suggestedLook: CreativeLook?
+
+    /// Optional Grok “deep coach” — Settings toggle; default OFF. Never blocks AO / shutter.
+    static let deepCoachDefaultsKey = "autoOptimize.deepCoachEnabled"
+    static var deepCoachEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: deepCoachDefaultsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: deepCoachDefaultsKey) }
+    }
 
     var teachOneLiner: String? {
         let tw = teachWhy?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -155,7 +164,14 @@ final class AutoOptimizeController: ObservableObject {
         suggestedLook = nil
     }
 
-    func run(session: CameraSession, entitlements: EntitlementsStore, preferStagedRecipeId: String?, sceneNote: String = "") async {
+    /// Local-first Auto Optimize. Happy path never calls the network or a VLM.
+    func run(
+        session: CameraSession,
+        entitlements: EntitlementsStore,
+        preferStagedRecipeId: String?,
+        sceneNote: String = "",
+        devicePitchDegrees: Double? = nil
+    ) async {
         guard !phase.isRunning else { return }
         guard canRun(isPro: entitlements.isPro) else {
             phase = .error("Free Peek limit reached — upgrade for unlimited Auto Optimize")
@@ -166,96 +182,86 @@ final class AutoOptimizeController: ObservableObject {
         }
 
         PushAnalytics.shared.track(.autoOptimizeStarted)
-        Analytics.shared.track("auto_optimize_start", props: ["source": "ios"])
+        Analytics.shared.track("auto_optimize_start", props: ["source": "ios_local"])
         verifyWarning = nil; diffs = []; advancedDiffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
         beforeSnapshot = snap(session)
         phase = .sensing("Reading light…")
-        try? await Task.sleep(nanoseconds: 350_000_000)
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        // Metering first (instant) — no network.
+        session.refreshReadouts()
         phase = .sensing("Finding subject…")
 
-        let probe: Data
+        // Optional probe for Vision faces / saliency / histogram — stays on-device.
+        var probe: Data?
         do {
             let raw = try await session.captureProbeFrame()
-            if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) { probe = c }
-            else { probe = raw }
+            if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
+                probe = c
+            } else {
+                probe = raw
+            }
         } catch {
-            phase = .error(error.localizedDescription); return
+            // Soft-fail: continue with metering-only heuristics.
+            probe = nil
+            Analytics.shared.track("auto_optimize_probe_soft_fail", props: ["error": error.localizedDescription])
         }
 
-        phase = .reasoning("Matching a recipe…")
-        let message = """
-        Auto Optimize for live capture. Prefer a field recipe from the book presets.         Respond with the best preset for this scene and a short reason.         Focus on exposure triangle and technique — no beauty filters or sky replacement.
-        """
-        let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        let messageWithNote = note.isEmpty ? message : message + "\nPhotographer scene note: \(note)"
+        let signals = await LocalSceneAnalyzer.analyze(
+            session: session,
+            probeJPEG: probe,
+            sceneNote: sceneNote,
+            pitchDegrees: devicePitchDegrees
+        )
+        senseSummary = signals.senseSummary
 
-        let response: RecommendResponse
-        do {
-            response = try await api.recommend(
-                message: messageWithNote,
-                favorites: Array(entitlements.favoriteIds),
-                imageJPEGData: probe
-            )
-        } catch let APIError.paywall(p) {
-            phase = .error(p.error ?? "Free Peek limit reached")
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "paywall"])
-            Analytics.shared.track("paywall_view", props: ["source": "recommend_paywall"])
-            entitlements.showPaywall = true
+        phase = .reasoning("Matching a recipe…")
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        let local = LocalAutoOptimizeEngine.recommend(
+            signals: signals,
+            preferRecipeId: preferStagedRecipeId,
+            capabilities: session.capabilities
+        )
+
+        guard let recipe = BundledPresets.recipe(id: local.recipeId) else {
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "no_recipe", "path": "local"])
+            phase = .error("Couldn’t match a recipe — try again")
             return
-        } catch {
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "recommend"])
-            phase = .error(error.localizedDescription); return
         }
 
         consumeFree(isPro: entitlements.isPro)
 
-        var recipe: Recipe?
-        if let preferred = preferStagedRecipeId.flatMap({ BundledPresets.recipe(id: $0) }) {
-            recipe = preferred
-            phase = .reasoning("Using \(preferred.title)…")
-        }
-        if recipe == nil {
-            recipe = response.preset ?? response.presetId.flatMap { BundledPresets.recipe(id: $0) }
-        }
-        guard let recipe else {
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "no_recipe"])
-            phase = .error("Couldn’t match a recipe — try again"); return
-        }
-
         chosenRecipeId = recipe.id
         chosenRecipeTitle = recipe.title
-        reasonNote = response.reason
-        tips = response.tips ?? recipe.tips
+        reasonNote = local.reason
+        tips = local.tips
+        teachWhy = local.teachWhy
+        coachOnly = local.coachOnly
+        panCue = local.panCue
 
         phase = .applying("Applying shutter & ISO…")
-        try? await Task.sleep(nanoseconds: 280_000_000)
-
-        teachWhy = response.teachWhy
-        coachOnly = response.coachOnly
-        panCue = response.panCue
-        senseSummary = response.senseSummary
+        try? await Task.sleep(nanoseconds: 120_000_000)
 
         let notesBefore = session.applyNotes
         let applied = session.apply(recipe: recipe, asPro: entitlements.isPro)
-        // Same apply path for button + Camera voice: overlay agentic phoneTargets when present.
-        if let targets = response.phoneTargets {
-            _ = session.applyPhoneTargets(targets, asPro: entitlements.isPro)
-            // Suggest look — never silent apply (chip Apply / Dismiss).
-            if let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
-                var suggested = look
-                if suggested.intensity == nil {
-                    suggested.intensity = CreativeLookCatalog.defaultIntensity
-                }
-                phase = .applying("Suggesting look: \(suggested.displayName)…")
-                try? await Task.sleep(nanoseconds: 220_000_000)
-                suggestedLook = suggested
-                Analytics.shared.track("look_suggested", props: ["look_id": suggested.id])
-            }
-        }
-        session.optimizeReason = teachOneLiner ?? reasonNote
+        // Same apply path for button + Camera voice: overlay local phoneTargets.
+        _ = session.applyPhoneTargets(local.phoneTargets, asPro: entitlements.isPro)
 
+        if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
+            var suggested = look
+            if suggested.intensity == nil {
+                suggested.intensity = CreativeLookCatalog.defaultIntensity
+            }
+            phase = .applying("Suggesting look: \(suggested.displayName)…")
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            suggestedLook = suggested
+            Analytics.shared.track("look_suggested", props: ["look_id": suggested.id, "source": "local"])
+        }
+
+        session.optimizeReason = teachOneLiner ?? reasonNote
         advancedDiffs = buildAdvancedDiffs(beforeNotes: notesBefore, afterNotes: session.applyNotes, session: session)
 
         if !applied && !entitlements.isPro {
@@ -263,8 +269,13 @@ final class AutoOptimizeController: ObservableObject {
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
             agentBaseline = afterSnapshot
             phase = .ready
-            Analytics.shared.track("auto_optimize_success", props: ["recipe_id": recipe.id, "coach_only": "true"])
+            Analytics.shared.track("auto_optimize_success", props: [
+                "recipe_id": recipe.id,
+                "coach_only": "true",
+                "path": "local",
+            ])
             PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
+            scheduleDeepCoachHookIfEnabled(session: session, recipeId: recipe.id)
             return
         }
 
@@ -274,17 +285,37 @@ final class AutoOptimizeController: ObservableObject {
         agentBaseline = afterSnapshot
 
         phase = .verifying("Checking exposure…")
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        if let shutter = afterSnapshot?.shutter, let sec = RecipeCameraMapper.parseShutter(shutter), sec >= 1.0/60.0 {
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        if let shutter = afterSnapshot?.shutter, let sec = RecipeCameraMapper.parseShutter(shutter), sec >= 1.0 / 60.0 {
             verifyWarning = "Ready · watch handshake at \(shutter)"
             phase = .verifying("Motion risk — holding shutter speed")
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)
         }
-        // Clear motion verifyWarning so look-suggested ready status can show; keep handshake in tips if needed.
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
-        Analytics.shared.track("auto_optimize_success", props: ["recipe_id": recipe.id])
+        Analytics.shared.track("auto_optimize_success", props: [
+            "recipe_id": recipe.id,
+            "path": "local",
+        ])
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
+        scheduleDeepCoachHookIfEnabled(session: session, recipeId: recipe.id)
+    }
+
+    /// Deep coach is **off by default**. When enabled in Settings, this is a no-op stub:
+    /// Grok `/api/recommend` must never sit on the AO critical path (no VLM in Optimize).
+    private func scheduleDeepCoachHookIfEnabled(session: CameraSession, recipeId: String) {
+        guard Self.deepCoachEnabled else { return }
+        // Hook reserved for a future non-blocking coach-text enricher.
+        // Intentionally does **not** call api.recommend / any VLM here.
+        Analytics.shared.track("deep_coach_skipped", props: [
+            "reason": "local_first_no_vlm",
+            "recipe_id": recipeId,
+        ])
+        _ = session
+        /*
+         // Future (optional): fire-and-forget coach copy only — never gate shutter/AO.
+         // Task { await enrichTeachWhyFromCloud(recipeId: recipeId) }
+         */
     }
 
     private func snap(_ session: CameraSession) -> SettingsSnapshot {

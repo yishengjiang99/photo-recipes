@@ -52,7 +52,7 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 | Live viewfinder + shutter → Camera Roll | ✓ | ✓ |
 | Auto mode capture | ✓ | ✓ |
 | See recipe dials (read-only / ghost) | ✓ | ✓ |
-| **Auto Optimize** (vision → recipe → apply) | **1 / day** | Unlimited |
+| **Auto Optimize** (on-device metering + Vision → recipe → apply) | **1 / day** | Unlimited |
 | Apply recipe → live settable exposure/focus/WB | ✗ | ✓ |
 | Manual MODE A/S/M dials | ✗ (Auto only) | ✓ |
 | Teach mode (“Why this?”) full copy | Teaser | Full |
@@ -60,13 +60,19 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 
 **Auto Optimize quota:** Free Peek gets **1 Auto Optimize/day** (parallel counter in `AutoOptimizeController`; Ask/Vision quota remains separate). Documented choice for v1.
 
-### Agentic MVP loop
+### Agentic MVP loop (Build 3 — local-first)
 
-1. **Sense** — capture a probe JPEG from the session  
-2. **Reason** — `POST /api/recommend` with vision + field prompt  
-3. **Act** — map preset dials via `RecipeCameraMapper` → apply **settable** AVFoundation params (custom exposure duration+ISO, EV bias, focus POI/lock, WB lock). Aperture is **guidance overlay only**.  
-4. **Verify** — soft status step only (multi-round probe loop is a hook for later, max N=1–2)  
+Default **Auto Optimize runs entirely on-device** — no network on the happy path, no VLM.
+
+1. **Sense** — AVFoundation metering (ISO / exposure duration / EV) + optional probe JPEG for **Vision** (face rectangles, attention saliency) and a small luminance histogram (brightness / contrast / warm bias). Pitch from `HorizonMonitor` feeds low-angle cues.  
+2. **Reason** — **heuristics only** in `LocalAutoOptimizeEngine` (no Core ML `.mlmodel` in Build 3; no Grok / `/api/recommend`). Maps signals → one of the five bundled preset IDs + `PhoneTargets` + `teachWhy` / look suggest.  
+3. **Act** — `session.apply(recipe:)` then `session.applyPhoneTargets` (same path as Build 2). Aperture remains **guidance only**. Look is chip-suggested, never silent.  
+4. **Verify** — soft status step only (handshake warning when shutter ≤ 1/60s).  
 5. **Commit** — user taps shutter; optional Teach sheet explains why  
+
+**Model choice:** pure heuristics (scene-note keywords + metering + Vision faces/saliency + histogram). No bundled multimodal / VLM weights. A tiny Apple-friendly Core ML **classifier** (scene labels → presets) may be added later if heuristics plateaus; keep any `.mlmodel` small (&lt;10MB).
+
+**vs old Grok path:** Build 2 AO uploaded a probe to `POST /api/recommend`. Build 3 AO never calls that on the critical path. Outline **Recommend** on Camera still uses the cloud coach API (does not write dials). Settings → **Deep coach (Grok)** is off by default and unused on the AO path (hook reserved for optional coach copy later).
 
 UI chrome follows `docs/design-handoff-camera-v1.md` + `docs/design-handoff-agentic-v1.md` (Auto Optimize pill above shutter, status pill, before→after chip, manual override dirty/reset, Teach sheet).
 
@@ -151,6 +157,7 @@ Camera chrome is compact-aware (`GeometryReader` + `horizontalSizeClass`): on ~3
 ```
 Features/Camera/   CameraView, preview, pan cues, dials, agent chips, teach sheet
 Services/          CameraSession, RecipeCameraMapper, AutoOptimizeController,
+                   LocalSceneAnalyzer, LocalAutoOptimizeEngine,
                    CameraRouter, HorizonMonitor, PhotoLibrarySaver
 ```
 
