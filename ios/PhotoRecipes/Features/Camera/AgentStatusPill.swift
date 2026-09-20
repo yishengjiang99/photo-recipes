@@ -5,9 +5,13 @@ struct AgentStatusPill: View {
     let verifyWarning: String?
     /// When set, shown instead of phase.statusCopy / verifyWarning pairing.
     var statusOverride: String? = nil
+    /// True while Recommend (or Ask) SSE is in flight — pulse even if AO phase is idle.
+    var isBusy: Bool = false
     var onStop: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
+
+    private var effectiveRunning: Bool { isBusy || phase.isRunning }
 
     var body: some View {
         let copy = {
@@ -19,12 +23,12 @@ struct AgentStatusPill: View {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 8, height: 8)
-                    .opacity(phase.isRunning && !reduceMotion ? (pulse ? 0.4 : 1) : 1)
+                    .opacity(effectiveRunning && !reduceMotion ? (pulse ? 0.4 : 1) : 1)
                 Text(copy)
                     .font(AppTheme.bodySm())
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(2)
-                if phase.isRunning, let onStop {
+                if effectiveRunning, let onStop {
                     Button("Stop", action: onStop)
                         .font(AppTheme.caption())
                         .foregroundStyle(AppTheme.inkSecondary)
@@ -36,11 +40,12 @@ struct AgentStatusPill: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(copy)
             .onAppear { startPulseIfNeeded() }
-            .onChange(of: phase.isRunning) { _, _ in startPulseIfNeeded() }
+            .onChange(of: effectiveRunning) { _, _ in startPulseIfNeeded() }
         }
     }
 
     private var dotColor: Color {
+        if isBusy { return AppTheme.agentRunning }
         switch phase {
         case .ready: return AppTheme.agentReady
         case .error: return AppTheme.danger
@@ -52,7 +57,7 @@ struct AgentStatusPill: View {
 
     private func startPulseIfNeeded() {
         pulse = false
-        guard phase.isRunning, !reduceMotion else { return }
+        guard effectiveRunning, !reduceMotion else { return }
         withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
     }
 }

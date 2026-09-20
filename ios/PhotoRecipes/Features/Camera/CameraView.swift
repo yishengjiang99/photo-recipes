@@ -248,11 +248,7 @@ struct CameraView: View {
                 statusMessage: recommendStreamStatus,
                 onApply: { recipe in
                     showRecommendResult = false
-                    _ = session.apply(recipe: recipe)
-                    // Fast Recommend JSON → same applyPhoneTargets path as Auto Optimize.
-                    if entitlements.canApplyDials, let targets = recommendResult?.phoneTargets {
-                        _ = session.applyPhoneTargets(targets)
-                    }
+                    applyRecommendToCamera(recipe: recipe, response: recommendResult)
                 },
                 onDismiss: {
                     showRecommendResult = false
@@ -473,7 +469,7 @@ struct CameraView: View {
         let ctaH: CGFloat = compact ? 40 : 44
 
         return VStack(spacing: compact ? 6 : 8) {
-            if let clamp = session.clampMessages.last {
+            if let clamp = actionableClampMessage {
                 Text(clamp)
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.ink)
@@ -492,6 +488,7 @@ struct CameraView: View {
                 phase: optimizer.phase,
                 verifyWarning: optimizer.verifyWarning,
                 statusOverride: recommendChromeStatus ?? optimizer.pillStatus,
+                isBusy: isRecommending,
                 onStop: { optimizer.clear() }
             )
 
@@ -908,6 +905,15 @@ struct CameraView: View {
         return "Matching a recipe…"
     }
 
+    /// Hide dead-end “not available” / “guidance only” banners after Recommend; keep dial clamps.
+    private var actionableClampMessage: String? {
+        guard let clamp = session.clampMessages.last else { return nil }
+        let lower = clamp.lowercased()
+        let dead = ["not available", "unavailable", "unsupported", "guidance only", "couldn’t apply", "couldn't apply", "left as guidance", "left unchanged"]
+        if dead.contains(where: { lower.contains($0) }) { return nil }
+        return clamp
+    }
+
     /// Coach recommend from viewfinder frame and/or scene note.
     /// Uses `recommendStream` for live status; falls back to non-stream `recommend` if SSE fails to start.
     /// Apply writes recipe + phoneTargets via applyPhoneTargets (same as AO) from the result sheet.
@@ -962,12 +968,21 @@ struct CameraView: View {
                 imageJPEGData: jpeg
             ) { event in
                 streamStarted.mark()
-                Task { @MainActor in
+                // Deliver on main without waiting for the SSE read task to finish (see RecommendStreamEvent note).
+                if Thread.isMainThread {
                     applyRecommendStreamEvent(event)
+                } else {
+                    DispatchQueue.main.async {
+                        applyRecommendStreamEvent(event)
+                    }
                 }
             }
             recommendResult = response
             recommendError = nil
+            // Prefer auto-apply so the viewfinder changes immediately; sheet still explains why.
+            if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
+                applyRecommendToCamera(recipe: recipe, response: response)
+            }
             showRecommendResult = true
             await entitlements.refresh()
         } catch let APIError.paywall(payload) {
@@ -994,6 +1009,9 @@ struct CameraView: View {
                 )
                 recommendResult = response
                 recommendError = nil
+                if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
+                    applyRecommendToCamera(recipe: recipe, response: response)
+                }
                 showRecommendResult = true
                 await entitlements.refresh()
             } catch let APIError.paywall(payload) {
@@ -1011,12 +1029,52 @@ struct CameraView: View {
         }
     }
 
+
+    /// Apply Recommend recipe + phoneTargets + creativeLook onto the live viewfinder (dials + bake path).
+    private func applyRecommendToCamera(recipe: Recipe, response: RecommendResponse?) {
+        _ = session.apply(recipe: recipe)
+        var targets = response?.phoneTargets
+        // Top-level creativeLook is a one-release server fallback mirror.
+        if var t = targets {
+            if t.creativeLook == nil, let top = response?.creativeLook {
+                t.creativeLook = top
+                targets = t
+            }
+        } else if let top = response?.creativeLook {
+            var t = PhoneTargets()
+            t.creativeLook = top
+            targets = t
+        }
+        if entitlements.canApplyDials, let targets {
+            _ = session.applyPhoneTargets(targets, autoApplyLook: true)
+        } else if let look = targets?.creativeLook ?? response?.creativeLook {
+            // Free Peek may lock dials — still bake the look onto preview/still so the finder changes.
+            session.setActiveLook(look)
+            if let lut = targets?.previewLUT, !lut.isEmpty {
+                session.previewLUTId = lut
+            }
+        }
+        session.suppressDeadEndClampMessages()
+        // Promote look onto AO chip state as active (not merely suggested).
+        if session.activeCreativeLook != nil {
+            optimizer.suggestedLook = nil
+        }
+        lookToast = session.activeCreativeLook.map { "Look · \($0.displayName)" }
+        Analytics.shared.track("recommend_applied", props: [
+            "recipe_id": recipe.id,
+            "has_look": session.activeCreativeLook != nil ? "true" : "false",
+            "has_lut": session.previewLUTId != nil ? "true" : "false",
+        ])
+    }
+
     private func applyRecommendStreamEvent(_ event: RecommendStreamEvent) {
         switch event {
         case .phase(let phase):
             recommendStreamPhase = phase
             if let copy = RecommendStreamEvent.statusCopy(forPhase: phase) {
                 recommendStreamStatus = copy
+            } else if !phase.isEmpty, phase != "done", phase != "error" {
+                recommendStreamStatus = phase.replacingOccurrences(of: "_", with: " ").capitalized + "…"
             }
         case .status(let message):
             recommendStreamStatus = message

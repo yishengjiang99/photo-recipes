@@ -429,7 +429,7 @@ final class CameraSession: NSObject, ObservableObject {
     /// Always writes phone-settable levers (Free Peek + Pro). Capability-gate every lever;
     /// skip unsupported; never pretend aperture was set. Quota lives in AutoOptimizeController.
     @discardableResult
-    func applyPhoneTargets(_ targets: PhoneTargets) -> Bool {
+    func applyPhoneTargets(_ targets: PhoneTargets, autoApplyLook: Bool = false) -> Bool {
         var wrote = false
 
         // Prefer optical cameraDevice over zoom-only.
@@ -537,24 +537,32 @@ final class CameraSession: NSObject, ObservableObject {
             previewLUTId = nil
         }
 
-        // P1 — creativeLook is suggested to UI (never silent apply). Capture settings stay primary.
-        // AutoOptimizeController promotes targets.creativeLook → suggestedLook chip (Apply/Dismiss).
+        // creativeLook: AO keeps suggest-via-chip; Recommend auto-applies so the viewfinder changes immediately.
         if let look = targets.creativeLook, !look.id.isEmpty {
-            let intensity = look.intensity ?? CreativeLookCatalog.defaultIntensity
-            applyNotes.append(
-                String(format: "Suggested look “\(look.id)” @ %.0f%% — Apply from chip to bake preview & still.", intensity * 100)
-            )
-            wrote = true
+            if autoApplyLook {
+                setActiveLook(look)
+                wrote = true
+            } else {
+                let intensity = look.intensity ?? CreativeLookCatalog.defaultIntensity
+                applyNotes.append(
+                    String(format: "Suggested look “\(look.id)” @ %.0f%% — Apply from chip to bake preview & still.", intensity * 100)
+                )
+                wrote = true
+            }
         }
 
         // P1 — simulatedAperture only if OS API exists; else coach.
+        // Dead-end "guidance only" / "not available" copy is not pushed to clampMessages when auto-applying
+        // (Recommend) — those banners feel like a failed apply. Coach string still set for dials sheet.
         if let sa = targets.simulatedAperture {
             if applySimulatedAperture(sa) {
                 wrote = true
             } else {
                 let msg = String(format: "f/%.1f guidance only — phone lens is fixed.", sa)
                 simulatedApertureCoach = msg
-                clampMessages.append(msg)
+                if !autoApplyLook {
+                    clampMessages.append(msg)
+                }
             }
         }
 
@@ -998,6 +1006,17 @@ final class CameraSession: NSObject, ObservableObject {
 
 
     // MARK: - Creative Look (user apply) + lens pick
+
+
+    /// Drop non-actionable "not available" / "guidance only" / unsupported banners after Recommend.
+    /// Keeps dial clamps the user can act on (zoom clamped, EV limited, etc.).
+    func suppressDeadEndClampMessages() {
+        let dead = ["not available", "unavailable", "unsupported", "guidance only", "couldn’t apply", "couldn't apply", "left as guidance", "left unchanged"]
+        clampMessages.removeAll { msg in
+            let lower = msg.lowercased()
+            return dead.contains { lower.contains($0) }
+        }
+    }
 
     func setActiveLook(_ look: CreativeLook) {
         guard CreativeLookCatalog.isKnown(look.id) else {
