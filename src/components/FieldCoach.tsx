@@ -820,14 +820,19 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         </div>
       ) : null}
 
-      {(cameraError || error || voiceError) && !describeOpen ? (
-        <div
-          role=      {loading && streamStatus ? (
-        <p className="px-4 py-1 text-center text-xs text-white/70" role="status" aria-live="polite">
+      {loading && streamStatus ? (
+        <p
+          className="absolute inset-x-3 top-14 z-30 px-1 text-center text-xs text-white/70"
+          role="status"
+          aria-live="polite"
+        >
           {streamStatus}
         </p>
       ) : null}
-{error ? 'alert' : 'status'}
+
+      {(cameraError || error || voiceError) && !describeOpen ? (
+        <div
+          role={error ? 'alert' : 'status'}
           className={`absolute inset-x-3 top-14 z-30 rounded-xl px-3 py-2.5 text-sm backdrop-blur ${
             paywalled
               ? 'border border-white/15 bg-black/80 text-white/80'
