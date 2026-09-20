@@ -1430,27 +1430,11 @@ Rules:
 `
 }
 
-
-phoneTargets keys (all optional; omit unsupported): shutter, exposureDurationSec, iso, ev,
-whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint {x,y},
-lensPosition, zoom, cameraDevice (ultraWide|wide|tele), torch {mode,level?}, flash, lowLightBoost,
-videoHDR, frameRate, preferFormatHint, bracket {stops,count?}, monitorSubjectAreaChange,
-maxPhotoDimensions, previewLUT (preview-only), creativeLook {id,intensity?}, simulatedAperture (OS-gated only).
-NEVER put hardware aperture in phoneTargets — use coachOnly.aperture.
-Aliases accepted: presetId≡recipeId, phoneTarget≡phoneTargets.
-
-CRITICAL:
-- Catalog only — recipeId must be an exact id from the list above (or omit).
-- You MUST still control the camera: include core phoneTargets (shutter/iso/ev/whiteBalance/focusMode) when the scene implies them — not tips-only.
-- tips: max 3. Keep JSON compact.
-- creativeLook V1 ids only: crispCool, warmGlow, warmPop, editorialRed, softVintage, monoInk, goldenHour, loFiPunch, tealOrange, blockbuster, moodyFilm, coolBlue, softDream, filmGrain.${favLine}`
-}
-
 function buildFastUserContent(req: RecommendRequest): string | ContentPart[] {
   const note = req.message.trim()
   const text = note
     ? `Scene note from the photographer:\n${note}\n\nSense the scene and reply with the JSON object only.`
-    : 'Sense this photo and reply with the JSON object only (tips + optional recipeId + phoneTargets).'
+    : 'Sense this photo and reply with the JSON object only (recipeId + tips + reason).'
 
   if (!req.imageDataUrl) {
     return text
