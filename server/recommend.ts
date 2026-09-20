@@ -1430,7 +1430,7 @@ Rules:
 `
 }
 
-function buildFastUserContent(req: RecommendRequest): string | ContentPart[] {
+export function buildFastUserContent(req: RecommendRequest): string | ContentPart[] {
   const note = req.message.trim()
   const text = note
     ? `Scene note from the photographer:\n${note}\n\nSense the scene and reply with the JSON object only.`
