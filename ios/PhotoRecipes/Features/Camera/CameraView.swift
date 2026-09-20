@@ -506,6 +506,8 @@ struct CameraView: View {
             sceneMicRow(compact: compact)
                 .padding(.horizontal, hPad)
 
+            // Always enabled + full yellow when camera chrome is shown (auth OK).
+            // Over Free Peek Optimize quota → tap presents Pro paywall (not grayed-out).
             Button {
                 Task { await runOptimize() }
             } label: {
@@ -522,9 +524,9 @@ struct CameraView: View {
                 .foregroundStyle(AppTheme.accentOnAccent)
                 .padding(.horizontal, 18)
                 .frame(height: ctaH)
-                .background(Capsule().fill(AppTheme.accent.opacity(canOptimize ? 1 : 0.4)))
+                .background(Capsule().fill(AppTheme.accent))
             }
-            .disabled(!canOptimize || optimizer.phase.isRunning)
+            .disabled(optimizer.phase.isRunning)
             .accessibilityLabel("Auto Optimize")
 
             if case .ready = optimizer.phase, !showApplyBurst {
@@ -687,7 +689,8 @@ struct CameraView: View {
         return nil
     }
 
-    private var canOptimize: Bool { optimizer.canRun(isPro: entitlements.isPro) }
+    /// Shared Free Peek Optimize pool remaining (Pro / unlimited → true). Used for auto re-run gate + paywall on tap — not for button disabled/gray.
+    private var canOptimize: Bool { optimizer.canRun(entitlements: entitlements) }
 
     private var ruleOfThirds: some View {
         GeometryReader { g in
@@ -745,6 +748,7 @@ struct CameraView: View {
     }
 
     private func runOptimize() async {
+        // Quota exhausted (not Pro/unlimited): present existing Pro paywall — button stays enabled.
         guard canOptimize else {
             entitlements.showPaywall = true
             return
