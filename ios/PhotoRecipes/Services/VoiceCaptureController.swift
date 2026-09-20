@@ -213,7 +213,9 @@ final class VoiceCaptureController: ObservableObject {
 
         tearDownSpeech(emitFinal: false)
         usingOnDevice = false
-        if phase != .error {
+        if case .error = phase {
+            // keep error
+        } else {
             phase = .idle
         }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
