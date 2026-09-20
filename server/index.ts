@@ -25,7 +25,11 @@ import { mountSttRoutes } from './stt.ts'
 import { mountDescribeSceneRoutes } from './describeScene.ts'
 import { mountWaitlistRoutes } from './waitlist.ts'
 import { mountPushRoutes, pushHealthSnippet } from './push.ts'
-import { mountTelemetryRoutes, telemetryHealthSnippet } from './telemetry.ts'
+import {
+  logApiError,
+  mountTelemetryRoutes,
+  telemetryHealthSnippet,
+} from './telemetry.ts'
 import { mountAdminRoutes } from './admin.ts'
 import { getMysqlPool } from './mysql.ts'
 
@@ -47,8 +51,9 @@ app.use(cookieParser())
 // Stripe webhook needs raw body — mount before express.json()
 mountStripeWebhook(app)
 
-// JSON body: text asks (~32kb) or base64 images (~4MB binary → ~5.5MB JSON)
-app.use(express.json({ limit: '6mb' }))
+// JSON body: text asks or base64 vision frames (phone JPEG as data URL).
+// 25mb matches nginx client_max_body_size + MAX_IMAGE_BYTES (~25MB binary).
+app.use(express.json({ limit: '25mb' }))
 app.use(identityMiddleware)
 
 mountStripeRoutes(app)
@@ -191,7 +196,13 @@ function runRecommend(
       const e = err as Error & { status?: number; details?: string }
       const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 502
       // Log message only — never image bytes or full request body
-      console.error('[recommend]', e.message)
+      logApiError(req, {
+        event: parsed.imageDataUrl ? 'optimize_error' : 'api_error',
+        route: '/api/recommend',
+        status,
+        message: e.message || 'Recommendation failed',
+        method: 'POST',
+      })
       res.status(status).json({
         error: e.message || 'Recommendation failed',
       })
@@ -212,11 +223,18 @@ app.post('/api/recommend', (req, res) => {
           err !== null &&
           'code' in err &&
           (err as { code?: string }).code === 'LIMIT_FILE_SIZE'
-        res.status(400).json({
-          error: isSize
-            ? `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`
-            : msg,
+        const status = isSize ? 413 : 400
+        const error = isSize
+          ? `Image too large (max ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`
+          : msg
+        logApiError(req, {
+          event: 'optimize_error',
+          route: '/api/recommend',
+          status,
+          message: error,
+          method: 'POST',
         })
+        res.status(status).json({ error })
         return
       }
 
@@ -274,11 +292,85 @@ app.post('/api/recommend', (req, res) => {
 
   const parsed = parseJsonRecommend((req.body ?? {}) as Record<string, unknown>)
   if ('error' in parsed) {
-    res.status(400).json({ error: parsed.error })
+    const isSize = /too large/i.test(parsed.error)
+    const status = isSize ? 413 : 400
+    if (isSize || /image|base64|multipart/i.test(parsed.error)) {
+      logApiError(req, {
+        event: 'optimize_error',
+        route: '/api/recommend',
+        status,
+        message: parsed.error,
+        method: 'POST',
+      })
+    }
+    res.status(status).json({ error: parsed.error })
     return
   }
   runRecommend(req, res, parsed)
 })
+
+/**
+ * Prefer JSON over Express/HTML default pages for body-too-large and unhandled errors.
+ * nginx 413 HTML still wins if the request never reaches Node — raise client_max_body_size.
+ */
+app.use(
+  (
+    err: unknown,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    if (!err) {
+      next()
+      return
+    }
+    const e = err as Error & {
+      type?: string
+      status?: number
+      statusCode?: number
+    }
+    const isTooLarge =
+      e.type === 'entity.too.large' ||
+      e.status === 413 ||
+      e.statusCode === 413 ||
+      (typeof e.message === 'string' &&
+        /request entity too large/i.test(e.message))
+    if (isTooLarge) {
+      logApiError(req, {
+        event: 'api_error',
+        route: req.path || req.url || '/',
+        status: 413,
+        message: 'Request entity too large',
+        method: req.method,
+      })
+      if (!res.headersSent) {
+        res.status(413).json({
+          error: 'Request entity too large',
+          hint: `Max body size is ~${MAX_IMAGE_BYTES / (1024 * 1024)}MB`,
+        })
+      }
+      return
+    }
+    const status =
+      e.status && e.status >= 400 && e.status < 600
+        ? e.status
+        : e.statusCode && e.statusCode >= 400 && e.statusCode < 600
+          ? e.statusCode
+          : 500
+    logApiError(req, {
+      event: 'api_error',
+      route: req.path || req.url || '/',
+      status,
+      message: (e.message || 'Internal server error').slice(0, 200),
+      method: req.method,
+    })
+    if (!res.headersSent) {
+      res.status(status).json({
+        error: status === 500 ? 'Internal server error' : e.message || 'Request failed',
+      })
+    }
+  },
+)
 
 async function start() {
   const mysqlPool = getMysqlPool()

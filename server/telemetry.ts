@@ -49,6 +49,9 @@ export const TELEMETRY_EVENT_ALLOWLIST = new Set([
   'checkout_redirect',
   // Push (mirror; PushAnalytics allowlist stays separate)
   'push_opened',
+  // Server-side / opaque API failures (also inserted by logApiError)
+  'api_error',
+  'optimize_error',
 ])
 
 const BLOCKED_PROP_KEYS = /^(email|e_?mail|phone|password|token|authorization|cookie|image|photo|frame|base64|gps|lat|lng|longitude|latitude|ssn|name|full.?name)$/i
@@ -263,6 +266,144 @@ export function telemetryHealthSnippet(): {
   return {
     telemetry: true,
     telemetryMysql: isMysqlConfigured() && Boolean(getMysqlPool()),
+  }
+}
+
+
+export type ApiErrorLogInput = {
+  /** Default api_error; use optimize_error for Auto Optimize / recommend+vision failures. */
+  event?: 'api_error' | 'optimize_error'
+  route: string
+  status: number
+  message: string
+  method?: string
+  platform?: string
+  contentLength?: string | number | null
+}
+
+function platformFromReq(req: Request): string {
+  const hdr = req.headers['x-client-platform']
+  const raw = Array.isArray(hdr) ? hdr[0] : hdr
+  if (typeof raw === 'string') {
+    const p = raw.trim().toLowerCase()
+    if (['ios', 'web', 'android', 'server'].includes(p)) return p
+  }
+  const ua = (req.headers['user-agent'] || '').toLowerCase()
+  if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('cfnetwork')) return 'ios'
+  if (ua.includes('android')) return 'android'
+  return 'server'
+}
+
+/**
+ * Persist an API/upload failure to telemetry_events (soft no-op without MySQL).
+ * Never pass image bytes or raw bodies — message is truncated.
+ */
+export function logApiError(req: Request | null, info: ApiErrorLogInput): void {
+  const event = info.event ?? 'api_error'
+  const route = String(info.route || '/').slice(0, 200)
+  const message = String(info.message || 'error').slice(0, 200)
+  const status = Number(info.status) || 0
+  const method = (info.method || req?.method || '').toString().slice(0, 16)
+  const platform = info.platform || (req ? platformFromReq(req) : 'server')
+  const cl =
+    info.contentLength != null
+      ? String(info.contentLength).slice(0, 32)
+      : req?.headers['content-length']
+        ? String(req.headers['content-length']).slice(0, 32)
+        : undefined
+
+  const props: Record<string, string | number | boolean> = {
+    route,
+    status,
+    message,
+  }
+  if (method) props.method = method
+  if (cl) props.content_length = cl
+
+  console.error(`[${event}]`, status, method, route, message)
+
+  void insertTelemetry({
+    app: 'photo-recipes',
+    platform,
+    event,
+    anon_id: 'server-api-error',
+    session_id: null,
+    props,
+    ip_hash: req ? ipHash(req) : null,
+  })
+}
+
+export type RecentApiError = {
+  createdAt: string
+  event: string
+  platform: string
+  route: string
+  status: number | null
+  message: string
+  method: string | null
+  contentLength: string | null
+}
+
+/** Recent api_error / optimize_error rows for the admin dashboard. */
+export async function fetchRecentApiErrors(limit = 40): Promise<RecentApiError[]> {
+  const pool = getMysqlPool()
+  if (!pool) return []
+  const lim = Math.min(100, Math.max(1, limit))
+  try {
+    const [rows] = await pool.query(
+      `SELECT created_at, event, platform, props_json
+       FROM telemetry_events
+       WHERE event IN ('api_error', 'optimize_error')
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [lim],
+    )
+    return (rows as Array<{
+      created_at: Date | string
+      event: string
+      platform: string
+      props_json: unknown
+    }>).map((r) => {
+      let props: Record<string, unknown> = {}
+      const raw = r.props_json
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        props = raw as Record<string, unknown>
+      } else if (typeof raw === 'string') {
+        try {
+          props = JSON.parse(raw) as Record<string, unknown>
+        } catch {
+          props = {}
+        }
+      }
+      const statusRaw = props.status
+      const status =
+        typeof statusRaw === 'number'
+          ? statusRaw
+          : typeof statusRaw === 'string' && Number.isFinite(Number(statusRaw))
+            ? Number(statusRaw)
+            : null
+      const created =
+        r.created_at instanceof Date
+          ? r.created_at.toISOString()
+          : String(r.created_at)
+      return {
+        createdAt: created,
+        event: r.event,
+        platform: r.platform,
+        route: typeof props.route === 'string' ? props.route : '',
+        status,
+        message: typeof props.message === 'string' ? props.message : '',
+        method: typeof props.method === 'string' ? props.method : null,
+        contentLength:
+          props.content_length != null ? String(props.content_length) : null,
+      }
+    })
+  } catch (err) {
+    console.warn(
+      '[telemetry] recent api errors failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return []
   }
 }
 

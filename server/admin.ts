@@ -9,6 +9,7 @@ import { getEntitlementIncomeSnapshot } from './entitlements.ts'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
 import { getStripe, MONTHLY_CENTS, YEARLY_CENTS } from './stripe.ts'
 import { getPushFunnelSnapshot } from './push.ts'
+import { fetchRecentApiErrors } from './telemetry.ts'
 
 const ADMIN_COOKIE = 'pr_admin'
 const COOKIE_MAX_MS = 7 * 24 * 60 * 60 * 1000
@@ -296,11 +297,12 @@ export function mountAdminRoutes(app: Express) {
 
   app.get('/api/admin/summary', requireAdmin, (_req, res) => {
     void (async () => {
-      const [telemetry, stripe, entitlements, push] = await Promise.all([
+      const [telemetry, stripe, entitlements, push, recentErrors] = await Promise.all([
         telemetrySummary(),
         stripeIncomeSnapshot(),
         Promise.resolve(getEntitlementIncomeSnapshot()),
         Promise.resolve(getPushFunnelSnapshot(7)),
+        fetchRecentApiErrors(40),
       ])
       res.json({
         ok: true,
@@ -309,6 +311,7 @@ export function mountAdminRoutes(app: Express) {
         stripe,
         entitlements,
         push,
+        recentErrors,
       })
     })().catch((err: Error) => {
       console.error('[admin] summary:', err.message)
