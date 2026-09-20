@@ -18,5 +18,5 @@ Required for any PR that touches `server/**` (or shared API contracts used by th
 
 ## Out of scope for this gate
 
-- Live APNs delivery (still stubbed until `APNS_*` + provider are wired)
+- Live APNs requires `APNS_*` on the host; unit tests mock HTTP/2 (no Apple calls in CI)
 - iOS client changes (covered by TestFlight workflow separately)

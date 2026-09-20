@@ -1,9 +1,11 @@
 /**
- * APNs send stub for Push Experiment 1.
- * No-ops with structured log unless APNS_* env is present.
+ * APNs HTTP/2 JWT provider for Push Experiment 1.
+ * Fail-soft stub when APNS_* env is missing; live send when configured.
  * Never commit .p8 key material — path or contents via env only.
  */
+import crypto from 'node:crypto'
 import fs from 'node:fs'
+import http2 from 'node:http2'
 
 export type ApnsPayload = {
   aps: {
@@ -21,7 +23,25 @@ export type ApnsPayload = {
 export type ApnsSendResult =
   | { ok: true; stub: true; reason: string }
   | { ok: true; stub: false; status: number }
-  | { ok: false; error: string }
+  | { ok: false; error: string; status?: number }
+
+export type ApnsEnvironment = 'sandbox' | 'production'
+
+type ApnsHttpPostResult = { status: number; body: string }
+
+export type ApnsHttpPost = (args: {
+  host: string
+  path: string
+  headers: Record<string, string>
+  body: string
+}) => Promise<ApnsHttpPostResult>
+
+/** Test seam — when set, skips real Apple HTTP/2. */
+let httpPostOverride: ApnsHttpPost | null = null
+
+export function setApnsHttpPostForTests(fn: ApnsHttpPost | null): void {
+  httpPostOverride = fn
+}
 
 function apnsConfigured(): boolean {
   const keyId = process.env.APNS_KEY_ID?.trim()
@@ -46,20 +66,116 @@ function readP8(): string | null {
   }
 }
 
+function b64urlJson(obj: unknown): string {
+  return Buffer.from(JSON.stringify(obj), 'utf8')
+    .toString('base64url')
+}
+
+function b64urlBuf(buf: Buffer): string {
+  return buf.toString('base64url')
+}
+
+/**
+ * Apple APNs provider token (JWT ES256). Cached ~50 min (Apple allows ≤60).
+ */
+let cachedJwt: { token: string; expMs: number } | null = null
+
+export function clearApnsJwtCacheForTests(): void {
+  cachedJwt = null
+}
+
+function buildApnsJwt(p8Pem: string, keyId: string, teamId: string): string {
+  const now = Math.floor(Date.now() / 1000)
+  if (cachedJwt && cachedJwt.expMs > Date.now() + 60_000) {
+    return cachedJwt.token
+  }
+
+  const header = b64urlJson({ alg: 'ES256', kid: keyId })
+  const payload = b64urlJson({ iss: teamId, iat: now })
+  const signingInput = `${header}.${payload}`
+
+  const key = crypto.createPrivateKey(p8Pem)
+  const sig = crypto.sign('sha256', Buffer.from(signingInput, 'utf8'), {
+    key,
+    dsaEncoding: 'ieee-p1363',
+  })
+  const token = `${signingInput}.${b64urlBuf(sig)}`
+  // Refresh before Apple's 60m max
+  cachedJwt = { token, expMs: Date.now() + 50 * 60 * 1000 }
+  return token
+}
+
+function resolveEnvironment(
+  optsEnv?: ApnsEnvironment,
+): ApnsEnvironment {
+  if (optsEnv === 'sandbox' || optsEnv === 'production') return optsEnv
+  const fromEnv = process.env.APNS_ENVIRONMENT?.trim().toLowerCase()
+  if (fromEnv === 'production') return 'production'
+  return 'sandbox'
+}
+
+function apnsHost(env: ApnsEnvironment): string {
+  return env === 'production'
+    ? 'api.push.apple.com'
+    : 'api.sandbox.push.apple.com'
+}
+
+async function defaultHttp2Post(args: {
+  host: string
+  path: string
+  headers: Record<string, string>
+  body: string
+}): Promise<ApnsHttpPostResult> {
+  const authority = `https://${args.host}`
+  return new Promise((resolve, reject) => {
+    const client = http2.connect(authority)
+    client.on('error', (err) => {
+      client.close()
+      reject(err)
+    })
+
+    const req = client.request({
+      ':method': 'POST',
+      ':path': args.path,
+      ...args.headers,
+    })
+
+    let status = 0
+    const chunks: Buffer[] = []
+
+    req.on('response', (headers) => {
+      const s = headers[':status']
+      status = typeof s === 'number' ? s : Number(s) || 0
+    })
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('error', (err) => {
+      client.close()
+      reject(err)
+    })
+    req.on('end', () => {
+      client.close()
+      resolve({
+        status,
+        body: Buffer.concat(chunks).toString('utf8'),
+      })
+    })
+
+    req.end(args.body)
+  })
+}
+
 /**
  * Send (or stub) an APNs notification.
- * Real HTTP/2 JWT path is intentionally deferred — when APNS_* is set we log
- * intent and return stub:false only after a future provider is wired.
- * Today: always safe no-op with log if unconfigured; if configured, still
- * no-op with a clear log (provider not yet linked) so Ubuntu cron stays safe.
+ * When APNS_* is unset → stub. When set → real HTTP/2 JWT POST.
  */
 export async function sendApns(
   token: string,
   payload: ApnsPayload,
-  opts?: { environment?: 'sandbox' | 'production' },
+  opts?: { environment?: ApnsEnvironment },
 ): Promise<ApnsSendResult> {
-  const env = opts?.environment ?? 'sandbox'
+  const env = resolveEnvironment(opts?.environment)
   const tokenHint = token.slice(0, 8)
+  const deviceToken = token.trim().toLowerCase().replace(/\s+/g, '')
 
   if (!apnsConfigured()) {
     console.info(
@@ -77,34 +193,90 @@ export async function sendApns(
     return { ok: true, stub: true, reason: 'APNS_* env not configured' }
   }
 
-  // Credentials present — still no live provider in Exp1 server surface.
-  // Log structured intent; do not attempt raw HTTP/2 without a reviewed client.
+  const keyId = process.env.APNS_KEY_ID!.trim()
+  const teamId = process.env.APNS_TEAM_ID!.trim()
+  const bundleId =
+    process.env.APNS_BUNDLE_ID?.trim() || 'com.ragnus.mvp'
   const p8 = readP8()
-  console.info(
-    JSON.stringify({
-      event: 'apns_deferred',
-      reason: p8
-        ? 'APNS credentials present; live provider not wired in Exp1 (safe no-op)'
-        : 'APNS_* set but .p8 unreadable',
-      tokenHint,
-      environment: env,
-      keyId: process.env.APNS_KEY_ID?.trim()?.slice(0, 4) + '…',
-      teamIdPresent: Boolean(process.env.APNS_TEAM_ID?.trim()),
-      bundleId:
-        process.env.APNS_BUNDLE_ID?.trim() || 'com.ragnus.mvp',
-      type: payload.type,
-      deepLink: payload.deepLink,
-      chips: payload.recipeChips.map((c) => c.id),
-      tier: payload.entitlementTier,
-    }),
-  )
-  return {
-    ok: true,
-    stub: true,
-    reason: 'APNS credentials present; live send deferred (Exp1 stub)',
+  if (!p8) {
+    console.error(
+      JSON.stringify({
+        event: 'apns_error',
+        reason: 'APNS_* set but .p8 unreadable',
+        tokenHint,
+        environment: env,
+      }),
+    )
+    return { ok: false, error: 'APNS_* set but .p8 unreadable' }
+  }
+
+  if (!/^[0-9a-f]{64}$/.test(deviceToken)) {
+    return { ok: false, error: 'invalid_device_token' }
+  }
+
+  let jwt: string
+  try {
+    jwt = buildApnsJwt(p8, keyId, teamId)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'jwt_sign_failed'
+    console.error(JSON.stringify({ event: 'apns_error', reason: msg, tokenHint }))
+    return { ok: false, error: `jwt_sign_failed: ${msg}` }
+  }
+
+  const host = apnsHost(env)
+  const path = `/3/device/${deviceToken}`
+  const body = JSON.stringify(payload)
+  const headers: Record<string, string> = {
+    authorization: `bearer ${jwt}`,
+    'apns-topic': bundleId,
+    'apns-push-type': 'alert',
+    'apns-priority': '10',
+    'content-type': 'application/json',
+  }
+
+  const post = httpPostOverride ?? defaultHttp2Post
+
+  try {
+    const res = await post({ host, path, headers, body })
+    const ok = res.status === 200
+    console.info(
+      JSON.stringify({
+        event: ok ? 'apns_sent' : 'apns_rejected',
+        status: res.status,
+        tokenHint,
+        environment: env,
+        host,
+        type: payload.type,
+        deepLink: payload.deepLink,
+        chips: payload.recipeChips.map((c) => c.id),
+        tier: payload.entitlementTier,
+        ...(ok ? {} : { body: res.body.slice(0, 200) }),
+      }),
+    )
+    if (ok) return { ok: true, stub: false, status: res.status }
+    return {
+      ok: false,
+      error: res.body || `apns_http_${res.status}`,
+      status: res.status,
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'apns_http_error'
+    console.error(
+      JSON.stringify({
+        event: 'apns_error',
+        reason: msg,
+        tokenHint,
+        environment: env,
+      }),
+    )
+    return { ok: false, error: msg }
   }
 }
 
 export function isApnsEnvPresent(): boolean {
   return apnsConfigured()
+}
+
+export function getDefaultApnsEnvironment(): ApnsEnvironment {
+  return resolveEnvironment()
 }

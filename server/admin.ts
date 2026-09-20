@@ -10,6 +10,12 @@ import { patchOpsConfig, resolveOpsConfig } from './opsConfig.ts'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
 import { getStripe, MONTHLY_CENTS, YEARLY_CENTS } from './stripe.ts'
 import { getPushFunnelSnapshot } from './push.ts'
+import { sendApns, type ApnsPayload, getDefaultApnsEnvironment } from './apns.ts'
+import { getPushPrefs } from './pushPrefs.ts'
+import {
+  listPushTokensForGuest,
+  mergeApnsTokens,
+} from './pushDevices.ts'
 import { fetchRecentApiErrors } from './telemetry.ts'
 
 const ADMIN_COOKIE = 'pr_admin'
@@ -344,6 +350,109 @@ export function mountAdminRoutes(app: Express) {
       ok: true,
       quota: getQuotaConfigSnapshot(),
       config: result.config,
+    })
+  })
+
+  /**
+   * POST /api/admin/push/test — send one APNs test notification (admin-only).
+   * Body: { guestId?: string, token?: string, title?, body?, environment? }
+   * Prefer guestId → prefs/devices token lookup; else raw token.
+   */
+  app.post('/api/admin/push/test', requireAdmin, (req, res) => {
+    void (async () => {
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const guestId =
+        typeof body.guestId === 'string' ? body.guestId.trim() : ''
+      const rawToken =
+        typeof body.token === 'string' ? body.token.trim().toLowerCase() : ''
+      const title =
+        typeof body.title === 'string' && body.title.trim()
+          ? body.title.trim()
+          : 'Photo Recipes test'
+      const alertBody =
+        typeof body.body === 'string' && body.body.trim()
+          ? body.body.trim()
+          : 'Admin push test — tap to open Auto Optimize'
+      const envRaw =
+        typeof body.environment === 'string'
+          ? body.environment.trim().toLowerCase()
+          : ''
+      const environment =
+        envRaw === 'production' || envRaw === 'sandbox'
+          ? (envRaw as 'sandbox' | 'production')
+          : getDefaultApnsEnvironment()
+
+      let token = rawToken
+      let resolvedFrom: 'token' | 'guestId' | null = rawToken ? 'token' : null
+
+      if (!token && guestId) {
+        const prefs = getPushPrefs(guestId)
+        const mysqlTokens = await listPushTokensForGuest(guestId)
+        const tokens = mergeApnsTokens(prefs.apnsDeviceTokens, mysqlTokens)
+        if (!tokens.length) {
+          res.status(404).json({
+            error: 'no_device_token',
+            guestId,
+            hint: 'Register via POST /api/push/register first.',
+          })
+          return
+        }
+        // Prefer matching environment when present
+        const match =
+          tokens.find((t) => t.environment === environment) ?? tokens[0]!
+        token = match.token
+        resolvedFrom = 'guestId'
+      }
+
+      if (!token) {
+        res.status(400).json({
+          error: 'missing_target',
+          hint: 'Provide guestId (preferred) or token.',
+        })
+        return
+      }
+
+      if (!/^[0-9a-f]{64}$/.test(token)) {
+        res.status(400).json({ error: 'invalid_token' })
+        return
+      }
+
+      const payload: ApnsPayload = {
+        aps: {
+          alert: { title, body: alertBody },
+          sound: 'default',
+        },
+        type: 'pre_alarm_shoot_brief',
+        deepLink: 'photo-recipes://auto-optimize',
+        recipeChips: [{ id: 'admin_test', title: 'Admin test' }],
+        entitlementTier: 'free',
+        experiment: 'push_exp1',
+      }
+
+      const result = await sendApns(token, payload, { environment })
+      const base = {
+        tokenHint: token.slice(0, 8),
+        environment,
+        resolvedFrom,
+        guestId: guestId || undefined,
+      }
+      if (!result.ok) {
+        res.json({
+          ok: false,
+          ...base,
+          error: result.error,
+          ...(result.status !== undefined ? { status: result.status } : {}),
+        })
+        return
+      }
+      if (result.stub) {
+        res.json({ ok: true, stub: true as const, reason: result.reason, ...base })
+        return
+      }
+      res.json({ ok: true, stub: false as const, status: result.status, ...base })
+    })().catch((err: Error) => {
+      console.error('[admin] push/test:', err.message)
+      res.status(500).json({ error: err.message || 'push_test_failed' })
     })
   })
 }
