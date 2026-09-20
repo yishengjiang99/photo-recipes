@@ -40,6 +40,7 @@ import {
 } from './telemetry.ts'
 import { mountAdminRoutes } from './admin.ts'
 import { getMysqlPool } from './mysql.ts'
+import { ensurePushDevicesSchema } from './pushDevices.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -556,6 +557,11 @@ async function start() {
       ? 'MySQL: pool ready (telemetry persistence on)'
       : 'MySQL: unset — telemetry accepts events but does not persist',
   )
+  if (mysqlPool) {
+    void ensurePushDevicesSchema().then((ok) => {
+      if (ok) console.log('MySQL: devices + push_tokens schema ready')
+    })
+  }
   if (getStripe()) {
     await ensureStripePrices()
   } else {
