@@ -10,6 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.resolve(__dirname, 'data')
 const STORE_PATH = path.join(DATA_DIR, 'push-prefs.json')
 
+function storePath(): string {
+  const override = process.env.PUSH_PREFS_PATH?.trim()
+  return override || STORE_PATH
+}
+
+
 /** Default quiet hours (user local): 21:00–07:00 */
 export const DEFAULT_QUIET = { start: '21:00', end: '07:00' } as const
 export const DEFAULT_WEEKLY_CAP_FREE = 3
@@ -76,8 +82,8 @@ function emptyStore(): Store {
 function readStore(): Store {
   ensureDataDir()
   try {
-    if (!fs.existsSync(STORE_PATH)) return emptyStore()
-    const raw = fs.readFileSync(STORE_PATH, 'utf8')
+    if (!fs.existsSync(storePath())) return emptyStore()
+    const raw = fs.readFileSync(storePath(), 'utf8')
     const parsed = JSON.parse(raw) as Partial<Store>
     return { prefs: parsed.prefs ?? {} }
   } catch {
@@ -87,9 +93,9 @@ function readStore(): Store {
 
 function writeStore(store: Store) {
   ensureDataDir()
-  const tmp = `${STORE_PATH}.${process.pid}.tmp`
+  const tmp = `${storePath()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, JSON.stringify(store, null, 2), 'utf8')
-  fs.renameSync(tmp, STORE_PATH)
+  fs.renameSync(tmp, storePath())
 }
 
 function defaultPrefs(guestId: string): PushPrefs {
@@ -308,5 +314,15 @@ export function publicPrefsView(p: PushPrefs) {
     sentThisWeekCount: pruneSentThisWeek(p).length,
     lastBriefAt: p.lastBriefAt,
     updatedAt: p.updatedAt,
+  }
+}
+
+/** Test-only: wipe prefs file (use with PUSH_PREFS_PATH isolation). */
+export function clearPushPrefsStoreForTests() {
+  const p = storePath()
+  try {
+    if (fs.existsSync(p)) fs.unlinkSync(p)
+  } catch {
+    /* ignore */
   }
 }

@@ -119,3 +119,9 @@ jobs:
           CC="$(curl -sSI -m 15 "${BASE}/" | tr -d '\r' | grep -i '^cache-control:' || true)"
           echo "Cache-Control: ${CC:-'(none)'}"
           echo "$CC" | grep -qi 'no-cache'
+
+      - name: Post-deploy push register e2e
+        if: success()
+        env:
+          BASE_URL: https://photo.grepawk.com
+        run: npm run e2e:push

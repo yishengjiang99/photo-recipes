@@ -1,0 +1,46 @@
+# Server CI — required gate for server/** changes.
+# Includes push register → prefs read E2E (mock token).
+name: Server CI
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'scripts/e2e-push-register.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/server-ci.yml'
+      - 'server/SERVER_CHANGE_CHECKLIST.md'
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'scripts/e2e-push-register.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/server-ci.yml'
+      - 'server/SERVER_CHANGE_CHECKLIST.md'
+
+concurrency:
+  group: server-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test:server (+ push register e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Server tests (incl. push register e2e)
+        run: npm run test:server
+      - name: Reminder
+        if: failure()
+        run: |
+          echo '::error::Server CI failed. See server/SERVER_CHANGE_CHECKLIST.md — push register E2E must stay green.'

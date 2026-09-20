@@ -116,16 +116,25 @@ describe('parsePhoneTargets', () => {
     assert.match(r.error, /torch\.level/)
   })
 
-  it('rejects bad bracket stops', () => {
-    const tooFar = parsePhoneTargets({ bracket: { stops: [-6, 0, 6] } })
-    assert.equal(isError(tooFar), true)
-    if (!isError(tooFar)) return
-    assert.match(tooFar.error, /bracket\.stops/)
+  it('omits invalid bracket stops (soft-parse)', () => {
+    // Out-of-range / empty stops are dropped — other fields still apply.
+    const tooFar = parsePhoneTargets({
+      shutter: '1/60',
+      bracket: { stops: [-6, 0, 6] },
+    })
+    assert.equal(isError(tooFar), false)
+    if (isError(tooFar)) return
+    assert.equal(tooFar.shutter, '1/60')
+    assert.equal('bracket' in tooFar, false)
 
-    const empty = parsePhoneTargets({ bracket: { stops: [] } })
-    assert.equal(isError(empty), true)
-    if (!isError(empty)) return
-    assert.match(empty.error, /bracket\.stops/)
+    const empty = parsePhoneTargets({
+      iso: 200,
+      bracket: { stops: [] },
+    })
+    assert.equal(isError(empty), false)
+    if (isError(empty)) return
+    assert.equal(empty.iso, 200)
+    assert.equal('bracket' in empty, false)
   })
 
   it('does not require aperture on phoneTargets', () => {
