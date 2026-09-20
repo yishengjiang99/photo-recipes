@@ -276,7 +276,7 @@ const tools = [
     function: {
       name: 'select_preset',
       description:
-        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (AVFoundation levers: shutter/exposureDurationSec/iso/ev/WB/focus/lensPosition/zoom/cameraDevice/torch/flash/HDR/bracket/…), coach-only guidance, optional pan cue, and teachWhy. Aperture stays coachOnly (or simulatedAperture only if OS-gated). previewLUT is preview-only; creativeLook bakes the same grade on preview AND still when intensity > 0. Prefer phoneTargets.creativeLook; optional top-level creativeLook is a one-release fallback. If the user message includes a control tweak (typed or spoken transcript), phoneTargets MUST reflect that ask. This ends the loop.',
+        'Finalize Auto Optimize: pick exactly one catalog preset (keep current recipe or a better match) and emit phone-settable targets (AVFoundation levers: shutter/exposureDurationSec/iso/ev/WB/focus/lensPosition/zoom/cameraDevice/torch/flash/HDR/bracket/…), coach-only guidance, optional pan cue, and teachWhy. Aperture stays coachOnly (or simulatedAperture only if OS-gated). previewLUT is preview-only; creativeLook bakes the same grade on preview AND still when intensity > 0. Prefer phoneTargets.creativeLook; optional top-level creativeLook is a one-release fallback. If the user message includes a control tweak or APPLY-FILTERS / look ask (typed or spoken), phoneTargets MUST reflect that ask — including creativeLook when they want a filter/look applied. This ends the loop.',
       parameters: {
         type: 'object',
         properties: {
@@ -460,7 +460,7 @@ const tools = [
               creativeLook: {
                 type: 'object',
                 description:
-                  'Optional P1 creative grade (ORIGINAL pack ids / product names only e.g. Crisp Cool). Default omit (none/identity). Same grade on preview AND still when intensity > 0; identity at 0. Capture settings remain PRIMARY. intensity optional — server defaults 0.55 when omitted/null. Voice e.g. "warm film look" → warmGlow or moodyFilm.',
+                  'Optional P1 creative grade (ORIGINAL pack ids / product names only e.g. Crisp Cool). Same grade on preview AND still when intensity > 0; identity at 0. Capture settings remain PRIMARY. intensity optional — server defaults 0.55 when omitted/null. REQUIRED when the user asks to apply a filter/look/grade (see APPLY-FILTERS intents). Otherwise default omit (none/identity) unless the scene clearly benefits (SUGGEST). Voice e.g. "warm film look" → warmGlow or moodyFilm; "apply filters" → pick best V1 id for the scene and emit creativeLook.',
                 properties: {
                   id: {
                     type: 'string',
@@ -1175,11 +1175,20 @@ ALTERNATE INPUT (spoken / STT transcripts — secondary):
   • "switch to ultra-wide" → phoneTargets.cameraDevice "ultraWide"; "lock lens near" → lensPosition
   • "torch on low" → torch { mode: "on", level }; "flash off" → flash "off"
   • "bracket for HDR" → bracket { stops: [-2,0,2] }; "re-optimize if subject moves" → monitorSubjectAreaChange true
-  • "warm film look" / "moody grade" / "teal orange" → creativeLook { id, intensity? } mapped to V1 pack (e.g. warmGlow, moodyFilm, tealOrange); intensity optional (server 0.55); default omit / none / identity when no look helps
+  • "warm film look" / "moody grade" / "teal orange" → creativeLook { id, intensity? } mapped to V1 pack (e.g. warmGlow, moodyFilm, tealOrange); intensity optional (server 0.55)
+  • APPLY-FILTERS intents (text or STT) — MUST emit creativeLook (never omit / never empty):
+      "apply filters" / "apply filter" / "add a filter" / "put a filter on" / "use a filter" /
+      "apply a look" / "add a look" / "grade this" / "color grade" / "give it a look" /
+      "make it cinematic" / "make it moody" / "make it warm" / "black and white" / "B&W" /
+      "film look" / "teal and orange" / "add grain"
+    → Still call list_presets + select_preset (keep current recipe if it fits). phoneTargets MUST include creativeLook { id, intensity? }.
+    → Pick the best V1 id for the sensed scene (or the named look if they specified one). Default intensity omit → server 0.55.
+    → Do NOT refuse or reply with coach-only text; the client auto-applies creativeLook on Recommend.
 - When the intent is a control adjustment, phoneTargets MUST include the relevant keys (do not finalize with empty {} if they asked to change a settable control).
 
 CRITICAL RULES:
 - Catalog only: never invent preset ids, titles, or off-catalog recipes.
+- If the user asks to apply a filter/look/grade (APPLY-FILTERS intents), creativeLook is REQUIRED on select_preset — pick a V1 pack id for the scene; never finalize without it.
 - You MUST use tools.
 - Even for text-only (no image), emit core phoneTargets (shutter/iso/ev/whiteBalance/focusMode) when the scene implies them — not only bracket. Do not free-form recommend without select_preset.
 - phoneTargets = AVFoundation levers only (all optional; omit if unsupported): shutter, exposureDurationSec, iso, ev, whiteBalance (string|{temperature,tint}|{redGain,greenGain,blueGain}), focusMode, focusPoint, lensPosition, zoom, cameraDevice (ultraWide|wide|tele), torch {mode,level?}, flash, lowLightBoost, videoHDR, frameRate, preferFormatHint, bracket {stops,count?}, monitorSubjectAreaChange, maxPhotoDimensions, previewLUT (preview-only — NEVER a capture magic filter), creativeLook { id, intensity? 0–1 } (optional P1 bakeable grade from V1 pack — same on preview AND still when intensity>0; default omit/none/identity; intensity defaults 0.55; capture settings remain PRIMARY; product names only e.g. Crisp Cool), simulatedAperture (P1/OS-gated only). SUGGEST a V1 creativeLook when the story clearly benefits (golden hour→goldenHour/warmGlow; night city→coolBlue/moodyFilm; cinematic complementary→tealOrange; high-contrast drama→blockbuster; graphic B&W→monoInk; soft dreamy→softDream; grainy street→filmGrain); omit for neutral/documentary scenes.

@@ -267,3 +267,39 @@ Auto Optimize vision can take tens of seconds with multi-round tools + high-deta
 | `list_presets` payload | slim (id/title/tags/blurb/keySettings) | Details via `get_preset_details` |
 | `MAX_ROUNDS` | 4 | Bound wall-clock |
 
+
+## Apply-filters intents (text + voice → creativeLook)
+
+Free-form / STT commands that mean **apply a look now** (same outcome as Recommend auto-apply on iOS: `applyPhoneTargets(..., autoApplyLook: true)`).
+
+### Utterance → payload contract
+
+| User says (examples) | Server must emit | Notes |
+|----------------------|------------------|-------|
+| "apply filters" / "apply filter" / "add a filter" / "put a filter on" / "use a filter" | `phoneTargets.creativeLook: { id, intensity? }` | **Required.** Pick best V1 id for scene. Intensity omit → **0.55**. |
+| "apply a look" / "add a look" / "give it a look" / "grade this" / "color grade" | same | Same as apply filters. |
+| "make it cinematic" | `creativeLook.id: blockbuster` or `tealOrange` | Scene-dependent. |
+| "make it moody" / "moody film" | `moodyFilm` | |
+| "make it warm" / "warm film look" / "golden hour look" | `warmGlow` / `goldenHour` | |
+| "black and white" / "B&W" / "mono" | `monoInk` | |
+| "teal and orange" / "teal orange" | `tealOrange` | |
+| "add grain" / "film grain" | `filmGrain` | |
+| "soft dreamy" / "dreamy look" | `softDream` | |
+| "cool blue" / "night grade" | `coolBlue` | |
+| Named pack id / product name ("Crisp Cool") | matching V1 `id` | Map display name → id. |
+
+**Always still:** `list_presets` → `select_preset` with a catalog `presetId` (keep current recipe if it fits). Do **not** invent filter brand names (no Instagram/CapCut trademarks).
+
+### iOS client contract
+
+| Field | Path | Apply |
+|-------|------|-------|
+| `creativeLook` | `phoneTargets.creativeLook` (primary) or top-level `RecommendResponse.creativeLook` | Recommend / STT→Recommend: `applyPhoneTargets(..., autoApplyLook: true)` — bake immediately |
+| same | Auto Optimize Pass 2 | suggest chip / confirm (existing AO behavior) |
+
+If `creativeLook` is missing after an APPLY-FILTERS utterance, treat as a **server bug** (prompt/regression) — client should not no-op silently if the utterance matched locally; prefer retry or status “no look returned.”
+
+### V1 ids (canonical)
+
+`crispCool`, `warmGlow`, `warmPop`, `editorialRed`, `softVintage`, `monoInk`, `goldenHour`, `loFiPunch`, `tealOrange`, `blockbuster`, `moodyFilm`, `coolBlue`, `softDream`, `filmGrain`
+
