@@ -108,7 +108,7 @@ final class ApplyFiltersIntentTests: XCTestCase {
             phoneTargets: PhoneTargets(iso: "200", creativeLook: nested),
             creativeLook: top
         )
-        let merged = ApplyFiltersIntent.mergeCreativeLook(response: response, message: "warm")
+        let merged = ApplyFiltersIntent.mergeCreativeLook(response: response, message: "person by a window")
         XCTAssertEqual(merged?.creativeLook?.id, "warmGlow")
         XCTAssertEqual(merged?.iso, "200")
     }
