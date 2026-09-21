@@ -93,8 +93,9 @@ enum ApplyFiltersIntent {
     /// Ordered named-look phrases → CreativeLook id (mirrors server CREATIVE_LOOK_OVERRIDE_RULES).
     /// More specific phrases first; first match wins. "apply filters" alone does not force.
     private static let namedLookPhrases: [(phrases: [String], id: String)] = [
+        // Short "b and w" / "b&w" / "bw" / "mono" go through isBlackAndWhite (token-safe).
         (["apply black and white filter", "black and white", "black & white",
-          "b&w", "b & w", "b and w", "monochrome", "mono ink", "make it black and white"], "monoInk"),
+          "monochrome", "mono ink", "make it black and white"], "monoInk"),
         (["warm pop"], "warmPop"),
         (["crisp cool"], "crispCool"),
         (["editorial red"], "editorialRed"),
