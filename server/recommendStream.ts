@@ -21,8 +21,15 @@ import {
   buildFastSystemPrompt,
   buildFastUserContent,
   extractJsonObject,
+  finalizeCreativeLookForClient,
+  inferCreativeLookOverride,
+  isApplyFiltersIntent,
+  logRecommend,
+  newRecommendCorrelationId,
   parseFastRecommendPayload,
   phoneTargetsFromPreset,
+  promptFingerprint,
+  redactDataUrls,
   type RecommendRequest,
   type RecommendResult,
 } from './recommend.ts'
@@ -138,6 +145,8 @@ export async function recommendWithGrokStream(
 ): Promise<void> {
   const vision = Boolean(req.imageDataUrl)
   const timeoutMs = vision ? FAST_VISION_TIMEOUT_MS : FAST_TEXT_TIMEOUT_MS
+  const cid = req.log?.correlationId ?? newRecommendCorrelationId()
+  const lookOverride = inferCreativeLookOverride(req.message)
   if (!vision && !req.message.trim()) {
     handlers.onPhase('error')
     handlers.onError('Message or image is required', 400)
@@ -161,14 +170,50 @@ export async function recommendWithGrokStream(
     )
   }
 
+  const systemPrompt = buildFastSystemPrompt(req.favorites, vision)
+  const userContent = buildFastUserContent({ ...req, imageDataUrl })
+  const sysFp = promptFingerprint(systemPrompt)
+  const userTextForLog =
+    typeof userContent === 'string'
+      ? userContent
+      : userContent
+          .map((p) =>
+            p.type === 'text'
+              ? p.text
+              : p.type === 'image_url'
+                ? redactDataUrls(p.image_url.url)
+                : '',
+          )
+          .join('\n')
+
+  logRecommend('recommend', 'request_in', {
+    correlationId: cid,
+    guestId: req.log?.guestIdShort,
+    platform: req.log?.platform,
+    message: req.message,
+    vision,
+    path: 'fast-stream',
+    applyFiltersIntent: isApplyFiltersIntent(req.message),
+    creativeLookOverride: lookOverride ?? null,
+    systemPromptLen: sysFp.len,
+    systemPromptSha8: sysFp.sha8,
+  })
+  logRecommend('creativeLook', 'request_in', {
+    correlationId: cid,
+    message: req.message,
+    override: lookOverride ?? null,
+    applyFiltersIntent: isApplyFiltersIntent(req.message),
+    path: 'fast-stream',
+  })
+
   const messages = [
     {
       role: 'system' as const,
-      content: buildFastSystemPrompt(req.favorites, vision),
+      content: systemPrompt,
     },
     {
       role: 'user' as const,
-      content: buildFastUserContent({ ...req, imageDataUrl }),
+      content: userContent,
     },
   ]
 
@@ -194,8 +239,19 @@ export async function recommendWithGrokStream(
 
     let res: Response | null = null
 
-    for (let i = 0; i < modelQueue.length; i++) {
+      let errBody = ''
+  for (let i = 0; i < modelQueue.length; i++) {
       model = modelQueue[i]!
+      logRecommend('recommend', 'xai_outbound', {
+        correlationId: cid,
+        path: 'fast-stream',
+        model,
+        message: req.message,
+        userText: userTextForLog.slice(0, 500),
+        systemPromptLen: sysFp.len,
+        systemPromptSha8: sysFp.sha8,
+        stream: true,
+      })
       try {
         res = await fetch(`${XAI_BASE}/chat/completions`, {
           method: 'POST',
@@ -226,7 +282,7 @@ export async function recommendWithGrokStream(
 
       if (res.ok && res.body) break
 
-      const errBody = await res.text().catch(() => '')
+      errBody = await res.text().catch(() => '')
       const missing =
         res.status === 404 ||
         (res.status === 400 && /model|not found|does not exist/i.test(errBody))
@@ -260,6 +316,13 @@ export async function recommendWithGrokStream(
         if (res.ok && res.body) break
       }
 
+      logRecommend('recommend', 'xai_error', {
+        correlationId: cid,
+        path: 'fast-stream',
+        model,
+        status: res.status,
+        bodySnippet: redactDataUrls(errBody || '').slice(0, 400),
+      })
       handlers.onPhase('error')
       handlers.onError(
         `xAI API error (${res.status}). Check model availability and API key.`,
@@ -332,7 +395,7 @@ export async function recommendWithGrokStream(
       return
     }
 
-    const phoneTargets =
+    const phoneTargetsBase =
       selection.phoneTargets && Object.keys(selection.phoneTargets).length > 0
         ? selection.phoneTargets
         : phoneTargetsFromPreset(preset)
@@ -349,15 +412,37 @@ export async function recommendWithGrokStream(
               : {}),
           }
 
-    // Parity with #119 non-stream: B&W (etc.) forces monoInk onto phoneTargets + top-level.
-    // iOS Camera prefers recommendStream — without this, spoken B&W never gets monoInk.
-    const look = applyCreativeLookMessageOverride(
+    const rawLook = selection.creativeLook ?? phoneTargetsBase.creativeLook
+    logRecommend('recommend', 'xai_response', {
+      correlationId: cid,
+      path: 'fast-stream',
+      model,
+      finishReason: 'stream_done',
+      assembledLen: assembled.length,
+    })
+    logRecommend('creativeLook', 'xai_raw', {
+      correlationId: cid,
+      path: 'fast-stream',
+      model,
+      phoneTargetsCreativeLook: phoneTargetsBase.creativeLook ?? null,
+      topLevelCreativeLook: selection.creativeLook ?? null,
+      rawCreativeLook: rawLook ?? null,
+    })
+    // Bugfix: stream path previously skipped applyCreativeLookMessageOverride,
+    // so spoken B&W never forced monoInk on SSE clients.
+    const finalized = finalizeCreativeLookForClient(
       req.message,
-      selection.creativeLook ?? phoneTargets.creativeLook,
+      phoneTargetsBase,
+      selection.creativeLook,
     )
-    const phoneTargetsOut = look
-      ? { ...phoneTargets, creativeLook: look }
-      : phoneTargets
+    logRecommend('creativeLook', 'after_override', {
+      correlationId: cid,
+      path: 'fast-stream',
+      model,
+      rawCreativeLook: finalized.rawCreativeLook ?? null,
+      finalCreativeLook: finalized.creativeLook ?? null,
+      overrideMatched: finalized.overrideMatched,
+    })
 
     const result: RecommendStreamResultBody = {
       presetId: selection.presetId,
@@ -365,15 +450,23 @@ export async function recommendWithGrokStream(
       reason: selection.reason,
       teachWhy: selection.teachWhy,
       tips: selection.tips,
-      phoneTargets: phoneTargetsOut,
+      phoneTargets: finalized.phoneTargets,
       coachOnly,
       panCue: selection.panCue,
       senseSummary: selection.senseSummary,
-      ...(look ? { creativeLook: look } : {}),
+      ...(finalized.creativeLook ? { creativeLook: finalized.creativeLook } : {}),
       preset,
       model,
       vision,
     }
+
+    logRecommend('recommend', 'result', {
+      correlationId: cid,
+      path: 'fast-stream',
+      model,
+      presetId: selection.presetId,
+      creativeLook: finalized.creativeLook ?? null,
+    })
 
     handlers.onStatus('Recipe ready')
     handlers.onResult(result)
