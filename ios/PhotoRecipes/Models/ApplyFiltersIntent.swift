@@ -60,10 +60,6 @@ enum ApplyFiltersIntent {
         // Exact short utterance
         if shortLooks.contains(t) { return true }
 
-        // Build 29: any LOOK_UTTERANCE_MATRIX / CREATIVE_LOOK_OVERRIDE_RULES hit is APPLY-FILTERS
-        // (covers bare "bw", "monochrome", "lo fi punch", etc. not listed above).
-        if forcedLook(for: raw) != nil { return true }
-
         return false
     }
 
