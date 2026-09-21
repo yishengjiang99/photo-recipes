@@ -189,9 +189,9 @@ jobs:
                 f'/v1/reviewSubmissions?filter[app]={app_id}&limit=20',
                 ok_statuses={404, 403},
               )
+            # READY_FOR_REVIEW shells are often not cancellable; focus on live review.
             open_states = {
-              'READY_FOR_REVIEW', 'WAITING_FOR_REVIEW', 'IN_REVIEW',
-              'UNRESOLVED_ISSUES', 'PENDING_DEVELOPER_RELEASE',
+              'WAITING_FOR_REVIEW', 'IN_REVIEW', 'UNRESOLVED_ISSUES',
             }
             for s in (subs.get('data') or []):
               sattrs = s.get('attributes', {})
@@ -214,51 +214,54 @@ jobs:
                   print('cancel warning', cst, json.dumps(canceled)[:800])
                 else:
                   print('canceled', canceled.get('data', {}).get('attributes', {}).get('state'))
-            # re-fetch version state after cancel
-            time.sleep(2)
-            _, vrefresh = api('GET', f'/v1/appStoreVersions/{version_id}')
-            version = vrefresh['data']
-            vstate = version['attributes'].get('appStoreState')
+            # Poll until cancel settles into an editable version state
+            editable_after = EDITABLE | {'READY_FOR_REVIEW', 'DEVELOPER_REJECTED'}
+            for attempt in range(30):
+              time.sleep(3)
+              _, vrefresh = api('GET', f'/v1/appStoreVersions/{version_id}')
+              version = vrefresh['data']
+              vstate = version['attributes'].get('appStoreState')
+              print(f'version state poll {attempt+1}: {vstate}')
+              if vstate in editable_after or vstate not in (
+                'WAITING_FOR_REVIEW', 'IN_REVIEW', 'PENDING_APPLE_RELEASE',
+              ):
+                break
             print('version state after cancel attempt:', vstate)
 
-          if vstate not in EDITABLE and vstate not in (
-            'WAITING_FOR_REVIEW', 'IN_REVIEW', 'DEVELOPER_REJECTED',
-            'REJECTED', 'METADATA_REJECTED', 'INVALID_BINARY',
-            'PREPARE_FOR_SUBMISSION', 'READY_FOR_REVIEW',
-          ):
-            # If still locked (e.g. still WAITING), try create new version with next patch? User asked for 1.0.
-            # Prefer reporting blocker rather than inventing a new versionString.
-            if vstate in ('PENDING_DEVELOPER_RELEASE', 'PENDING_APPLE_RELEASE', 'PROCESSING_FOR_APP_STORE', 'READY_FOR_SALE'):
-              raise SystemExit(
-                f'Cannot attach/submit: appStoreVersion {version_id} is in non-editable state {vstate}. '
-                f'Create a new versionString or complete prior release in ASC.'
-              )
+          if vstate in ('PENDING_DEVELOPER_RELEASE', 'PENDING_APPLE_RELEASE',
+                        'PROCESSING_FOR_APP_STORE', 'READY_FOR_SALE'):
+            raise SystemExit(
+              f'Cannot attach/submit: appStoreVersion {version_id} is in non-editable state {vstate}. '
+              f'Create a new versionString or complete prior release in ASC.'
+            )
+
+          if vstate in ('WAITING_FOR_REVIEW', 'IN_REVIEW'):
+            raise SystemExit(
+              f'Version {version_id} still {vstate} after cancel attempts; '
+              f'cannot replace build yet. Retry shortly or withdraw in ASC UI.'
+            )
 
           # --- Attach build ---
           print(f'attaching build {build_id} to version {version_id}...')
-          st, _ = api(
-            'PATCH',
-            f'/v1/appStoreVersions/{version_id}/relationships/build',
-            {'data': {'type': 'builds', 'id': build_id}},
-            ok_statuses={409, 422},
-          )
-          if st >= 400:
-            # sometimes already attached — verify
+          for attempt in range(8):
+            st, attach_resp = api(
+              'PATCH',
+              f'/v1/appStoreVersions/{version_id}/relationships/build',
+              {'data': {'type': 'builds', 'id': build_id}},
+              ok_statuses={409, 422},
+            )
             _, rel = api('GET', f'/v1/appStoreVersions/{version_id}/relationships/build')
             current = (rel.get('data') or {}).get('id')
-            print('attach returned', st, 'current build rel', current)
-            if current != build_id:
-              # try again as hard fail with body
-              st2, err2 = api(
-                'PATCH',
-                f'/v1/appStoreVersions/{version_id}/relationships/build',
-                {'data': {'type': 'builds', 'id': build_id}},
-              )
-              print('retry attach', st2)
-            else:
-              print('build already attached')
+            if st < 400 or current == build_id:
+              print('build attached/verified', st, 'current=', current)
+              break
+            print(f'attach attempt {attempt+1} -> {st} current={current} body={json.dumps(attach_resp)[:500]}')
+            time.sleep(5)
           else:
-            print('build attached', st)
+            raise SystemExit(
+              f'Build attach failed: expected {build_id}, got {current}. '
+              f'Last ASC body: {json.dumps(attach_resp)[:1500]}'
+            )
 
           _, rel = api('GET', f'/v1/appStoreVersions/{version_id}/relationships/build')
           attached = (rel.get('data') or {}).get('id')
