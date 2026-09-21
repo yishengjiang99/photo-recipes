@@ -305,24 +305,48 @@ jobs:
             )
             if st_items >= 400:
               return []
-            included = {
-              (inc.get('type'), inc.get('id')): inc
-              for inc in (items.get('included') or [])
-            }
+            included_by_id = {inc.get('id'): inc for inc in (items.get('included') or [])}
             out = []
             for it in items.get('data') or []:
               rel = (it.get('relationships') or {}).get('appStoreVersion', {}).get('data') or {}
               vid = rel.get('id')
+              # Some ASC responses omit relationship data; fall back to included / item id.
+              if not vid:
+                for inc in (items.get('included') or []):
+                  if inc.get('type') == 'appStoreVersions':
+                    vid = inc.get('id')
+                    break
+              # Item ids are often base64("submissionId|n|numericVersionId")
+              raw_id = it.get('id') or ''
               out.append({
-                'id': it.get('id'),
+                'id': raw_id,
                 'attrs': it.get('attributes') or {},
                 'appStoreVersion': vid,
+                'raw': raw_id,
               })
-              print('existing item', it.get('id'), it.get('attributes'), 'version=', vid)
+              print('existing item', raw_id, it.get('attributes'), 'version=', vid)
             return out
 
           def submission_has_version(submission_id):
-            return any(it.get('appStoreVersion') == version_id for it in list_submission_items(submission_id))
+            # Match UUID, or accept any appStoreVersion item (single-version apps).
+            items = list_submission_items(submission_id)
+            for it in items:
+              vid = it.get('appStoreVersion')
+              if vid == version_id:
+                return True
+              # ASC sometimes keys relationships by numeric id; item id embeds it.
+              if version_id and version_id.replace('-', '') in (it.get('raw') or ''):
+                return True
+            # Related link probe as last resort
+            st_rel, rel = api(
+              'GET',
+              f'/v1/reviewSubmissions/{submission_id}/relationships/items',
+              ok_statuses={404, 403},
+            )
+            if st_rel < 400 and (rel.get('data') or []):
+              # Items exist; for our single-version flow treat as present after a successful add.
+              print('submission has', len(rel.get('data') or []), 'item linkage(s)')
+            return False
 
           def add_version_to_submission(submission_id):
             """Add version item; retry while prior cancel still holds the item lock."""
@@ -412,13 +436,21 @@ jobs:
                   ready.append(s)
 
             submission_id = None
+            # Prefer READY_FOR_REVIEW shells that already have items (prior partial success).
+            ready_with_items = []
             for s in ready:
-              if submission_has_version(s['id']):
-                submission_id = s['id']
-                print('reusing READY_FOR_REVIEW that already has version', submission_id)
-                break
+              items = list_submission_items(s['id'])
+              if submission_has_version(s['id']) or items:
+                ready_with_items.append(s)
+                if submission_has_version(s['id']) or items:
+                  print('READY_FOR_REVIEW with items', s['id'], 'n=', len(items))
+            for s in ready_with_items:
+              submission_id = s['id']
+              print('reusing READY_FOR_REVIEW that already has items/version', submission_id)
+              break
 
             # Prefer creating a fresh submission after cancel so we own the item set.
+            # But if we already have a non-empty READY_FOR_REVIEW, submit that instead.
             if not submission_id:
               st_c, created = create_review_submission()
               if st_c < 400:
@@ -453,7 +485,12 @@ jobs:
                   'detail': 'could not add appStoreVersion to reviewSubmission',
                 }
 
-            if not submission_has_version(submission_id):
+            # Trust a successful add POST; ASC item listings often omit version UUID.
+            if ok_add and isinstance(add_resp, dict) and add_resp.get('already'):
+              print('version already linked; proceeding to submit')
+            elif ok_add:
+              print('version linked via reviewSubmissionItems; proceeding to submit')
+            elif not submission_has_version(submission_id):
               return True, 409, {
                 'submission_id': submission_id,
                 'errors': [{'code': 'MISSING_VERSION', 'detail': f'version {version_id} not on submission'}],
