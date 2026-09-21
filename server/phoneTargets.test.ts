@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { parsePhoneTargets, CREATIVE_LOOK_DEFAULT_INTENSITY } from './recommend.ts'
+import {
+  parsePhoneTargets,
+  CREATIVE_LOOK_DEFAULT_INTENSITY,
+  inferCreativeLookOverride,
+  applyCreativeLookMessageOverride,
+} from './recommend.ts'
 
 function isError(r: ReturnType<typeof parsePhoneTargets>): r is { error: string } {
   return typeof r === 'object' && r !== null && 'error' in r
@@ -210,3 +215,41 @@ describe('parsePhoneTargets', () => {
   })
 })
 
+describe('creativeLook message override (B&W / look replace)', () => {
+  it('maps B&W utterances to monoInk @ default intensity', () => {
+    for (const msg of [
+      'black and white',
+      'B&W please',
+      'make it black and white',
+      'mono',
+      'monochrome look',
+    ]) {
+      const o = inferCreativeLookOverride(msg)
+      assert.deepEqual(o, { id: 'monoInk', intensity: CREATIVE_LOOK_DEFAULT_INTENSITY })
+    }
+  })
+
+  it('does not force a look for generic apply-filters (model still must emit)', () => {
+    assert.equal(inferCreativeLookOverride('apply filters'), undefined)
+    assert.equal(inferCreativeLookOverride('warm film look'), undefined)
+  })
+
+  it('replaces a prior look when the new message is B&W', () => {
+    const replaced = applyCreativeLookMessageOverride('B&W', {
+      id: 'warmGlow',
+      intensity: 0.9,
+    })
+    assert.deepEqual(replaced, {
+      id: 'monoInk',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
+  })
+
+  it('keeps model look when message has no B&W override', () => {
+    const kept = applyCreativeLookMessageOverride('apply filters', {
+      id: 'tealOrange',
+      intensity: 0.6,
+    })
+    assert.deepEqual(kept, { id: 'tealOrange', intensity: 0.6 })
+  })
+})

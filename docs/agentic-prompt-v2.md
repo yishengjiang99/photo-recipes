@@ -281,7 +281,7 @@ Free-form / STT commands that mean **apply a look now** (same outcome as Recomme
 | "make it cinematic" | `creativeLook.id: blockbuster` or `tealOrange` | Scene-dependent. |
 | "make it moody" / "moody film" | `moodyFilm` | |
 | "make it warm" / "warm film look" / "golden hour look" | `warmGlow` / `goldenHour` | |
-| "black and white" / "B&W" / "mono" | `monoInk` | |
+| "black and white" / "B&W" / "b&w" / "bw" / "mono" / "monochrome" / "make it black and white" | **required** `creativeLook: { id: "monoInk", intensity? }` | Server also **forces** monoInk via message override (replaces any prior/wrong look). Default intensity **0.55**. |
 | "teal and orange" / "teal orange" | `tealOrange` | |
 | "add grain" / "film grain" | `filmGrain` | |
 | "soft dreamy" / "dreamy look" | `softDream` | |
@@ -296,6 +296,8 @@ Free-form / STT commands that mean **apply a look now** (same outcome as Recomme
 |-------|------|-------|
 | `creativeLook` | `phoneTargets.creativeLook` (primary) or top-level `RecommendResponse.creativeLook` | Recommend / STT→Recommend: `applyPhoneTargets(..., autoApplyLook: true)` — bake immediately |
 | same | Auto Optimize Pass 2 | suggest chip / confirm (existing AO behavior) |
+
+**LOOK OVERRIDE:** each new user message / STT final **replaces** any prior `creativeLook` intent — do not blend looks across turns.
 
 If `creativeLook` is missing after an APPLY-FILTERS utterance, treat as a **server bug** (prompt/regression) — client should not no-op silently if the utterance matched locally; prefer retry or status “no look returned.”
 
