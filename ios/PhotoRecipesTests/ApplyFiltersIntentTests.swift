@@ -62,9 +62,21 @@ final class ApplyFiltersIntentTests: XCTestCase {
     }
 
     func testForcedLook_nonBW_isNil() {
-        XCTAssertNil(ApplyFiltersIntent.forcedLook(for: "warm"))
-        XCTAssertNil(ApplyFiltersIntent.forcedLook(for: "cinematic"))
-        XCTAssertNil(ApplyFiltersIntent.forcedLook(for: "person by a window"))
+        let phrases = [
+            "warm", "cinematic", "person by a window",
+            "teal orange", "make it warm", "grab and walk",
+        ]
+        for phrase in phrases {
+            XCTAssertFalse(
+                ApplyFiltersIntent.isBlackAndWhite(phrase),
+                "isBlackAndWhite unexpectedly true for \(phrase)"
+            )
+            let look = ApplyFiltersIntent.forcedLook(for: phrase)
+            XCTAssertTrue(
+                look == nil,
+                "forcedLook unexpectedly \(look?.id ?? "?") for \(phrase)"
+            )
+        }
     }
 
     // MARK: - resolvedLook / mergeCreativeLook (nested preferred)

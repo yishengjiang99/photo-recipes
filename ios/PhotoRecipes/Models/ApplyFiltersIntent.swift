@@ -71,12 +71,21 @@ enum ApplyFiltersIntent {
             .lowercased()
         guard !t.isEmpty else { return false }
         if t.contains("black and white") || t.contains("black & white") { return true }
-        if t.contains("b&w") || t.contains("b & w") || t.contains("b and w") { return true }
         if t.contains("monochrome") { return true }
+        // Tokenize so "grab and walk" does not false-positive on "b and w".
         let tokens = t
             .split(whereSeparator: { !$0.isLetter && $0 != "&" })
             .map(String.init)
-        if tokens.contains("bw") || tokens.contains("mono") || tokens.contains("b&w") { return true }
+        if tokens.contains("b&w") || tokens.contains("bw") || tokens.contains("mono") { return true }
+        // "b and w" / "b & w" as three tokens
+        for i in 0..<tokens.count {
+            if tokens[i] == "b" {
+                if i + 1 < tokens.count, tokens[i + 1] == "and" || tokens[i + 1] == "&",
+                   i + 2 < tokens.count, tokens[i + 2] == "w" {
+                    return true
+                }
+            }
+        }
         if t == "bw" || t == "mono" || t == "b&w" { return true }
         return false
     }
