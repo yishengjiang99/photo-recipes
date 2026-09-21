@@ -351,10 +351,12 @@ jobs:
           def add_version_to_submission(submission_id):
             """Add version item; retry while prior cancel still holds the item lock."""
             last = None
+            existing_items = list_submission_items(submission_id)
+            if submission_has_version(submission_id) or existing_items:
+              # Non-empty shell from a prior partial success — do not re-POST.
+              print(f'submission {submission_id} already has {len(existing_items)} item(s); skip add')
+              return True, 200, {'already': True}
             for attempt in range(20):
-              if submission_has_version(submission_id):
-                print(f'version {version_id} already on submission {submission_id}')
-                return True, 200, {'already': True}
               st_item, item_resp = api(
                 'POST', '/v1/reviewSubmissionItems',
                 {
@@ -384,11 +386,16 @@ jobs:
                 for assoc in ((err.get('meta') or {}).get('associatedErrors') or {}).values():
                   for a in assoc or []:
                     codes.append(a.get('code') or '')
-              # Already on this submission (duplicate) — treat as success
-              if any('DUPLICATE' in c or 'ALREADY' in c for c in codes) and submission_has_version(submission_id):
-                return True, st_item, item_resp
+              # Already linked to this or another resolving submission
+              if any('DUPLICATE' in c or 'ALREADY' in c for c in codes):
+                items_now = list_submission_items(submission_id)
+                if items_now:
+                  return True, st_item, {'already': True, **(item_resp if isinstance(item_resp, dict) else {})}
               # Still locked by canceled/other submission — wait and retry
               if any(c == 'STATE_ERROR.ITEM_PART_OF_ANOTHER_SUBMISSION' for c in codes):
+                # If THIS submission already holds an item, proceed
+                if list_submission_items(submission_id):
+                  return True, st_item, {'already': True}
                 time.sleep(5)
                 continue
               # Stale empty READY_FOR_REVIEW that cannot take this version
