@@ -5,11 +5,12 @@ import UserNotifications
 /// Experiment 1 APNs client: permission after first successful Auto Optimize,
 /// token register, foreground/tap → deep link `photo-recipes://auto-optimize`.
 ///
-/// Build 22 root-cause fix: never call `registerForRemoteNotifications` until
-/// after `application(_:didFinishLaunching:)` (and again on scene active).
-/// Build 21 called it from `configure()`/`AppModel.init` before the
-/// `UIApplicationDelegateAdaptor` was ready, so the token callback was dropped
-/// and `POST /api/push/register` never fired (while `push_permission_*` events did).
+/// Build 22: gate `registerForRemoteNotifications` until after
+/// `application(_:didFinishLaunching:)` (and again on scene active).
+/// Build 23: Release/Archive entitlements use `aps-environment=production`
+/// (Debug keeps development). TF distribution + development entitlement caused
+/// `didFailToRegister` → no device token → never `POST /api/push/register`.
+/// Also: sync main-thread token callbacks + `apns_*` push/events observability.
 @MainActor
 final class PushNotificationManager: NSObject, ObservableObject {
     static let shared = PushNotificationManager()
@@ -194,12 +195,29 @@ final class PushNotificationManager: NSObject, ObservableObject {
     func didRegisterDeviceToken(_ data: Data) {
         let hex = data.map { String(format: "%02x", $0) }.joined()
         deviceTokenHex = hex
-        print("[Push] didRegisterDeviceToken len=\(hex.count)")
+        print("[Push] didRegisterDeviceToken len=\(hex.count) env=\(Self.apnsEnvironment)")
+        analytics.track(
+            .apnsTokenReceived,
+            properties: [
+                "tokenLen": "\(hex.count)",
+                "environment": Self.apnsEnvironment,
+                "build": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?",
+            ]
+        )
         Task { await registerTokenWithServer(hex) }
     }
 
     func didFailToRegister(error: Error) {
-        print("[Push] didFailToRegister: \(error.localizedDescription)")
+        let msg = error.localizedDescription
+        print("[Push] didFailToRegister: \(msg)")
+        analytics.track(
+            .apnsRegisterFailed,
+            properties: [
+                "error": String(msg.prefix(200)),
+                "environment": Self.apnsEnvironment,
+                "build": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?",
+            ]
+        )
         // Retries continue via requestAPNsDeviceToken's scheduled loop.
     }
 
@@ -348,7 +366,8 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         // Mark launch ready BEFORE any deferred registerForRemoteNotifications runs.
-        Task { @MainActor in
+        // Sync on main — UIApplicationDelegate is already main-thread.
+        MainActor.assumeIsolated {
             PushNotificationManager.shared.noteAppLaunchReady(reason: "did_finish_launching")
         }
         return true
@@ -358,7 +377,8 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
-        Task { @MainActor in
+        // Synchronous on main — avoid Task { @MainActor } race that can drop the token.
+        MainActor.assumeIsolated {
             PushNotificationManager.shared.didRegisterDeviceToken(deviceToken)
         }
     }
@@ -367,13 +387,13 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        Task { @MainActor in
+        MainActor.assumeIsolated {
             PushNotificationManager.shared.didFailToRegister(error: error)
         }
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        Task { @MainActor in
+        MainActor.assumeIsolated {
             PushNotificationManager.shared.noteAppLaunchReady(reason: "become_active")
         }
     }

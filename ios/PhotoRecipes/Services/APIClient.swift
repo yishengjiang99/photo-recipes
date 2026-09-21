@@ -504,6 +504,12 @@ final class APIClient: ObservableObject {
         var event: String
         var properties: [String: String]?
         var timestamp: String?
+
+        enum CodingKeys: String, CodingKey {
+            case event, timestamp
+            // Server sanitizeProps reads `props` (not `properties`).
+            case properties = "props"
+        }
     }
 
     /// POST /api/push/events — allowlisted names only. Soft-fail on 404/503.
