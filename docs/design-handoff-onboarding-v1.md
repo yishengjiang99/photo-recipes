@@ -1,52 +1,51 @@
-# Grok Camera — iOS onboarding landing v1 (visuals only)
+# Grok Camera — iOS onboarding v1 (single screen)
 
-**Bundle:** `com.ragnus.mvp` · **Brand on screens:** Grok Camera (Photo Recipes product / darkroom language)  
-**Ask:** Don’t open cold into the camera permission sheet.  
-**Status:** Mock / flow only — no eng implementation until CoS + user review.  
-**Mocks:** `assets/marketing/onboarding/`  
+**Bundle:** `com.ragnus.mvp` · **Brand:** Grok Camera  
+**Status:** Visual mock only — no eng until CoS + user review.  
+**Mocks:** `assets/marketing/onboarding/` — **canonical:** `08-single-screen.png`  
 **Palette:** Neutral Graphite + Signal Amber (A).
 
 ---
 
-## Flow (locked)
+## Layout decision (user lock)
+
+**One screen** (not a multi-page carousel before CTA):
 
 ```
-Landing → Carousel (3–4) → Get Started → Camera permission → Main Camera
-                                                      ↘
-                         AFTER first successful capture → Push permission (LATER)
+┌─────────────────────────────┐
+│        Grok Camera          │  wordmark
+│                             │
+│     〈   [ tip card ]   〉   │  chevron L/R cycles tips
+│           · · ·             │  dots
+│                             │
+│     [  Get Started  ]       │  amber filled — ALWAYS on this screen
+│  We'll ask for Camera next  │
+└─────────────────────────────┘
 ```
 
-- **Get Started** requests **camera only** (mic later, contextual with voice/scene note).  
-- **Push** never on Get Started / landing / carousel.
+- Tips cycle in-place via **← → chevrons** (and optional swipe).  
+- **Get Started** is on the **first/only** screen — never gated behind finishing tips.  
+- Get Started → **camera permission only** → main camera.  
+- **Push** = later (after first successful capture) — not here.
 
-See `07-flow-diagram.png`.
+Flow art: `09-single-flow.png`.
 
 ---
 
-## Recommended copy
+## Tip content (3–4, cycle)
 
-### Landing (prefer `01-landing-hero.png`; alt `01b`)
-- Wordmark: **Grok Camera**  
-- Value: **AI camera coach — shutter, ISO, focus**  
-- Or slogan: **Set the shot. Then take it.**  
-- Sub: Auto Optimize dials · field looks · teach why  
-- Chrome: Swipe to continue
-
-### Carousel
 | # | Title | Body |
 |---|-------|------|
 | 1 | Auto Optimize | Point at the shot — we write shutter, ISO, EV, WB & focus. |
-| 2 | Recommend & Looks | Get a recipe from the scene. Field looks are capture grades — not beauty filters. |
-| 3 | Capture with confidence | See settings change, then press shutter. Teach explains why. |
-| 4 (optional) | Scene note (optional) | Add a short note or dictate later — never required to start. |
+| 2 | Recommend & Looks | Recipe from the scene. Looks = capture grades, not beauty filters. |
+| 3 | Capture | See settings change, then press shutter. Teach explains why. |
+| 4 (optional) | Scene note | Optional note/dictate later — never required to start. |
 
-**Mock caveat:** Card 3 illustration must not imply on-device aperture writes — coach-only for aperture/ND/tripod. Prefer shutter/ISO/EV chips in final art.
+Landing hero value (above or instead of tip title when tip 1): **AI camera coach — shutter, ISO, focus** or slogan **Set the shot. Then take it.**
 
-### Get Started (`06-get-started.png`)
-- Line: **Ready when you are.**  
-- CTA: **Get Started** (amber fill, dark label)  
-- Micro: **We'll ask for Camera access next.**  
-- No notification copy.
+### Get Started
+- CTA: **Get Started**  
+- Micro: **We'll ask for Camera access next.**
 
 ---
 
@@ -54,15 +53,10 @@ See `07-flow-diagram.png`.
 
 | File | Role |
 |------|------|
-| `01-landing-hero.png` | Landing A (recommended) |
-| `01b-landing-alt.png` | Landing B |
-| `02-carousel-auto-optimize.png` | Carousel 1 |
-| `03-carousel-recommend-looks.png` | Carousel 2 |
-| `04-carousel-shutter.png` | Carousel 3 |
-| `05-carousel-scene-note.png` | Carousel 4 optional |
-| `06-get-started.png` | Primary CTA |
-| `07-flow-diagram.png` | Eng flow |
+| **`08-single-screen.png`** | **Canonical single-screen mock** |
+| `09-single-flow.png` | Flow diagram |
+| `01`–`07` | Earlier multi-step explorations (superseded for product) |
 
 ---
 
-*Designer · onboarding mocks v1 · review before code*
+*Designer · onboarding single-screen · user condensed*
