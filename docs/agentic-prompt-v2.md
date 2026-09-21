@@ -281,7 +281,7 @@ Free-form / STT commands that mean **apply a look now** (same outcome as Recomme
 | "make it cinematic" | `creativeLook.id: blockbuster` or `tealOrange` | Scene-dependent. |
 | "make it moody" / "moody film" | `moodyFilm` | |
 | "make it warm" / "warm film look" / "golden hour look" | `warmGlow` / `goldenHour` | |
-| "black and white" / "B&W" / "b&w" / "bw" / "mono" / "monochrome" / "make it black and white" | **required** `creativeLook: { id: "monoInk", intensity? }` | Server also **forces** monoInk via message override (replaces any prior/wrong look). Default intensity **0.55**. |
+| "black and white" / "B&W" / "b&w" / "b and w" / "bw" / "mono" / "monochrome" / "make it black and white" | **required** `phoneTargets.creativeLook: { id: "monoInk", intensity? }` (+ top-level mirror) | Server **forces** monoInk via `withCreativeLookOverride` into **both** nested `phoneTargets.creativeLook` and top-level (iOS prefers nested). Default intensity **0.55**. |
 | "teal and orange" / "teal orange" | `tealOrange` | |
 | "add grain" / "film grain" | `filmGrain` | |
 | "soft dreamy" / "dreamy look" | `softDream` | |

@@ -5,6 +5,7 @@ import {
   CREATIVE_LOOK_DEFAULT_INTENSITY,
   inferCreativeLookOverride,
   applyCreativeLookMessageOverride,
+  withCreativeLookOverride,
 } from './recommend.ts'
 
 function isError(r: ReturnType<typeof parsePhoneTargets>): r is { error: string } {
@@ -251,5 +252,22 @@ describe('creativeLook message override (B&W / look replace)', () => {
       intensity: 0.6,
     })
     assert.deepEqual(kept, { id: 'tealOrange', intensity: 0.6 })
+  })
+
+  it('withCreativeLookOverride nests monoInk into phoneTargets for B&W', () => {
+    const out = withCreativeLookOverride('B&W', { bracket: { stops: 1 } }, { id: 'warmGlow', intensity: 0.9 })
+    assert.deepEqual(out.creativeLook, {
+      id: 'monoInk',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
+    assert.deepEqual(out.phoneTargets.creativeLook, out.creativeLook)
+    assert.deepEqual(out.phoneTargets.bracket, { stops: 1 })
+  })
+
+  it('maps spoken "b and w" to monoInk', () => {
+    assert.deepEqual(inferCreativeLookOverride('b and w'), {
+      id: 'monoInk',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
   })
 })

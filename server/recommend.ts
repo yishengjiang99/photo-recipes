@@ -112,7 +112,7 @@ export const CREATIVE_LOOK_DEFAULT_INTENSITY = 0.55
 
 /** Deterministic look overrides from the latest user message (replaces any prior look intent). */
 const BW_LOOK_RE =
-  /\b(black\s*and\s*white|b\s*&\s*w|b\s*\/\s*w|bw|mono(?:chrome)?)\b|make\s+it\s+black\s+and\s+white/i
+  /\b(black\s*and\s*white|b\s*and\s*w|b\s*&\s*w|b\s*\/\s*w|bw|mono(?:chrome)?)\b|make\s+it\s+black\s+and\s+white/i
 
 export function inferCreativeLookOverride(message: string): CreativeLook | undefined {
   const m = message.trim()
@@ -135,6 +135,30 @@ export function applyCreativeLookMessageOverride(
   if (forced) return forced
   return look
 }
+
+
+/** Force message-intent look onto both top-level and phoneTargets (iOS applies nested). */
+export function withCreativeLookOverride(
+  message: string,
+  phoneTargets: PhoneTargets,
+  topLook?: CreativeLook,
+): { phoneTargets: PhoneTargets; creativeLook?: CreativeLook } {
+  const look = applyCreativeLookMessageOverride(
+    message,
+    topLook ?? phoneTargets.creativeLook,
+  )
+  if (!look) {
+    return {
+      phoneTargets,
+      ...(phoneTargets.creativeLook ? { creativeLook: phoneTargets.creativeLook } : {}),
+    }
+  }
+  return {
+    phoneTargets: { ...phoneTargets, creativeLook: look },
+    creativeLook: look,
+  }
+}
+
 
 const CREATIVE_LOOK_ID_SET = new Set<string>(CREATIVE_LOOK_IDS)
 
@@ -1399,19 +1423,21 @@ async function recommendWithToolLoop(
 
     if (selection) {
       const preset = presets.find((p) => p.id === selection!.presetId)!
+      const lookApplied = withCreativeLookOverride(
+        req.message,
+        selection.phoneTargets,
+        selection.creativeLook,
+      )
       return {
         presetId: selection.presetId,
         reason: selection.reason,
         teachWhy: selection.teachWhy,
         tips: selection.tips,
-        phoneTargets: selection.phoneTargets,
+        phoneTargets: lookApplied.phoneTargets,
         coachOnly: selection.coachOnly,
         panCue: selection.panCue,
         senseSummary: selection.senseSummary,
-        ...(() => {
-          const look = applyCreativeLookMessageOverride(req.message, selection.creativeLook)
-          return look ? { creativeLook: look } : {}
-        })(),
+        ...(lookApplied.creativeLook ? { creativeLook: lookApplied.creativeLook } : {}),
         preset,
         model,
         // Do not return `messages` — they embed the vision data URL (pass-through only).
@@ -1850,19 +1876,21 @@ async function recommendFastOneShot(
             ? { tripod: true }
             : {}),
         }
+  const lookApplied = withCreativeLookOverride(
+    req.message,
+    phoneTargets,
+    selection.creativeLook,
+  )
   return {
     presetId: selection.presetId,
     reason: selection.reason,
     teachWhy: selection.teachWhy,
     tips: selection.tips,
-    phoneTargets,
+    phoneTargets: lookApplied.phoneTargets,
     coachOnly,
     panCue: selection.panCue,
     senseSummary: selection.senseSummary,
-    ...(() => {
-          const look = applyCreativeLookMessageOverride(req.message, selection.creativeLook)
-          return look ? { creativeLook: look } : {}
-        })(),
+    ...(lookApplied.creativeLook ? { creativeLook: lookApplied.creativeLook } : {}),
     preset,
     model,
   }
