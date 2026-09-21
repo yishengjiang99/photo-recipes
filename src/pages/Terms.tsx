@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { LegalShell } from '../components/LegalShell'
 
 const SUPPORT_EMAIL = 'yisheng.jiang@gmail.com'
-const LAST_UPDATED = 'September 19, 2026'
+const LAST_UPDATED = 'September 20, 2026'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -17,14 +17,15 @@ export function Terms() {
   return (
     <LegalShell
       title="Terms of Use"
-      description={`Last updated ${LAST_UPDATED}. Terms for Photo Recipes / Grepawk Photos.`}
+      description={`Last updated ${LAST_UPDATED}. Terms for Grok Camera (Photo Recipes / Grepawk Photos).`}
       path="/terms"
     >
       <p>
         These Terms of Use (“Terms”) govern your access to and use of{' '}
+        <strong className="text-ink">Grok Camera</strong> (the iOS app; also known as{' '}
         <strong className="text-ink">Photo Recipes</strong> /{' '}
-        <strong className="text-ink">Grepawk Photos</strong> (the “Service”), including the website
-        at{' '}
+        <strong className="text-ink">Grepawk Photos</strong> as alternate or former names; the
+        “Service”), including the website at{' '}
         <a className="text-accent-soft hover:underline" href="https://photo.grepawk.com">
           https://photo.grepawk.com
         </a>
@@ -33,8 +34,9 @@ export function Terms() {
 
       <Section title="1. The Service">
         <p>
-          Photo Recipes provides educational field photography presets, live camera coaching, Auto
-          Optimize (where available), Ask Grok / Photo Vision recommendations, and related tools.
+          Grok Camera / Photo Recipes provides educational field photography presets, live camera
+          coaching, Recommend / Apply look, Auto Optimize (where available), Ask Grok / Photo Vision
+          recommendations, optional product push notifications when you opt in, and related tools.
           Recommendations and dial suggestions are informational. You remain responsible for camera
           settings, safe shooting, and the photos you capture.
         </p>
@@ -55,8 +57,9 @@ export function Terms() {
       <Section title="3. Free Peek and Pro">
         <p>
           Browsing recipes and limited Free Peek features (for example, a limited number of Auto
-          Optimize or Ask Grok uses per day) may be available without payment. Paid features
-          (“Photo Recipes Pro”) unlock additional capability as described in the product UI.
+          Optimize, Recommend, or Ask Grok uses per day) may be available without payment. Paid
+          features (“Grok Camera Pro” / “Photo Recipes Pro”) unlock additional capability as
+          described in the product UI.
         </p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
@@ -92,10 +95,17 @@ export function Terms() {
 
       <Section title="5. AI features">
         <p>
-          Ask Grok, Photo Vision, speech-to-text, and Auto Optimize vision steps may send text
-          and/or images you provide to third-party AI providers (including xAI) to generate
-          recommendations. Outputs can be wrong or incomplete. Do not rely on them as professional
-          advice. Do not submit content you are not allowed to share.
+          Recommend, Apply look, Ask Grok, Photo Vision, speech-to-text, and Auto Optimize vision
+          steps may send text and/or a compressed probe frame or photo you select to our API and
+          then to third-party AI providers (including xAI) for that request only, to generate
+          recommendations. We do not sync your full Camera Roll for these features. Outputs can be
+          wrong or incomplete. Do not rely on them as professional advice. Do not submit content
+          you are not allowed to share.
+        </p>
+        <p>
+          Optional product push notifications (when you opt in) are separate from AI features; they
+          use an APNs device token tied to your guest / anonymous id and are described further in
+          our Privacy Policy.
         </p>
       </Section>
 
