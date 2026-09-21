@@ -59,12 +59,40 @@ Secrets (manual on server — never auto-copied):
     STRIPE_WEBHOOK_SECRET=whsec_…
     RESEND_API_KEY=re_…
     # Optional: RESEND_SEGMENT_ID=…  (waitlist / field-notes segment)
+    # --- Push / APNs (Phase 0 live send; keep experiment OFF until TestFlight proof) ---
+    PUSH_EXP1_ENABLED=false
+    # BLAST CAPABILITY (tick + test-send APNs) — rotate if leaked
+    PUSH_CRON_SECRET=long-random-cron-secret
+    APNS_KEY_ID=
+    APNS_TEAM_ID=
+    # Must match ios PRODUCT_BUNDLE_IDENTIFIER (com.ragnus.mvp)
+    APNS_BUNDLE_ID=com.ragnus.mvp
+    # Preferred: absolute path to AuthKey_XXX.p8 on this host (mode 640, readable by service user)
+    APNS_P8_PATH=/etc/photo-recipes/AuthKey_XXXXXX.p8
+    # Or PEM with literal \n (avoid if possible; never commit the real key)
+    # APNS_P8_CONTENTS=
+    # Proof (sandbox): curl -sS -X POST https://YOUR_DOMAIN/api/push/test-send \
+    #   -H 'Content-Type: application/json' -H "X-Push-Cron-Secret: $PUSH_CRON_SECRET" \
+    #   -d '{"token":"<deviceToken>","environment":"sandbox","title":"APNs proof"}'
+    # Production APNs also needs: -H 'X-Push-Test-Allow-Production: 1'
+    # PUSH_CRON_SECRET is blast capability (tick + test-send) — rotate if leaked.
+    # Do NOT set PUSH_EXP1_ENABLED=true until sandbox TestFlight delivery is confirmed.
     ENV
     sudo chmod 640 /etc/photo-recipes.env
     sudo chown root:www-data /etc/photo-recipes.env
     sudo systemctl restart photo-recipes
 
   Stripe webhook URL: https://YOUR_DOMAIN/api/stripe-webhook
+
+  APNs Ubuntu notes:
+    - Keep PUSH_EXP1_ENABLED=false until /api/push/test-send proves sandbox delivery on TestFlight.
+    - Place .p8 under /etc/photo-recipes/ (not in the rsync tree); point APNS_P8_PATH at it.
+    - Bundle id must be com.ragnus.mvp (ios PRODUCT_BUNDLE_IDENTIFIER) — not a different reverse-DNS.
+    - Cron/test secret (PUSH_CRON_SECRET / X-Push-Cron-Secret) is BLAST CAPABILITY — can trigger
+      APNs via /api/push/tick and /api/push/test-send; rotate immediately if leaked.
+    - Sandbox test-send: secret only. Production APNs test-send also needs
+      X-Push-Test-Allow-Production: 1 (hard refuse 403 without it).
+    - Cron: POST /api/push/tick with X-Push-Cron-Secret (same secret as test-send).
 
 Examples:
   DEPLOY_HOST=1.2.3.4 ./deploy.sh

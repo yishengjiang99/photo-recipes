@@ -18,5 +18,6 @@ Required for any PR that touches `server/**` (or shared API contracts used by th
 
 ## Out of scope for this gate
 
-- Live APNs requires `APNS_*` on the host; unit tests mock HTTP/2 (no Apple calls in CI)
+- Live APNs requires `APNS_*` on the host; unit tests mock HTTP/2 (no Apple calls in CI). Delivery is wired in `server/apns.ts` (HTTP/2 + JWT); keep `PUSH_EXP1_ENABLED=false` until TestFlight sandbox proof via `POST /api/push/test-send`.
+- `PUSH_CRON_SECRET` (X-Push-Cron-Secret) can trigger APNs sends via `/api/push/tick` and `/api/push/test-send` — treat as **blast capability**; rotate immediately if leaked.
 - iOS client changes (covered by TestFlight workflow separately)
