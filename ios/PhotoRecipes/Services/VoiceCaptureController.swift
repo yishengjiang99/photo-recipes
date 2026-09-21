@@ -6,6 +6,10 @@ import os.log
 /// Tap-to-talk dictation with live partials in the bound text field.
 /// Prefer on-device SFSpeechRecognizer; else Apple Speech (still streams partials);
 /// Grok `/api/stt` batch only when Speech is unavailable (no live partials).
+///
+/// Build 25: while mic is listening, ~1.0s silence after speech end-points an
+/// utterance (onTranscript) without stopping the session — Camera can auto-run
+/// Recommend/AO per sentence. Tap-Stop still finalizes any leftover speech.
 @MainActor
 final class VoiceCaptureController: ObservableObject {
     enum Phase: Equatable {
@@ -30,8 +34,12 @@ final class VoiceCaptureController: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioEngine: AVAudioEngine?
     private var latestTranscript = ""
-    private var didEmitFinal = false
+    /// Full transcript already delivered via silence/tap endpoint — next utterance is the delta.
+    private var committedTranscript = ""
     private var usingSpeechFramework = false
+    /// Debounced silence endpoint while still recording (~0.8–1.2s; pick 1.0s).
+    private var silenceEndpointTask: Task<Void, Never>?
+    private static let silenceEndpointNanoseconds: UInt64 = 1_000_000_000
 
     // Grok batch fallback
     private var recorder: AVAudioRecorder?
@@ -62,10 +70,12 @@ final class VoiceCaptureController: ObservableObject {
     }
 
     func cancel() {
+        silenceEndpointTask?.cancel()
+        silenceEndpointTask = nil
         tearDownSpeech(emitFinal: false)
         tearDownRecorder()
         latestTranscript = ""
-        didEmitFinal = false
+        committedTranscript = ""
         usingSpeechFramework = false
         streamsPartials = false
         onPartial = nil
@@ -79,8 +89,10 @@ final class VoiceCaptureController: ObservableObject {
     private func start() async {
         phase = .requestingPermission
         latestTranscript = ""
-        didEmitFinal = false
+        committedTranscript = ""
         streamsPartials = false
+        silenceEndpointTask?.cancel()
+        silenceEndpointTask = nil
 
         let micOK = await requestMic()
         permission = AVAudioSession.sharedInstance().recordPermission
@@ -163,11 +175,16 @@ final class VoiceCaptureController: ObservableObject {
 
                     if let result {
                         let text = result.bestTranscription.formattedString
+                        let changed = text != self.latestTranscript
                         self.latestTranscript = text
-                        // Stream every update into the field; commit final only on Stop
-                        // so Auto Optimize / finalize aren't fired mid-utterance.
+                        // Stream every update into the field.
                         if !text.isEmpty {
                             self.onPartial?(text)
+                        }
+                        // Pause endpointing: after ~1s silence with new speech, emit utterance
+                        // without stopping the mic (CoS: voice → look auto-apply).
+                        if self.phase == .recording, changed, !text.isEmpty {
+                            self.scheduleSilenceEndpoint()
                         }
                     }
 
@@ -217,6 +234,56 @@ final class VoiceCaptureController: ObservableObject {
         }
     }
 
+    // MARK: - Silence endpoint (keep listening)
+
+    private func scheduleSilenceEndpoint() {
+        silenceEndpointTask?.cancel()
+        silenceEndpointTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(nanoseconds: Self.silenceEndpointNanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, self.phase == .recording, self.usingSpeechFramework else { return }
+            self.emitUtteranceEndpoint(keepListening: true)
+        }
+    }
+
+    /// Emit the uncommitted delta since the last endpoint. When `keepListening`, mic stays open.
+    private func emitUtteranceEndpoint(keepListening: Bool) {
+        let full = latestTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !full.isEmpty else {
+            if !keepListening {
+                phase = .error("Didn't catch that — try again")
+            }
+            return
+        }
+
+        let utterance: String
+        let committed = committedTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if committed.isEmpty {
+            utterance = full
+        } else if full.hasPrefix(committed) {
+            utterance = String(full.dropFirst(committed.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if full == committed {
+            utterance = ""
+        } else {
+            // Recognizer revised earlier words — treat whole string as the latest intent.
+            utterance = full
+        }
+
+        committedTranscript = full
+        silenceEndpointTask?.cancel()
+        silenceEndpointTask = nil
+
+        guard !utterance.isEmpty else { return }
+        onPartial?(full)
+        onTranscript?(utterance)
+        log.info("endpoint utteranceChars=\(utterance.count) keepListening=\(keepListening)")
+    }
+
     // MARK: - Stop / finalize
 
     private func stopAndFinalize() async {
@@ -228,15 +295,17 @@ final class VoiceCaptureController: ObservableObject {
     }
 
     private func stopSpeechAndFinalize() async {
+        silenceEndpointTask?.cancel()
+        silenceEndpointTask = nil
         recognitionRequest?.endAudio()
         if let engine = audioEngine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
         }
 
-        // Brief window for Speech to deliver isFinal; then commit latest partial.
+        // Brief window for Speech to deliver a last partial; then commit leftover.
         try? await Task.sleep(nanoseconds: 350_000_000)
-        emitFinalIfNeeded(latestTranscript)
+        emitUtteranceEndpoint(keepListening: false)
 
         tearDownSpeech(emitFinal: false)
         usingSpeechFramework = false
@@ -247,18 +316,6 @@ final class VoiceCaptureController: ObservableObject {
             phase = .idle
         }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-    }
-
-    private func emitFinalIfNeeded(_ text: String) {
-        guard !didEmitFinal else { return }
-        didEmitFinal = true
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            phase = .error("Didn't catch that — try again")
-            return
-        }
-        onPartial?(trimmed)
-        onTranscript?(trimmed)
     }
 
     private func stopGrokAndTranscribe() async {
@@ -303,7 +360,7 @@ final class VoiceCaptureController: ObservableObject {
 
     private func tearDownSpeech(emitFinal: Bool) {
         if emitFinal {
-            emitFinalIfNeeded(latestTranscript)
+            emitUtteranceEndpoint(keepListening: false)
         }
         recognitionTask?.cancel()
         recognitionTask = nil

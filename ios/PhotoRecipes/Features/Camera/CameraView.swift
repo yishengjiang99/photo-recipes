@@ -20,6 +20,8 @@ struct CameraView: View {
     @State private var isDescribingScene = false
     @State private var showMicDenied = false
     @State private var describeTask: Task<Void, Never>?
+    /// In-flight voice → Recommend/AO; each new endpointed utterance cancels & replaces.
+    @State private var voiceIntentTask: Task<Void, Never>?
 
     @State private var showDials = false
     @State private var showTeach = false
@@ -157,6 +159,7 @@ struct CameraView: View {
         .onDisappear {
             voice.cancel()
             describeTask?.cancel()
+            voiceIntentTask?.cancel()
             chromeToastTask?.cancel()
             applyBurstTask?.cancel()
             captureFeedbackTask?.cancel()
@@ -917,18 +920,38 @@ struct CameraView: View {
         sceneFromViewfinder = false
     }
 
-    /// Final utterance: APPLY-FILTERS → Recommend SSE (auto-apply look); else AO.
+    /// Endpointed utterance (silence pause or tap-Stop): APPLY-FILTERS → Recommend SSE
+    /// with **this utterance** as message (server #119 forces B&W → monoInk); else AO.
+    /// Latest utterance cancels any in-flight Recommend/AO — looks don't stack.
     private func applyCameraVoiceFinal(_ text: String) {
-        applyCameraVoicePartial(text)
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        // APPLY-FILTERS (apply filters / make it cinematic / …) uses Recommend message as-is.
-        if ApplyFiltersIntent.matches(sceneNote) || ApplyFiltersIntent.matches(t) {
-            Task { await runRecommend() }
+        // Partials already paint the full Speech transcript into sceneNote for display.
+        // Intent matching + Recommend message use **last utterance only**, not the note.
+        let utterance = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !utterance.isEmpty else { return }
+
+        cancelInFlightVoiceIntent()
+
+        if ApplyFiltersIntent.matches(utterance) {
+            // Pass utterance as Recommend message so server look-force (monoInk @ 0.55) sees B&W.
+            voiceIntentTask = Task { await runRecommend(messageOverride: utterance) }
             return
         }
         // Default mic path: Auto Optimize → applyPhoneTargets (PR #11); AO Pass 2 keeps autoApplyLook false.
-        Task { await runOptimize() }
+        voiceIntentTask = Task { await runOptimize() }
+    }
+
+    /// Cancel prior voice-driven Recommend/AO so a later utterance replaces (e.g. warm → B&W).
+    private func cancelInFlightVoiceIntent() {
+        voiceIntentTask?.cancel()
+        voiceIntentTask = nil
+        if optimizer.phase.isRunning {
+            optimizer.clear()
+        }
+        if isRecommending {
+            isRecommending = false
+            recommendStreamStatus = nil
+            recommendStreamPhase = nil
+        }
     }
 
     private func refreshSceneFromViewfinder() async {
@@ -1016,7 +1039,9 @@ struct CameraView: View {
     /// Coach recommend from viewfinder frame and/or scene note.
     /// Uses `recommendStream` for live status; falls back to non-stream `recommend` if SSE fails to start.
     /// Apply writes recipe + phoneTargets via applyPhoneTargets (same as AO) from the result sheet.
-    private func runRecommend() async {
+    /// - Parameter messageOverride: when set (voice APPLY-FILTERS), sent as Recommend `message`
+    ///   instead of the full Scene note so server look-force + intent use last utterance only.
+    private func runRecommend(messageOverride: String? = nil) async {
         recommendError = nil
         recommendResult = nil
         recommendStreamStatus = "Matching a recipe…"
@@ -1029,27 +1054,35 @@ struct CameraView: View {
         }
 
         let note = sceneNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let override = messageOverride?.trimmingCharacters(in: .whitespacesAndNewlines)
         var jpeg: Data?
         do {
+            try Task.checkCancellation()
             let raw = try await session.captureProbeFrame()
+            try Task.checkCancellation()
             if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
                 jpeg = c
             } else if !raw.isEmpty {
                 jpeg = raw
             }
+        } catch is CancellationError {
+            return
         } catch {
             // Soft-fail probe; may still recommend from scene note alone.
         }
 
         let hadHeldFrame = jpeg != nil
+        let fromVoice = !(override?.isEmpty ?? true)
         Analytics.shared.track("recommend_cta_tap", props: [
             "surface": "camera",
-            "source": "shutter_row",
+            "source": fromVoice ? "voice_endpoint" : "shutter_row",
             "had_held_frame": hadHeldFrame ? "true" : "false",
         ])
 
         let message: String
-        if !note.isEmpty {
+        if let override, !override.isEmpty {
+            message = override
+        } else if !note.isEmpty {
             message = note
         } else if jpeg != nil {
             message = "From viewfinder"
@@ -1061,6 +1094,7 @@ struct CameraView: View {
 
         let streamStarted = RecommendStreamStartFlag()
         do {
+            try Task.checkCancellation()
             let response = try await APIClient.shared.recommendStream(
                 message: message,
                 favorites: Array(entitlements.favoriteIds),
@@ -1076,15 +1110,27 @@ struct CameraView: View {
                     }
                 }
             }
+            try Task.checkCancellation()
             recommendResult = response
             recommendError = nil
-            // Prefer auto-apply so the viewfinder changes immediately; sheet still explains why.
+            // Prefer auto-apply so the viewfinder changes immediately (autoApplyLook: true; no schema change).
+            // Server #119 may force monoInk @ 0.55 for B&W utterances.
             if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
                 applyRecommendToCamera(recipe: recipe, response: response)
+            } else {
+                // Look-only payload (no recipe) — still auto-apply creativeLook onto finder.
+                applyRecommendLookOnly(response: response)
             }
             assertApplyFiltersLook(message: message, response: response)
-            showRecommendResult = true
+            // Voice auto-apply: toast look name; skip result sheet so no second tap.
+            if fromVoice, session.activeCreativeLook != nil {
+                showRecommendResult = false
+            } else {
+                showRecommendResult = true
+            }
             await entitlements.refresh()
+        } catch is CancellationError {
+            return
         } catch let APIError.paywall(payload) {
             recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
             entitlements.showPaywall = true
@@ -1102,19 +1148,29 @@ struct CameraView: View {
             // Stream failed to start — fall back to non-stream recommend.
             recommendStreamStatus = "Matching a recipe…"
             do {
+                try Task.checkCancellation()
                 let response = try await APIClient.shared.recommend(
                     message: message,
                     favorites: Array(entitlements.favoriteIds),
                     imageJPEGData: jpeg
                 )
+                try Task.checkCancellation()
                 recommendResult = response
                 recommendError = nil
                 if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
                     applyRecommendToCamera(recipe: recipe, response: response)
+                } else {
+                    applyRecommendLookOnly(response: response)
                 }
                 assertApplyFiltersLook(message: message, response: response)
-                showRecommendResult = true
+                if fromVoice, session.activeCreativeLook != nil {
+                    showRecommendResult = false
+                } else {
+                    showRecommendResult = true
+                }
                 await entitlements.refresh()
+            } catch is CancellationError {
+                return
             } catch let APIError.paywall(payload) {
                 recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
                 entitlements.showPaywall = true
@@ -1130,6 +1186,42 @@ struct CameraView: View {
         }
     }
 
+
+    /// When Recommend returns creativeLook without a resolvable recipe, still bake onto finder.
+    private func applyRecommendLookOnly(response: RecommendResponse) {
+        var targets = response.phoneTargets
+        if var t = targets {
+            if t.creativeLook == nil, let top = response.creativeLook {
+                t.creativeLook = top
+                targets = t
+            }
+        } else if let top = response.creativeLook {
+            var t = PhoneTargets()
+            t.creativeLook = top
+            targets = t
+        }
+        guard let targets, targets.creativeLook != nil || response.creativeLook != nil else { return }
+        if entitlements.canApplyDials {
+            _ = session.applyPhoneTargets(targets, autoApplyLook: true)
+        } else if let look = targets.creativeLook ?? response.creativeLook {
+            session.setActiveLook(look)
+        }
+        session.suppressDeadEndClampMessages()
+        if session.activeCreativeLook != nil {
+            optimizer.suggestedLook = nil
+        }
+        presentLookToastIfNeeded()
+    }
+
+    private func presentLookToastIfNeeded() {
+        guard let look = session.activeCreativeLook else { return }
+        let copy = "Look · \(look.displayName)"
+        lookToast = copy
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            if lookToast == copy { lookToast = nil }
+        }
+    }
 
     /// Client matched APPLY-FILTERS but server returned no creativeLook — never silent no-op.
     private func assertApplyFiltersLook(message: String, response: RecommendResponse) {
@@ -1172,11 +1264,13 @@ struct CameraView: View {
         if session.activeCreativeLook != nil {
             optimizer.suggestedLook = nil
         }
-        lookToast = session.activeCreativeLook.map { "Look · \($0.displayName)" }
+        // e.g. "Look · Mono Ink" after B&W → monoInk @ 0.55 auto-apply (no second Apply tap).
+        presentLookToastIfNeeded()
         Analytics.shared.track("recommend_applied", props: [
             "recipe_id": recipe.id,
             "has_look": session.activeCreativeLook != nil ? "true" : "false",
             "has_lut": session.previewLUTId != nil ? "true" : "false",
+            "look_id": session.activeCreativeLook?.id ?? "",
         ])
     }
 

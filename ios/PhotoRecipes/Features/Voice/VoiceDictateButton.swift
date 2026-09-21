@@ -11,7 +11,7 @@ struct VoiceDictateButton: View {
     var onWillStart: (() -> Void)? = nil
     /// Interim / partial transcript for the current utterance (live in the text field).
     var onPartial: ((String) -> Void)? = nil
-    /// Final utterance — commit cleanly; Camera also kicks Auto Optimize from here.
+    /// Endpointed utterance (silence pause or tap-Stop). Camera: APPLY-FILTERS → Recommend / else AO.
     var onTranscript: (String) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
