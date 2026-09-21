@@ -63,6 +63,30 @@ enum ApplyFiltersIntent {
         return false
     }
 
+    /// Deterministic B&W → monoInk (mirrors server BW_LOOK_RE / #119).
+    /// Used client-side so spoken B&W still bakes if SSE omits or wrong-looks.
+    static func isBlackAndWhite(_ raw: String) -> Bool {
+        let t = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !t.isEmpty else { return false }
+        if t.contains("black and white") || t.contains("black & white") { return true }
+        if t.contains("b&w") || t.contains("b & w") || t.contains("b and w") { return true }
+        if t.contains("monochrome") { return true }
+        let tokens = t
+            .split(whereSeparator: { !$0.isLetter && $0 != "&" })
+            .map(String.init)
+        if tokens.contains("bw") || tokens.contains("mono") || tokens.contains("b&w") { return true }
+        if t == "bw" || t == "mono" || t == "b&w" { return true }
+        return false
+    }
+
+    /// Force look when utterance is B&W (replaces prior/wrong look).
+    static func forcedLook(for message: String) -> CreativeLook? {
+        guard isBlackAndWhite(message) else { return nil }
+        return CreativeLook(id: "monoInk", intensity: CreativeLookCatalog.defaultIntensity)
+    }
+
     /// Prefer nested phoneTargets.creativeLook; accept top-level fallback.
     static func resolvedLook(from response: RecommendResponse) -> CreativeLook? {
         if let look = response.phoneTargets?.creativeLook, !look.id.isEmpty {

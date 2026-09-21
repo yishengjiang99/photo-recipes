@@ -1116,10 +1116,10 @@ struct CameraView: View {
             // Prefer auto-apply so the viewfinder changes immediately (autoApplyLook: true; no schema change).
             // Server #119 may force monoInk @ 0.55 for B&W utterances.
             if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
-                applyRecommendToCamera(recipe: recipe, response: response)
+                applyRecommendToCamera(recipe: recipe, response: response, message: message)
             } else {
                 // Look-only payload (no recipe) — still auto-apply creativeLook onto finder.
-                applyRecommendLookOnly(response: response)
+                applyRecommendLookOnly(response: response, message: message)
             }
             assertApplyFiltersLook(message: message, response: response)
             // Voice auto-apply: toast look name; skip result sheet so no second tap.
@@ -1158,9 +1158,9 @@ struct CameraView: View {
                 recommendResult = response
                 recommendError = nil
                 if let recipe = response.preset ?? BundledPresets.recipe(id: response.resolvedPresetId ?? "") {
-                    applyRecommendToCamera(recipe: recipe, response: response)
+                    applyRecommendToCamera(recipe: recipe, response: response, message: message)
                 } else {
-                    applyRecommendLookOnly(response: response)
+                    applyRecommendLookOnly(response: response, message: message)
                 }
                 assertApplyFiltersLook(message: message, response: response)
                 if fromVoice, session.activeCreativeLook != nil {
@@ -1188,19 +1188,9 @@ struct CameraView: View {
 
 
     /// When Recommend returns creativeLook without a resolvable recipe, still bake onto finder.
-    private func applyRecommendLookOnly(response: RecommendResponse) {
-        var targets = response.phoneTargets
-        if var t = targets {
-            if t.creativeLook == nil, let top = response.creativeLook {
-                t.creativeLook = top
-                targets = t
-            }
-        } else if let top = response.creativeLook {
-            var t = PhoneTargets()
-            t.creativeLook = top
-            targets = t
-        }
-        guard let targets, targets.creativeLook != nil || response.creativeLook != nil else { return }
+    private func applyRecommendLookOnly(response: RecommendResponse, message: String? = nil) {
+        guard let targets = mergeCreativeLook(response: response, message: message),
+              targets.creativeLook != nil || response.creativeLook != nil || ApplyFiltersIntent.forcedLook(for: message ?? "") != nil else { return }
         if entitlements.canApplyDials {
             _ = session.applyPhoneTargets(targets, autoApplyLook: true)
         } else if let look = targets.creativeLook ?? response.creativeLook {
@@ -1224,9 +1214,11 @@ struct CameraView: View {
     }
 
     /// Client matched APPLY-FILTERS but server returned no creativeLook — never silent no-op.
+    /// B&W is covered by client forcedLook (parity with server #119) so skip the toast when we force.
     private func assertApplyFiltersLook(message: String, response: RecommendResponse) {
         guard ApplyFiltersIntent.matches(message) else { return }
         if ApplyFiltersIntent.resolvedLook(from: response) != nil { return }
+        if ApplyFiltersIntent.forcedLook(for: message) != nil { return }
         recommendError = ApplyFiltersIntent.missingLookMessage
         presentChromeToast(ApplyFiltersIntent.missingLookMessage)
         Analytics.shared.track("apply_filters_missing_look", props: [
@@ -1235,11 +1227,9 @@ struct CameraView: View {
         ])
     }
 
-    /// Apply Recommend recipe + phoneTargets + creativeLook onto the live viewfinder (dials + bake path).
-    private func applyRecommendToCamera(recipe: Recipe, response: RecommendResponse?) {
-        _ = session.apply(recipe: recipe)
+    /// Merge phoneTargets.creativeLook ← top-level ← B&W force (client parity with server #119).
+    private func mergeCreativeLook(response: RecommendResponse?, message: String?) -> PhoneTargets? {
         var targets = response?.phoneTargets
-        // Top-level creativeLook is a one-release server fallback mirror.
         if var t = targets {
             if t.creativeLook == nil, let top = response?.creativeLook {
                 t.creativeLook = top
@@ -1250,6 +1240,19 @@ struct CameraView: View {
             t.creativeLook = top
             targets = t
         }
+        // Spoken/typed B&W must land monoInk even if SSE omitted override or model wrong-looked.
+        if let forced = ApplyFiltersIntent.forcedLook(for: message ?? "") {
+            var t = targets ?? PhoneTargets()
+            t.creativeLook = forced
+            targets = t
+        }
+        return targets
+    }
+
+    /// Apply Recommend recipe + phoneTargets + creativeLook onto the live viewfinder (dials + bake path).
+    private func applyRecommendToCamera(recipe: Recipe, response: RecommendResponse?, message: String? = nil) {
+        _ = session.apply(recipe: recipe)
+        let targets = mergeCreativeLook(response: response, message: message)
         if entitlements.canApplyDials, let targets {
             _ = session.applyPhoneTargets(targets, autoApplyLook: true)
         } else if let look = targets?.creativeLook ?? response?.creativeLook {

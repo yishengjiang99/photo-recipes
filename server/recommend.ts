@@ -1850,19 +1850,23 @@ async function recommendFastOneShot(
             ? { tripod: true }
             : {}),
         }
+  const look = applyCreativeLookMessageOverride(
+    req.message,
+    selection.creativeLook ?? phoneTargets.creativeLook,
+  )
+  const phoneTargetsOut = look
+    ? { ...phoneTargets, creativeLook: look }
+    : phoneTargets
   return {
     presetId: selection.presetId,
     reason: selection.reason,
     teachWhy: selection.teachWhy,
     tips: selection.tips,
-    phoneTargets,
+    phoneTargets: phoneTargetsOut,
     coachOnly,
     panCue: selection.panCue,
     senseSummary: selection.senseSummary,
-    ...(() => {
-          const look = applyCreativeLookMessageOverride(req.message, selection.creativeLook)
-          return look ? { creativeLook: look } : {}
-        })(),
+    ...(look ? { creativeLook: look } : {}),
     preset,
     model,
   }

@@ -17,6 +17,7 @@ import {
   FAST_VISION_TIMEOUT_MS,
   PRIMARY_MODEL,
   VISION_MODELS,
+  applyCreativeLookMessageOverride,
   buildFastSystemPrompt,
   buildFastUserContent,
   extractJsonObject,
@@ -348,17 +349,27 @@ export async function recommendWithGrokStream(
               : {}),
           }
 
+    // Parity with #119 non-stream: B&W (etc.) forces monoInk onto phoneTargets + top-level.
+    // iOS Camera prefers recommendStream — without this, spoken B&W never gets monoInk.
+    const look = applyCreativeLookMessageOverride(
+      req.message,
+      selection.creativeLook ?? phoneTargets.creativeLook,
+    )
+    const phoneTargetsOut = look
+      ? { ...phoneTargets, creativeLook: look }
+      : phoneTargets
+
     const result: RecommendStreamResultBody = {
       presetId: selection.presetId,
       recipeId: selection.presetId,
       reason: selection.reason,
       teachWhy: selection.teachWhy,
       tips: selection.tips,
-      phoneTargets,
+      phoneTargets: phoneTargetsOut,
       coachOnly,
       panCue: selection.panCue,
       senseSummary: selection.senseSummary,
-      ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
+      ...(look ? { creativeLook: look } : {}),
       preset,
       model,
       vision,
