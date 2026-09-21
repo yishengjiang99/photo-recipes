@@ -383,11 +383,16 @@ jobs:
               detail = json.dumps(item_resp)[:1200]
               print(f'reviewSubmissionItems attempt {attempt+1} -> {st_item} {detail}')
               codes = []
+              blob = json.dumps(item_resp)
               for err in (item_resp.get('errors') or []):
                 codes.append(err.get('code') or '')
-                for assoc in ((err.get('meta') or {}).get('associatedErrors') or {}).values():
-                  for a in assoc or []:
-                    codes.append(a.get('code') or '')
+                meta = err.get('meta') or {}
+                for key in ('associatedErrors', 'associatedErrors'):
+                  for assoc in (meta.get(key) or {}).values():
+                    for a in assoc or []:
+                      codes.append(a.get('code') or '')
+              if 'ITEM_PART_OF_ANOTHER_SUBMISSION' in blob:
+                codes.append('STATE_ERROR.ITEM_PART_OF_ANOTHER_SUBMISSION')
               # Already linked to this or another resolving submission
               if any('DUPLICATE' in c or 'ALREADY' in c for c in codes):
                 items_now = list_submission_items(submission_id)
@@ -465,11 +470,12 @@ jobs:
             ready_with_items = []
             for s in ready:
               items = list_submission_items(s['id'])
-              if submission_has_version(s['id']) or items:
-                ready_with_items.append(s)
-                if submission_has_version(s['id']) or items:
-                  print('READY_FOR_REVIEW with items', s['id'], 'n=', len(items))
-            for s in ready_with_items:
+              has_v = submission_has_version(s['id'])
+              if has_v or items:
+                ready_with_items.append((s, len(items), has_v))
+                print('READY_FOR_REVIEW with items', s['id'], 'n=', len(items), 'has_version=', has_v)
+            ready_with_items.sort(key=lambda t: (t[2], t[1]), reverse=True)
+            for s, _n, _hv in ready_with_items:
               submission_id = s['id']
               print('reusing READY_FOR_REVIEW that already has items/version', submission_id)
               break
