@@ -98,6 +98,59 @@ enum ApplyFiltersIntent {
         return nil
     }
 
+    /// Merge phoneTargets.creativeLook ← top-level ← B&W force (client parity with server #119).
+    /// Nested `phoneTargets.creativeLook` wins over top-level when both are set;
+    /// top-level alone still populates targets; B&W message always forces monoInk.
+    static func mergeCreativeLook(response: RecommendResponse?, message: String?) -> PhoneTargets? {
+        var targets = response?.phoneTargets
+        if var t = targets {
+            if t.creativeLook == nil, let top = response?.creativeLook {
+                t.creativeLook = top
+                targets = t
+            }
+        } else if let top = response?.creativeLook {
+            var t = PhoneTargets()
+            t.creativeLook = top
+            targets = t
+        }
+        // Spoken/typed B&W must land monoInk even if SSE omitted override or model wrong-looked.
+        if let forced = forcedLook(for: message ?? "") {
+            var t = targets ?? PhoneTargets()
+            t.creativeLook = forced
+            targets = t
+        }
+        return targets
+    }
+
+    /// Camera voice final routing (last endpointed utterance only).
+    /// APPLY-FILTERS → Recommend SSE with messageOverride; else Auto Optimize.
+    /// Non-empty utterance always cancels in-flight Recommend/AO first (looks don't stack).
+    enum VoiceEndpointAction: Equatable {
+        case none
+        /// Stream recommend with this utterance as `message` (not the full Scene note).
+        case recommend(messageOverride: String)
+        case optimize
+    }
+
+    struct VoiceEndpointPlan: Equatable {
+        var cancelInFlight: Bool
+        var action: VoiceEndpointAction
+    }
+
+    static func planVoiceEndpoint(_ raw: String) -> VoiceEndpointPlan {
+        let utterance = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !utterance.isEmpty else {
+            return VoiceEndpointPlan(cancelInFlight: false, action: .none)
+        }
+        if matches(utterance) {
+            return VoiceEndpointPlan(
+                cancelInFlight: true,
+                action: .recommend(messageOverride: utterance)
+            )
+        }
+        return VoiceEndpointPlan(cancelInFlight: true, action: .optimize)
+    }
+
     static let missingLookMessage =
         "No look returned — try again (server should send a creativeLook)"
 }

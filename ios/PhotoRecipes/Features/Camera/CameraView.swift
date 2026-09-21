@@ -205,7 +205,7 @@ struct CameraView: View {
         }
         .sheet(isPresented: $showTeach) {
             TeachModeSheet(
-                recipeTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
+                recipeTitle: Recipe.chromeTitle(forStoredTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle, id: optimizer.chosenRecipeId ?? session.appliedRecipeId),
                 oneLiner: optimizer.teachOneLiner,
                 tips: optimizer.tips,
                 diffs: optimizer.coreDiffs,
@@ -438,7 +438,10 @@ struct CameraView: View {
                 guard token > 0 else { return }
                 if !optimizer.coreDiffs.isEmpty {
                     presentApplyBurst()
-                } else if let title = optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle {
+                } else if let title = Recipe.chromeTitle(
+                    forStoredTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
+                    id: optimizer.chosenRecipeId ?? session.appliedRecipeId
+                ) {
                     // Empty dial deltas — still confirm Apply so Optimize never feels silent.
                     presentChromeToast("Ready · \(title)")
                 }
@@ -498,7 +501,10 @@ struct CameraView: View {
                         .rotationEffect(.degrees(-horizon.rollDegrees))
                         .allowsHitTesting(false)
                 }
-                if let title = session.appliedRecipeTitle {
+                if let title = Recipe.chromeTitle(
+                    forStoredTitle: session.appliedRecipeTitle,
+                    id: session.appliedRecipeId
+                ) {
                     Text(title)
                         .font(AppTheme.caption())
                         .foregroundStyle(AppTheme.ink)
@@ -511,6 +517,7 @@ struct CameraView: View {
                                 .overlay(Capsule().stroke(AppTheme.accent.opacity(0.45), lineWidth: 1))
                         )
                         .onTapGesture { showClearConfirm = true }
+                        .accessibilityLabel("Recipe \(title)")
                 }
                 floatingIcon("arrow.triangle.2.circlepath.camera", accessibility: "Flip camera") {
                     flipCameraWithFeedback()
@@ -637,7 +644,10 @@ struct CameraView: View {
             if case .ready = optimizer.phase, !showApplyBurst {
                 BeforeAfterChip(
                     diffs: optimizer.coreDiffs,
-                    recipeTitle: optimizer.chosenRecipeTitle,
+                    recipeTitle: Recipe.chromeTitle(
+                        forStoredTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
+                        id: optimizer.chosenRecipeId ?? session.appliedRecipeId
+                    ),
                     hasMoreAdvanced: !optimizer.advancedDiffs.isEmpty,
                     onTap: {
                         controlsTab = .core
@@ -926,18 +936,20 @@ struct CameraView: View {
     private func applyCameraVoiceFinal(_ text: String) {
         // Partials already paint the full Speech transcript into sceneNote for display.
         // Intent matching + Recommend message use **last utterance only**, not the note.
-        let utterance = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !utterance.isEmpty else { return }
-
-        cancelInFlightVoiceIntent()
-
-        if ApplyFiltersIntent.matches(utterance) {
+        let plan = ApplyFiltersIntent.planVoiceEndpoint(text)
+        if plan.cancelInFlight {
+            cancelInFlightVoiceIntent()
+        }
+        switch plan.action {
+        case .none:
+            return
+        case .recommend(let utterance):
             // Pass utterance as Recommend message so server look-force (monoInk @ 0.55) sees B&W.
             voiceIntentTask = Task { await runRecommend(messageOverride: utterance) }
-            return
+        case .optimize:
+            // Default mic path: Auto Optimize → applyPhoneTargets (PR #11); AO Pass 2 keeps autoApplyLook false.
+            voiceIntentTask = Task { await runOptimize() }
         }
-        // Default mic path: Auto Optimize → applyPhoneTargets (PR #11); AO Pass 2 keeps autoApplyLook false.
-        voiceIntentTask = Task { await runOptimize() }
     }
 
     /// Cancel prior voice-driven Recommend/AO so a later utterance replaces (e.g. warm → B&W).
@@ -1229,24 +1241,7 @@ struct CameraView: View {
 
     /// Merge phoneTargets.creativeLook ← top-level ← B&W force (client parity with server #119).
     private func mergeCreativeLook(response: RecommendResponse?, message: String?) -> PhoneTargets? {
-        var targets = response?.phoneTargets
-        if var t = targets {
-            if t.creativeLook == nil, let top = response?.creativeLook {
-                t.creativeLook = top
-                targets = t
-            }
-        } else if let top = response?.creativeLook {
-            var t = PhoneTargets()
-            t.creativeLook = top
-            targets = t
-        }
-        // Spoken/typed B&W must land monoInk even if SSE omitted override or model wrong-looked.
-        if let forced = ApplyFiltersIntent.forcedLook(for: message ?? "") {
-            var t = targets ?? PhoneTargets()
-            t.creativeLook = forced
-            targets = t
-        }
-        return targets
+        ApplyFiltersIntent.mergeCreativeLook(response: response, message: message)
     }
 
     /// Apply Recommend recipe + phoneTargets + creativeLook onto the live viewfinder (dials + bake path).
