@@ -392,7 +392,7 @@ jobs:
                 if items_now:
                   return True, st_item, {'already': True, **(item_resp if isinstance(item_resp, dict) else {})}
               # Still locked by canceled/other submission — wait and retry
-              if any(c == 'STATE_ERROR.ITEM_PART_OF_ANOTHER_SUBMISSION' for c in codes):
+              if any('ITEM_PART_OF_ANOTHER_SUBMISSION' in c for c in codes):
                 # If THIS submission already holds an item, proceed
                 if list_submission_items(submission_id):
                   return True, st_item, {'already': True}
