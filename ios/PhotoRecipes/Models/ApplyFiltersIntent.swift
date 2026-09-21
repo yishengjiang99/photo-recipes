@@ -3,6 +3,10 @@ import Foundation
 /// Client-side matcher for APPLY-FILTERS utterances (agentic contract § Apply-filters).
 /// Typed Scene/Ask text and STT transcripts use the normal Recommend `message` — no extra flag.
 /// If this matches but the Recommend payload has no creativeLook → visible error (server bug).
+///
+/// Build 25: Camera intent matching uses the **last endpointed utterance only**
+/// (not the full accumulated Scene note). Short look tokens like "warm" / "moody"
+/// match so a later utterance can replace the prior look.
 enum ApplyFiltersIntent {
     /// True when the user is asking to apply a bakeable look/filter/grade now.
     static func matches(_ raw: String) -> Bool {
@@ -26,7 +30,7 @@ enum ApplyFiltersIntent {
             let looks = [
                 "cinematic", "moody", "warm", "cool", "dreamy", "vintage",
                 "grainy", "filmic", "film look", "b&w", "bw", "black and white",
-                "black & white", "mono", "teal", "golden",
+                "black & white", "mono", "teal", "golden", "orange",
             ]
             if looks.contains(where: { t.contains($0) }) { return true }
         }
@@ -41,6 +45,20 @@ enum ApplyFiltersIntent {
             "lo-fi", "lofi", "editorial red", "soft vintage", "mono ink",
         ]
         if named.contains(where: { t.contains($0) }) { return true }
+
+        // Bare look tokens — for short endpointed utterances ("warm", "moody").
+        // Prefer whole-utterance / word-boundary so "warming up" in a long note
+        // is less likely to false-positive when callers pass full scene text.
+        let shortLooks = [
+            "warm", "cool", "moody", "cinematic", "grain", "grainy",
+            "mono", "vintage", "dreamy", "filmic", "golden",
+        ]
+        let tokens = t
+            .split(whereSeparator: { !$0.isLetter && $0 != "&" })
+            .map(String.init)
+        if shortLooks.contains(where: { tokens.contains($0) }) { return true }
+        // Exact short utterance
+        if shortLooks.contains(t) { return true }
 
         return false
     }

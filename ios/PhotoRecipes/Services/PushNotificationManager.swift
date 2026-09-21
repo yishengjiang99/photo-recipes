@@ -295,8 +295,9 @@ final class PushNotificationManager: NSObject, ObservableObject {
         }
     }
 
-    /// TestFlight + DEBUG → sandbox; App Store → production.
-    /// TF installs use `sandboxReceipt`; CoS contract registers them as sandbox.
+    /// Build 25: Release / Archive / TestFlight → `production`; Debug → `sandbox`.
+    /// Do NOT use `sandboxReceipt` as APNs env — TF installs have a sandbox *receipt*
+    /// but talk to the **production** APNs host (CoS E2E: build 23 registered sandbox wrongly).
     static var apnsEnvironment: String {
         if let override = UserDefaults.standard.string(forKey: "push.apnsEnvironment"),
            override == "sandbox" || override == "production" {
@@ -305,9 +306,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
         #if DEBUG
         return "sandbox"
         #else
-        if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" {
-            return "sandbox"
-        }
+        // Release config, App Store, and TestFlight (incl. sandboxReceipt) → production.
         return "production"
         #endif
     }

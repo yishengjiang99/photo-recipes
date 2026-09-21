@@ -52,6 +52,7 @@ struct CameraPreviewView: UIViewRepresentable {
         }
 
         /// Live look grade hint on the finder (still bake happens in CreativeLookEngine).
+        /// monoInk uses colorBlendMode + white so the finder reads as B&W (not a gray wash).
         func applyCreativeLook(_ look: CreativeLook?) {
             lookOverlay?.removeFromSuperlayer()
             lookOverlay = nil
@@ -59,9 +60,16 @@ struct CameraPreviewView: UIViewRepresentable {
             let overlay = CALayer()
             overlay.frame = bounds
             let intensity = CGFloat(look.resolvedIntensity)
-            overlay.opacity = Float(0.08 + 0.22 * intensity)
-            overlay.backgroundColor = Self.lookTint(for: look.id).cgColor
             overlay.name = "creativeLook"
+            if look.id == "monoInk" {
+                // color blend with white → desaturate preview (matches still monoInk bake).
+                overlay.backgroundColor = UIColor.white.cgColor
+                overlay.compositingFilter = "colorBlendMode"
+                overlay.opacity = Float(min(1, 0.55 + 0.45 * intensity))
+            } else {
+                overlay.opacity = Float(0.08 + 0.22 * intensity)
+                overlay.backgroundColor = Self.lookTint(for: look.id).cgColor
+            }
             layer.addSublayer(overlay)
             lookOverlay = overlay
         }
