@@ -2,8 +2,10 @@ import Foundation
 import UIKit
 import UserNotifications
 
-/// Experiment 1 APNs client: permission after first successful Auto Optimize,
+/// Experiment 1 APNs client: permission after first successful capture
+/// (also after first successful Auto Optimize — whichever comes first),
 /// token register, foreground/tap → deep link `photo-recipes://auto-optimize`.
+/// Never request permission from onboarding / cold open.
 ///
 /// Build 22: gate `registerForRemoteNotifications` until after
 /// `application(_:didFinishLaunching:)` (and again on scene active).
@@ -16,6 +18,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
     static let shared = PushNotificationManager()
 
     static let hasCompletedFirstAutoOptimizeKey = "hasCompletedFirstAutoOptimize"
+    static let hasCompletedFirstCaptureKey = "hasCompletedFirstCapture"
     static let didAskPushPermissionKey = "didAskPushPermission"
     static let autoOptimizeURL = URL(string: "photo-recipes://auto-optimize")!
 
@@ -81,29 +84,53 @@ final class PushNotificationManager: NSObject, ObservableObject {
         UserDefaults.standard.bool(forKey: lastServerRegisterOkKey)
     }
 
+    var hasCompletedFirstCapture: Bool {
+        UserDefaults.standard.bool(forKey: Self.hasCompletedFirstCaptureKey)
+    }
+
     /// Call after Auto Optimize reaches `.ready` successfully.
+    /// Push may also be requested via `noteFirstSuccessfulCapture` (product: after first shutter).
     func noteFirstSuccessfulAutoOptimize() {
         let defaults = UserDefaults.standard
         let wasFirst = !defaults.bool(forKey: Self.hasCompletedFirstAutoOptimizeKey)
         defaults.set(true, forKey: Self.hasCompletedFirstAutoOptimizeKey)
         if wasFirst {
-            Task { await maybeAskPermissionAfterFirstOptimize() }
+            Task { await maybeAskPushPermission(reason: "first_auto_optimize") }
         } else {
             // Later AOs: if Allow already happened but server never got a token, keep trying.
             Task { await ensureRemoteNotificationRegistration(reason: "post_ao_reregister") }
         }
     }
 
-    // MARK: - Permission (not on install/launch)
+    /// Call after a successful shutter / `capturePhoto` return (Build 26+ product lock).
+    /// Does not run during onboarding. Safe to call every capture — asks at most once.
+    func noteFirstSuccessfulCapture() {
+        let defaults = UserDefaults.standard
+        let wasFirst = !defaults.bool(forKey: Self.hasCompletedFirstCaptureKey)
+        defaults.set(true, forKey: Self.hasCompletedFirstCaptureKey)
+        if wasFirst {
+            Task { await maybeAskPushPermission(reason: "first_capture") }
+        } else {
+            Task { await ensureRemoteNotificationRegistration(reason: "post_capture_reregister") }
+        }
+    }
 
-    /// Ask only after first successful Auto Optimize, once per install (flag).
+    // MARK: - Permission (not on install/launch / onboarding)
+
+    /// Ask only after first successful capture (or AO), once per install (flag).
     func maybeAskPermissionAfterFirstOptimize() async {
-        guard hasCompletedFirstAutoOptimize else { return }
+        await maybeAskPushPermission(reason: "legacy_ao_entry")
+    }
+
+    /// Shared gate: never prompts on cold open / onboarding.
+    func maybeAskPushPermission(reason: String) async {
+        guard hasCompletedFirstCapture || hasCompletedFirstAutoOptimize else { return }
         guard !didAskPushPermission else {
             await ensureRemoteNotificationRegistration(reason: "reask_gate")
             return
         }
 
+        print("[Push] maybeAskPushPermission reason=\(reason)")
         await refreshAuthorizationStatus(requestTokenIfAuthorized: false)
         if authorizationStatus == .authorized || authorizationStatus == .provisional {
             UserDefaults.standard.set(true, forKey: Self.didAskPushPermissionKey)

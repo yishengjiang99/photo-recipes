@@ -5,28 +5,37 @@ struct PhotoRecipesApp: App {
     @UIApplicationDelegateAdaptor(PhotoRecipesAppDelegate.self) private var appDelegate
     @StateObject private var appModel = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(OnboardingStore.completedKey) private var hasCompletedOnboarding = false
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
-                .environmentObject(appModel.entitlements)
-                .environmentObject(appModel.api)
-                .environmentObject(appModel.storeKit)
-                .environmentObject(appModel.cameraRouter)
-                .environmentObject(appModel.push)
-                .preferredColorScheme(.dark)
-                // Paywall sheet is on MainTabView so it observes EntitlementsStore.
-                .onOpenURL { url in
-                    appModel.push.handleOpenURL(url)
-                }
-                .task {
-                    await appModel.bootstrap()
-                }
-                .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        appModel.push.noteAppLaunchReady(reason: "scene_active")
+            Group {
+                if hasCompletedOnboarding {
+                    MainTabView()
+                } else {
+                    OnboardingView {
+                        hasCompletedOnboarding = true
                     }
                 }
+            }
+            .environmentObject(appModel.entitlements)
+            .environmentObject(appModel.api)
+            .environmentObject(appModel.storeKit)
+            .environmentObject(appModel.cameraRouter)
+            .environmentObject(appModel.push)
+            .preferredColorScheme(.dark)
+            // Paywall sheet is on MainTabView so it observes EntitlementsStore.
+            .onOpenURL { url in
+                appModel.push.handleOpenURL(url)
+            }
+            .task {
+                await appModel.bootstrap()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    appModel.push.noteAppLaunchReady(reason: "scene_active")
+                }
+            }
         }
     }
 }
@@ -46,7 +55,8 @@ final class AppModel: ObservableObject {
         self.storeKit = StoreKitManager(api: APIClient.shared, entitlements: ents)
         push.attach(router: cameraRouter)
         push.configure()
-        // Do NOT request notification permission here — only after first successful Auto Optimize.
+        // Do NOT request notification permission here — only after first successful capture
+        // (and legacy first Auto Optimize). Never from onboarding / cold open.
     }
 
     func bootstrap() async {

@@ -1314,6 +1314,8 @@ struct CameraView: View {
             // Unmissable viewfinder flash + freeze on every successful capture return
             // (do NOT wait for Photos library write).
             playCaptureFeedback(jpeg: data)
+            // Push permission after first successful shutter — never during onboarding.
+            PushNotificationManager.shared.noteFirstSuccessfulCapture()
 
             do {
                 try await PhotoLibrarySaver.saveJPEG(data)

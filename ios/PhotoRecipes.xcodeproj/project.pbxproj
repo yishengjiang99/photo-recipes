@@ -49,6 +49,7 @@
 		B2C3D4E5F647180ALOOKENGINBF /* CreativeLookEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */; };
 		BB721C28ACC84FA486C3F89A /* LocalSceneAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01D9FEBC567B4577BFE30A41 /* LocalSceneAnalyzer.swift */; };
 		2C7E3B979B154396BAA2E244 /* LocalAutoOptimizeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */; };
+		B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -122,6 +123,7 @@
 			children = (
 				F0B5463543CF4748AA949557 /* ContentView.swift */,
 				2315566F55F54244A92E6F3B /* MainTabView.swift */,
+				C3D4E5F6A7B8010DONBOARDGRP /* Onboarding */,
 				241E9450B41348599F51F87F /* PhotoRecipesApp.swift */,
 				3F1ED1C99F65409EBFB3EE33 /* Theme.swift */,
 				94028F9F575640ABAE776406 /* Data */,
@@ -254,6 +256,14 @@
 			path = Features/Voice;
 			sourceTree = "<group>";
 		};
+		C3D4E5F6A7B8010DONBOARDGRP /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */,
+			);
+			path = Features/Onboarding;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -343,6 +353,7 @@
 				6AD87EF0E9FB4696BE23A769 /* RecommendResponse.swift in Sources */,
 				8FD7A38199554458A83E85DF /* SubscriptionStatus.swift in Sources */,
 				5DA94385C26C40B28C22FCDD /* PhotoRecipesApp.swift in Sources */,
+				B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */,
 				D6E866D9770F4A329B26B1BA /* APIClient.swift in Sources */,
 				E4026E962A56404EBA5D5CC6 /* EntitlementsStore.swift in Sources */,
 				ED33800AD75D47DF9BCC4601 /* StoreKitManager.swift in Sources */,
@@ -405,7 +416,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -432,7 +443,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipesRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
