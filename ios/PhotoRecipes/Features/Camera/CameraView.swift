@@ -349,7 +349,7 @@ struct CameraView: View {
                         .allowsHitTesting(false)
                 }
 
-                if let cue = activePanCue {
+                if showsPanCues, let cue = activePanCue {
                     ViewfinderPanCuesView(
                         cue: cue,
                         bottomInset: bottomScrim + 24,
@@ -465,6 +465,52 @@ struct CameraView: View {
         return width <= 375 || height < 700
     }
 
+    /// Build 28: one primary status surface at a time — don't stack top recipe badge +
+    /// AgentStatusPill ("Matching…") + bottom BeforeAfter marketing chip + pan cues.
+    private var isStatusBusy: Bool {
+        isRecommending || optimizer.phase.isRunning
+    }
+
+    /// Prefer short status / look toast over persistent recipe badge while busy.
+    private var showsTopRecipeBadge: Bool {
+        guard !isStatusBusy else { return false }
+        guard chromeToast == nil else { return false }
+        return session.appliedRecipeTitle != nil
+    }
+
+    /// Before/after chip only when Ready and not mid-Recommend / mid-burst.
+    private var showsBeforeAfterChip: Bool {
+        guard case .ready = optimizer.phase else { return false }
+        guard !showApplyBurst, !isRecommending else { return false }
+        return !optimizer.coreDiffs.isEmpty
+    }
+
+    /// Hide pan-edge chrome while Recommend/AO status is the primary surface.
+    private var showsPanCues: Bool {
+        !isStatusBusy && !showApplyBurst
+    }
+
+    /// Short status for AgentStatusPill — never marketing recipe titles.
+    /// Nil when Ready + BeforeAfterChip already carries the outcome (avoid double stack).
+    private var primaryStatusCopy: String? {
+        if let s = recommendChromeStatus, !s.isEmpty { return s }
+        if optimizer.phase.isRunning {
+            let copy = optimizer.phase.statusCopy
+            return copy.isEmpty ? "Optimizing…" : copy
+        }
+        if let w = optimizer.verifyWarning, !w.isEmpty { return w }
+        if case .ready = optimizer.phase, optimizer.isCloudRefining { return "Ready · refining…" }
+        if case .ready = optimizer.phase, optimizer.suggestedLook != nil {
+            let name = optimizer.suggestedLook?.displayName ?? "look"
+            return "Ready · \(name)"
+        }
+        if case .error(let msg) = optimizer.phase { return msg }
+        // Ready with diffs → BeforeAfterChip is the status; idle → nothing.
+        if case .ready = optimizer.phase { return nil }
+        let pill = optimizer.pillStatus
+        return pill.isEmpty ? nil : pill
+    }
+
     private var activePanCue: ViewfinderPanCue? {
         ViewfinderPanCueResolver.resolve(
             recipeId: session.appliedRecipeId ?? optimizer.chosenRecipeId,
@@ -501,7 +547,7 @@ struct CameraView: View {
                         .rotationEffect(.degrees(-horizon.rollDegrees))
                         .allowsHitTesting(false)
                 }
-                if let title = Recipe.chromeTitle(
+                if showsTopRecipeBadge, let title = Recipe.chromeTitle(
                     forStoredTitle: session.appliedRecipeTitle,
                     id: session.appliedRecipeId
                 ) {
@@ -559,7 +605,7 @@ struct CameraView: View {
         let ctaH: CGFloat = compact ? 40 : 44
 
         return VStack(spacing: compact ? 6 : 8) {
-            if let clamp = actionableClampMessage {
+            if let clamp = actionableClampMessage, !isStatusBusy {
                 Text(clamp)
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.ink)
@@ -574,13 +620,16 @@ struct CameraView: View {
                     .padding(.horizontal, hPad)
             }
 
-            AgentStatusPill(
-                phase: optimizer.phase,
-                verifyWarning: optimizer.verifyWarning,
-                statusOverride: recommendChromeStatus ?? optimizer.pillStatus,
-                isBusy: isRecommending,
-                onStop: { optimizer.clear() }
-            )
+            // Single primary status: busy Recommend/AO, or ready warnings — not stacked with BeforeAfter.
+            if isStatusBusy || primaryStatusCopy != nil {
+                AgentStatusPill(
+                    phase: optimizer.phase,
+                    verifyWarning: nil,
+                    statusOverride: primaryStatusCopy ?? recommendChromeStatus ?? optimizer.pillStatus,
+                    isBusy: isRecommending || optimizer.phase.isRunning,
+                    onStop: isStatusBusy ? { optimizer.clear(); cancelInFlightVoiceIntent() } : nil
+                )
+            }
 
             if let mode = lookChipMode {
                 LookChip(
@@ -606,7 +655,7 @@ struct CameraView: View {
                 .padding(.horizontal, hPad)
             }
 
-            if let lookToast {
+            if let lookToast, !isStatusBusy {
                 Text(lookToast)
                     .font(AppTheme.caption())
                     .foregroundStyle(AppTheme.ink)
@@ -641,7 +690,7 @@ struct CameraView: View {
             .disabled(optimizer.phase.isRunning)
             .accessibilityLabel("Auto Optimize")
 
-            if case .ready = optimizer.phase, !showApplyBurst {
+            if showsBeforeAfterChip {
                 BeforeAfterChip(
                     diffs: optimizer.coreDiffs,
                     recipeTitle: Recipe.chromeTitle(
