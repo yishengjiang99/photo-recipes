@@ -1,15 +1,17 @@
 # Grok Camera — iOS onboarding v1 (single screen)
 
 **Bundle:** `com.ragnus.mvp` · **Brand:** Grok Camera  
-**Status:** Visual mock only — no eng until CoS + user review.  
-**Mocks:** `assets/marketing/onboarding/` — **canonical:** `08-single-screen.png`  
+**Status:** **Greenlit for iOS implementation** (CoS / user).  
+**Canonical mock (portrait):** `assets/marketing/onboarding/08-single-screen-portrait.png`  
+**Alt / earlier landscape exploration:** `08-single-screen.png` (do not implement landscape as primary).  
+**Flow art:** `09-single-flow.png`  
 **Palette:** Neutral Graphite + Signal Amber (A).
 
 ---
 
-## Layout decision (user lock)
+## Layout decision (locked)
 
-**One screen** (not a multi-page carousel before CTA):
+**One screen** — tips via chevrons; **Get Started always visible** (never after a multi-page carousel).
 
 ```
 ┌─────────────────────────────┐
@@ -24,11 +26,9 @@
 ```
 
 - Tips cycle in-place via **← → chevrons** (and optional swipe).  
-- **Get Started** is on the **first/only** screen — never gated behind finishing tips.  
+- **Get Started** on the **first/only** screen.  
 - Get Started → **camera permission only** → main camera.  
-- **Push** = later (after first successful capture) — not here.
-
-Flow art: `09-single-flow.png`.
+- **Push** = later (after first successful capture) — not on this screen.
 
 ---
 
@@ -41,10 +41,10 @@ Flow art: `09-single-flow.png`.
 | 3 | Capture | See settings change, then press shutter. Teach explains why. |
 | 4 (optional) | Scene note | Optional note/dictate later — never required to start. |
 
-Landing hero value (above or instead of tip title when tip 1): **AI camera coach — shutter, ISO, focus** or slogan **Set the shot. Then take it.**
+Optional hero line: **AI camera coach — shutter, ISO, focus** or **Set the shot. Then take it.**
 
 ### Get Started
-- CTA: **Get Started**  
+- CTA: **Get Started** (amber + `accentOnAccent` label)  
 - Micro: **We'll ask for Camera access next.**
 
 ---
@@ -53,10 +53,21 @@ Landing hero value (above or instead of tip title when tip 1): **AI camera coach
 
 | File | Role |
 |------|------|
-| **`08-single-screen.png`** | **Canonical single-screen mock** |
+| **`08-single-screen-portrait.png`** | **Canonical portrait mock (implement this)** |
 | `09-single-flow.png` | Flow diagram |
-| `01`–`07` | Earlier multi-step explorations (superseded for product) |
+| `08-single-screen.png` | Earlier non-portrait exploration |
+| `01`–`07` | Multi-step explorations — superseded |
 
 ---
 
-*Designer · onboarding single-screen · user condensed*
+## iOS checklist
+
+- [ ] Portrait first-run screen matching layout above  
+- [ ] Chevron / swipe tip cycle; Get Started always enabled  
+- [ ] Camera permission only on Get Started  
+- [ ] Push deferred until after first successful capture  
+- [ ] Palette A tokens  
+
+---
+
+*Designer · onboarding v1 · greenlit*
