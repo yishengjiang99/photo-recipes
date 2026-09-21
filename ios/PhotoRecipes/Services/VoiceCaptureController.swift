@@ -84,6 +84,12 @@ final class VoiceCaptureController: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    /// Dismiss a sticky voice error so Camera chrome can reclaim the row (Build 28).
+    func clearError() {
+        guard case .error = phase else { return }
+        phase = .idle
+    }
+
     // MARK: - Start
 
     private func start() async {

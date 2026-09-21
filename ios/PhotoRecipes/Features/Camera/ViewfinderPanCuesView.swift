@@ -36,12 +36,23 @@ enum ViewfinderPanCueResolver {
     }
 
     private static func applyPanCue(direction: String, note: String?, to cue: inout ViewfinderPanCue) {
+        // Map direction literally — never fall through "down"/"lower" to L/R (Build 28).
+        // Those looked like tappable controls on composition / get-down-low.
         switch direction.lowercased() {
-        case "left": cue.left = true
-        case "right": cue.right = true
-        default:
+        case "left":
+            cue.left = true
+        case "right":
+            cue.right = true
+        case "either", "horizontal", "both", "pan":
             cue.left = true
             cue.right = true
+        case "down", "lower", "below":
+            cue.down = true
+        case "up", "above":
+            cue.up = true
+        default:
+            // Unknown direction → caption only (no fake edge buttons).
+            break
         }
         if let note, !note.isEmpty { cue.caption = note }
     }
@@ -55,7 +66,9 @@ enum ViewfinderPanCueResolver {
         }
         if recipe.tags.contains(.composition) || id.contains("get-down-low") || blob.contains("knee-height") {
             cue.down = true
-            if cue.caption == nil { cue.caption = "include foreground ↓" }
+            if cue.caption == nil {
+                cue.caption = id.contains("get-down-low") ? "Drop lower" : "include foreground ↓"
+            }
         }
     }
 

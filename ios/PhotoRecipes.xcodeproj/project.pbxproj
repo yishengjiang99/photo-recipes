@@ -50,6 +50,9 @@
 		BB721C28ACC84FA486C3F89A /* LocalSceneAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01D9FEBC567B4577BFE30A41 /* LocalSceneAnalyzer.swift */; };
 		2C7E3B979B154396BAA2E244 /* LocalAutoOptimizeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */; };
 		B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */; };
+		E1F2A3B4C5D60101TESTBF01 /* ApplyFiltersIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60102TESTFR01 /* ApplyFiltersIntentTests.swift */; };
+		E1F2A3B4C5D60111TESTBF02 /* ViewfinderPanCueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */; };
+		E1F2A3B4C5D60202ANALYTBF /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -99,6 +102,11 @@
 		A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLookEngine.swift; sourceTree = "<group>"; };
 		01D9FEBC567B4577BFE30A41 /* LocalSceneAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSceneAnalyzer.swift; sourceTree = "<group>"; };
 		1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAutoOptimizeEngine.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60102TESTFR01 /* ApplyFiltersIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplyFiltersIntentTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60103TESTPR01 /* PhotoRecipesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoRecipesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewfinderPanCueTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -106,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				ED3E7FC479DF4D6CAD0E1000 /* PhotoRecipes */,
+				E1F2A3B4C5D60104TESTGR01 /* PhotoRecipesTests */,
 				B773A201C92B4CDC9993D98E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -114,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				892AA67F63154D80834A869D /* Photo Recipes.app */,
+				E1F2A3B4C5D60103TESTPR01 /* PhotoRecipesTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -136,8 +146,9 @@
 				627A771FBD054E719F216C8B /* Services */,
 				6BA042D688CA4E8D8FE4D4D5 /* Resources */,
 				82FD7A6A74454398B7A9487B /* PhotoRecipes.entitlements */,
-			
-				5ED919C3196E4008A2885AC0 /* Camera */,);
+				5ED919C3196E4008A2885AC0 /* Camera */,
+				46A9F2944A2A25162C2F6BBE /* Voice */,
+			);
 			path = PhotoRecipes;
 			sourceTree = "<group>";
 		};
@@ -209,7 +220,6 @@
 				B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */,
 				89161FDC75D748C6BE10ABD7 /* EntitlementsStore.swift */,
 				B27E2F87255E44ED9BEA7236 /* StoreKitManager.swift */,
-			
 				959973059EE74D68BA9CB789 /* CameraSession.swift */,
 				F9748FD9A4FC4ADA8CD75462 /* RecipeCameraMapper.swift */,
 				F71036156851482B84D96223 /* AutoOptimizeController.swift */,
@@ -217,8 +227,12 @@
 				1AECD0A9EAC142B781AC4A8C /* LocalAutoOptimizeEngine.swift */,
 				A0BAF6BA50984B678FC1982D /* CameraRouter.swift */,
 				BA99C92B807247B092E8E181 /* HorizonMonitor.swift */,
-				3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */,);
-			path = "Services";
+				3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */,
+				A6E3AAA2455783C2B657CAF3 /* VoiceCaptureController.swift */,
+				A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */,
+				E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		6BA042D688CA4E8D8FE4D4D5 /* Resources */ = {
@@ -264,6 +278,15 @@
 			path = Features/Onboarding;
 			sourceTree = "<group>";
 		};
+		E1F2A3B4C5D60104TESTGR01 /* PhotoRecipesTests */ = {
+			isa = PBXGroup;
+			children = (
+				E1F2A3B4C5D60102TESTFR01 /* ApplyFiltersIntentTests.swift */,
+				E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */,
+			);
+			path = PhotoRecipesTests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -284,6 +307,24 @@
 			productReference = 892AA67F63154D80834A869D /* Photo Recipes.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E1F2A3B4C5D60105TESTTG01 /* PhotoRecipesTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1F2A3B4C5D6010DTESTCL01 /* Build configuration list for PBXNativeTarget "PhotoRecipesTests" */;
+			buildPhases = (
+				E1F2A3B4C5D60106TESTSRC1 /* Sources */,
+				E1F2A3B4C5D60107TESTFW01 /* Frameworks */,
+				E1F2A3B4C5D60108TESTRS01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E1F2A3B4C5D60109TESTDEP1 /* PBXTargetDependency */,
+			);
+			name = PhotoRecipesTests;
+			productName = PhotoRecipesTests;
+			productReference = E1F2A3B4C5D60103TESTPR01 /* PhotoRecipesTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -293,6 +334,11 @@
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					E1F2A3B4C5D60105TESTTG01 = {
+						TestTargetID = 85D59AD1DAD74D348F7957D5;
+					};
+				};
 			};
 			buildConfigurationList = 8183DE68D4AC432E88C2C820 /* Build configuration list for PBXProject "PhotoRecipes" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -308,6 +354,7 @@
 			projectRoot = "";
 			targets = (
 				85D59AD1DAD74D348F7957D5 /* PhotoRecipes */,
+				E1F2A3B4C5D60105TESTTG01 /* PhotoRecipesTests */,
 			);
 		};
 /* End PBXProject section */
@@ -322,10 +369,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1F2A3B4C5D60108TESTRS01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		1F38257E9B8D4F2D9DF487B6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E1F2A3B4C5D60107TESTFW01 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -353,6 +414,7 @@
 				6AD87EF0E9FB4696BE23A769 /* RecommendResponse.swift in Sources */,
 				8FD7A38199554458A83E85DF /* SubscriptionStatus.swift in Sources */,
 				5DA94385C26C40B28C22FCDD /* PhotoRecipesApp.swift in Sources */,
+				E1F2A3B4C5D60202ANALYTBF /* Analytics.swift in Sources */,
 				B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */,
 				D6E866D9770F4A329B26B1BA /* APIClient.swift in Sources */,
 				E4026E962A56404EBA5D5CC6 /* EntitlementsStore.swift in Sources */,
@@ -384,7 +446,35 @@
 				A1B2C3D4E5F60718293A4B5C /* PushAnalytics.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1F2A3B4C5D60106TESTSRC1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E1F2A3B4C5D60101TESTBF01 /* ApplyFiltersIntentTests.swift in Sources */,
+				E1F2A3B4C5D60111TESTBF02 /* ViewfinderPanCueTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+
+/* Begin PBXContainerItemProxy section */
+		E1F2A3B4C5D6010ATESTCON1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AEDBA07E262A453281A8D509 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 85D59AD1DAD74D348F7957D5;
+			remoteInfo = PhotoRecipes;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		E1F2A3B4C5D60109TESTDEP1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 85D59AD1DAD74D348F7957D5 /* PhotoRecipes */;
+			targetProxy = E1F2A3B4C5D6010ATESTCON1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		343165B793924DAD8DC68999 /* Debug */ = {
@@ -416,7 +506,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 28;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -427,6 +517,8 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp;
 				PRODUCT_NAME = "Grok Camera";
+				PRODUCT_MODULE_NAME = PhotoRecipes;
+				ENABLE_TESTABILITY = YES;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -443,7 +535,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipesRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 28;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -454,10 +546,63 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp;
 				PRODUCT_NAME = "Grok Camera";
+				PRODUCT_MODULE_NAME = PhotoRecipes;
+				ENABLE_TESTABILITY = YES;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		E1F2A3B4C5D6010BTESTDBG1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83D36RPMUM;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp.tests;
+				PRODUCT_NAME = PhotoRecipesTests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Grok Camera.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Grok Camera";
+			};
+			name = Debug;
+		};
+		E1F2A3B4C5D6010CTESTRL01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 83D36RPMUM;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp.tests;
+				PRODUCT_NAME = PhotoRecipesTests;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Grok Camera.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Grok Camera";
 			};
 			name = Release;
 		};
@@ -478,6 +623,15 @@
 			buildConfigurations = (
 				CBE340B7C80C4401A1E9C794 /* Debug */,
 				AA0ABF65A04D43B38E128916 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E1F2A3B4C5D6010DTESTCL01 /* Build configuration list for PBXNativeTarget "PhotoRecipesTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1F2A3B4C5D6010BTESTDBG1 /* Debug */,
+				E1F2A3B4C5D6010CTESTRL01 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

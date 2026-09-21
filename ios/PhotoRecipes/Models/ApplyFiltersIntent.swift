@@ -71,12 +71,21 @@ enum ApplyFiltersIntent {
             .lowercased()
         guard !t.isEmpty else { return false }
         if t.contains("black and white") || t.contains("black & white") { return true }
-        if t.contains("b&w") || t.contains("b & w") || t.contains("b and w") { return true }
         if t.contains("monochrome") || t.contains("mono ink") { return true }
+        // Tokenize so "grab and walk" does not false-positive on "b and w".
         let tokens = t
             .split(whereSeparator: { !$0.isLetter && $0 != "&" })
             .map(String.init)
-        if tokens.contains("bw") || tokens.contains("mono") || tokens.contains("b&w") { return true }
+        if tokens.contains("b&w") || tokens.contains("bw") || tokens.contains("mono") { return true }
+        // "b and w" / "b & w" as three tokens
+        for i in 0..<tokens.count {
+            if tokens[i] == "b" {
+                if i + 1 < tokens.count, tokens[i + 1] == "and" || tokens[i + 1] == "&",
+                   i + 2 < tokens.count, tokens[i + 2] == "w" {
+                    return true
+                }
+            }
+        }
         if t == "bw" || t == "mono" || t == "b&w" { return true }
         return false
     }
@@ -84,8 +93,9 @@ enum ApplyFiltersIntent {
     /// Ordered named-look phrases → CreativeLook id (mirrors server CREATIVE_LOOK_OVERRIDE_RULES).
     /// More specific phrases first; first match wins. "apply filters" alone does not force.
     private static let namedLookPhrases: [(phrases: [String], id: String)] = [
+        // Short "b and w" / "b&w" / "bw" / "mono" go through isBlackAndWhite (token-safe).
         (["apply black and white filter", "black and white", "black & white",
-          "b&w", "b & w", "b and w", "monochrome", "mono ink", "make it black and white"], "monoInk"),
+          "monochrome", "mono ink", "make it black and white"], "monoInk"),
         (["warm pop"], "warmPop"),
         (["crisp cool"], "crispCool"),
         (["editorial red"], "editorialRed"),
@@ -145,6 +155,58 @@ enum ApplyFiltersIntent {
             return look
         }
         return nil
+    }
+
+    /// Merge phoneTargets.creativeLook ← top-level ← forced named look (parity with server overrides).
+    /// Nested `phoneTargets.creativeLook` wins over top-level when both are set;
+    /// top-level alone still populates targets; forcedLook (B&W / named) always wins last.
+    static func mergeCreativeLook(response: RecommendResponse?, message: String?) -> PhoneTargets? {
+        var targets = response?.phoneTargets
+        if var t = targets {
+            if t.creativeLook == nil, let top = response?.creativeLook {
+                t.creativeLook = top
+                targets = t
+            }
+        } else if let top = response?.creativeLook {
+            var t = PhoneTargets()
+            t.creativeLook = top
+            targets = t
+        }
+        if let forced = forcedLook(for: message ?? "") {
+            var t = targets ?? PhoneTargets()
+            t.creativeLook = forced
+            targets = t
+        }
+        return targets
+    }
+
+    /// Camera voice final routing (last endpointed utterance only).
+    /// APPLY-FILTERS → Recommend SSE with messageOverride; else Auto Optimize.
+    /// Non-empty utterance always cancels in-flight Recommend/AO first (looks don't stack).
+    enum VoiceEndpointAction: Equatable {
+        case none
+        /// Stream recommend with this utterance as `message` (not the full Scene note).
+        case recommend(messageOverride: String)
+        case optimize
+    }
+
+    struct VoiceEndpointPlan: Equatable {
+        var cancelInFlight: Bool
+        var action: VoiceEndpointAction
+    }
+
+    static func planVoiceEndpoint(_ raw: String) -> VoiceEndpointPlan {
+        let utterance = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !utterance.isEmpty else {
+            return VoiceEndpointPlan(cancelInFlight: false, action: .none)
+        }
+        if matches(utterance) {
+            return VoiceEndpointPlan(
+                cancelInFlight: true,
+                action: .recommend(messageOverride: utterance)
+            )
+        }
+        return VoiceEndpointPlan(cancelInFlight: true, action: .optimize)
     }
 
     static let missingLookMessage =

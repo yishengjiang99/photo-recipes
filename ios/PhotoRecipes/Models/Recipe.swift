@@ -109,3 +109,41 @@ extension Recipe {
         return dials.mode.label
     }
 }
+
+extension Recipe {
+    /// Short name for Camera chrome (badge / before-after chip). Never the long marketing title.
+    var chromeTitle: String {
+        switch id {
+        case "sharp-front-to-back": return "Sharp Front to Back"
+        case "blur-moving-subjects": return "Blur Motion"
+        case "panning-sharp-subject": return "Panning"
+        case "get-down-low": return "Get Down Low"
+        case "hdr-brights-darks": return "HDR"
+        default:
+            let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.count <= 22 { return t }
+            // Prefer clause before em/en dash or colon
+            for sep in [" — ", " – ", " - ", ": "] {
+                if let r = t.range(of: sep) {
+                    let head = String(t[..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
+                    if (8...28).contains(head.count) { return head }
+                }
+            }
+            return String(t.prefix(20)).trimmingCharacters(in: .whitespaces) + "…"
+        }
+    }
+
+    static func chromeTitle(forStoredTitle title: String?, id: String?) -> String? {
+        if let id, let recipe = BundledPresets.recipe(id: id) {
+            return recipe.chromeTitle
+        }
+        guard let title, !title.isEmpty else { return nil }
+        // Best-effort: match known full titles
+        if let recipe = BundledPresets.all.first(where: { $0.title == title }) {
+            return recipe.chromeTitle
+        }
+        if title.count <= 22 { return title }
+        return String(title.prefix(20)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
