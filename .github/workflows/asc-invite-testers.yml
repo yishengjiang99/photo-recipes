@@ -101,7 +101,6 @@ jobs:
                 },
                 'relationships': {
                   'betaGroups': {'data': [{'type': 'betaGroups', 'id': gid}]},
-                  'apps': {'data': [{'type': 'apps', 'id': app_id}]},
                 },
               }
             }
