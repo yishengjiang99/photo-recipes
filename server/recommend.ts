@@ -109,6 +109,33 @@ export type CreativeLook = {
 /** Default intensity when creativeLook.id is present but intensity is omitted or null. */
 export const CREATIVE_LOOK_DEFAULT_INTENSITY = 0.55
 
+
+/** Deterministic look overrides from the latest user message (replaces any prior look intent). */
+const BW_LOOK_RE =
+  /\b(black\s*and\s*white|b\s*&\s*w|b\s*\/\s*w|bw|mono(?:chrome)?)\b|make\s+it\s+black\s+and\s+white/i
+
+export function inferCreativeLookOverride(message: string): CreativeLook | undefined {
+  const m = message.trim()
+  if (!m) return undefined
+  if (BW_LOOK_RE.test(m)) {
+    return { id: 'monoInk', intensity: CREATIVE_LOOK_DEFAULT_INTENSITY }
+  }
+  return undefined
+}
+
+/**
+ * Latest user message wins: if the note carries a named look intent (e.g. B&W → monoInk),
+ * replace whatever creativeLook the model emitted (do not blend with a prior look).
+ */
+export function applyCreativeLookMessageOverride(
+  message: string,
+  look: CreativeLook | undefined,
+): CreativeLook | undefined {
+  const forced = inferCreativeLookOverride(message)
+  if (forced) return forced
+  return look
+}
+
 const CREATIVE_LOOK_ID_SET = new Set<string>(CREATIVE_LOOK_IDS)
 
 export interface PhoneTargets {
@@ -1179,11 +1206,15 @@ ALTERNATE INPUT (spoken / STT transcripts — secondary):
   • APPLY-FILTERS intents (text or STT) — MUST emit creativeLook (never omit / never empty):
       "apply filters" / "apply filter" / "add a filter" / "put a filter on" / "use a filter" /
       "apply a look" / "add a look" / "grade this" / "color grade" / "give it a look" /
-      "make it cinematic" / "make it moody" / "make it warm" / "black and white" / "B&W" /
+      "make it cinematic" / "make it moody" / "make it warm" /
       "film look" / "teal and orange" / "add grain"
     → Still call list_presets + select_preset (keep current recipe if it fits). phoneTargets MUST include creativeLook { id, intensity? }.
     → Pick the best V1 id for the sensed scene (or the named look if they specified one). Default intensity omit → server 0.55.
     → Do NOT refuse or reply with coach-only text; the client auto-applies creativeLook on Recommend.
+  • B&W (text or STT) — REQUIRED creativeLook.id = "monoInk" (intensity optional → 0.55):
+      "black and white" / "B&W" / "b&w" / "bw" / "mono" / "monochrome" / "make it black and white"
+    → Never omit; never emit a color look for these utterances.
+  • LOOK OVERRIDE — each new user message / STT final **replaces** any prior creativeLook intent. Do not blend the previous look with the new ask; emit only the look that matches THIS message.
 - When the intent is a control adjustment, phoneTargets MUST include the relevant keys (do not finalize with empty {} if they asked to change a settable control).
 
 CRITICAL RULES:
@@ -1350,7 +1381,19 @@ async function recommendWithToolLoop(
         content: JSON.stringify(result),
       })
       if (sel) {
-        selection = sel
+        const look = applyCreativeLookMessageOverride(
+          req.message,
+          sel.creativeLook ?? sel.phoneTargets.creativeLook,
+        )
+        if (look) {
+          selection = {
+            ...sel,
+            creativeLook: look,
+            phoneTargets: { ...sel.phoneTargets, creativeLook: look },
+          }
+        } else {
+          selection = sel
+        }
       }
     }
 
@@ -1365,7 +1408,10 @@ async function recommendWithToolLoop(
         coachOnly: selection.coachOnly,
         panCue: selection.panCue,
         senseSummary: selection.senseSummary,
-        ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
+        ...(() => {
+          const look = applyCreativeLookMessageOverride(req.message, selection.creativeLook)
+          return look ? { creativeLook: look } : {}
+        })(),
         preset,
         model,
         // Do not return `messages` — they embed the vision data URL (pass-through only).
@@ -1813,7 +1859,10 @@ async function recommendFastOneShot(
     coachOnly,
     panCue: selection.panCue,
     senseSummary: selection.senseSummary,
-    ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
+    ...(() => {
+          const look = applyCreativeLookMessageOverride(req.message, selection.creativeLook)
+          return look ? { creativeLook: look } : {}
+        })(),
     preset,
     model,
   }
