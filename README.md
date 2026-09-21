@@ -33,6 +33,39 @@ Full App Store Connect setup, local StoreKit testing, and TestFlight checklist: 
 4. **Shoot** — full-bleed live viewfinder with edge-to-edge overlays, pan cues, and a shutter that saves to Camera Roll.
 5. **Learn** — each recipe includes steps, tips, gear, phone/advanced notes, and a “Why this?” teach sheet.
 
+## Agentic tool loop
+
+**Pass 1** Auto Optimize is on-device and instant. **Pass 2** cloud refine, plus Ask Grok / Photo Vision (iOS and web), call `POST /api/recommend`. Grok **must** use tools — it never invents recipes off-catalog.
+
+```mermaid
+sequenceDiagram
+  participant App as iOS / web client
+  participant API as /api/recommend
+  participant Grok as Grok
+  participant Tools as Tools
+  App->>API: viewfinder image + optional note
+  API->>Grok: system + user (vision detail low)
+  Note over API,Grok: Round 0 forces list_presets
+  Grok->>Tools: list_presets (slim catalog)
+  Tools-->>Grok: id / title / tags / keySettings
+  opt Close candidates
+    Grok->>Tools: get_preset_details
+  end
+  Grok->>Tools: select_preset
+  Tools-->>API: phoneTargets + coachOnly + teachWhy
+  API-->>App: applyPhoneTargets on AVCapture
+```
+
+| Step | Tool | Role |
+|------|------|------|
+| 1 | `list_presets` | Slim catalog grounding |
+| 2 | `get_preset_details` | Optional deep dive on 1–2 ids |
+| 3 | `select_preset` | Finalize recipe + **phoneTargets** (applied) + **coachOnly** (UI only) |
+
+**Verify** is a mental check inside the model before `select_preset` — there is no `verify_*` tool.
+
+Voice/STT is a **secondary** input into the same cloud loop. Apply entrypoint: [`CameraSession.applyPhoneTargets`](./ios/PhotoRecipes/Services/CameraSession.swift). Full charts: [`docs/agentic-flow.md`](./docs/agentic-flow.md) · schema/prompt: [`docs/agentic-prompt-v2.md`](./docs/agentic-prompt-v2.md).
+
 ## Free Peek vs Photo Recipes Pro
 
 | Feature | Free Peek | Pro |
@@ -81,7 +114,7 @@ ios/                  # SwiftUI iOS app (primary)
 src/                  # Vite + React 19 web app (companion)
 server/               # Express API (Grok, Stripe web, IAP verify, telemetry)
 deploy/               # nginx + systemd templates
-docs/                 # design handoffs and telemetry docs
+docs/                 # agentic flow charts, prompts, design handoffs, telemetry
 ```
 
 ## Web companion
