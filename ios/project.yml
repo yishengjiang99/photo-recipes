@@ -37,11 +37,17 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ragnus.mvp
         PRODUCT_NAME: Grok Camera
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "22"
+        CURRENT_PROJECT_VERSION: "23"
         GENERATE_INFOPLIST_FILE: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_EMIT_LOC_STRINGS: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 83D36RPMUM
-    entitlements:
-      path: PhotoRecipes/PhotoRecipes.entitlements
+      configs:
+        # Debug / local → development APNs; Release / Archive / TestFlight → production.
+        # Hardcoding development in a distribution-signed TF build causes
+        # didFailToRegisterForRemoteNotifications (no token → never POST /api/push/register).
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: PhotoRecipes/PhotoRecipes.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: PhotoRecipes/PhotoRecipesRelease.entitlements

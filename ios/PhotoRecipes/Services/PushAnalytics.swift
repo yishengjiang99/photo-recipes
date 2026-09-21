@@ -13,6 +13,10 @@ final class PushAnalytics {
         case pushPermissionDenied = "push_permission_denied"
         case pushOpened = "push_opened"
         case autoOptimizeStarted = "auto_optimize_started"
+        /// Build 23: APNs token callback reached (before /api/push/register).
+        case apnsTokenReceived = "apns_token_received"
+        /// Build 23: didFailToRegisterForRemoteNotifications — surfaces on nginx.
+        case apnsRegisterFailed = "apns_register_failed"
     }
 
     private let logKey = "push.analytics.events"

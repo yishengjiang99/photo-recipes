@@ -35,6 +35,9 @@ const EVENT_ALLOWLIST = new Set([
   'subscribe',
   'push_opt_out',
   'push_prefs_updated',
+  // Build 23: APNs registration observability (iOS → nginx)
+  'apns_token_received',
+  'apns_register_failed',
 ])
 
 function appendEventLine(line: string) {
@@ -179,6 +182,14 @@ export function mountPushRoutes(app: Express) {
         rejected.push(name || 'unknown')
         continue
       }
+      const rawProps =
+        ev.props && typeof ev.props === 'object' && !Array.isArray(ev.props)
+          ? (ev.props as Record<string, unknown>)
+          : ev.properties &&
+              typeof ev.properties === 'object' &&
+              !Array.isArray(ev.properties)
+            ? (ev.properties as Record<string, unknown>)
+            : undefined
       const line = JSON.stringify({
         at: new Date().toISOString(),
         guestId,
@@ -186,10 +197,7 @@ export function mountPushRoutes(app: Express) {
         type: typeof ev.type === 'string' ? ev.type : undefined,
         stage: typeof ev.stage === 'string' ? ev.stage : undefined,
         // attribution helpers — no email/name/token
-        props:
-          ev.props && typeof ev.props === 'object' && !Array.isArray(ev.props)
-            ? sanitizeProps(ev.props as Record<string, unknown>)
-            : undefined,
+        props: rawProps ? sanitizeProps(rawProps) : undefined,
       })
       appendEventLine(line)
       console.info(line)
