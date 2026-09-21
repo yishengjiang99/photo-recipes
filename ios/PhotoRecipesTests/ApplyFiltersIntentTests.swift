@@ -61,22 +61,18 @@ final class ApplyFiltersIntentTests: XCTestCase {
         XCTAssertEqual(ApplyFiltersIntent.forcedLook(for: "monochrome")?.id, "monoInk")
     }
 
-    func testForcedLook_nonBW_isNil() {
-        let phrases = [
-            "warm", "cinematic", "person by a window",
-            "teal orange", "make it warm", "grab and walk",
-        ]
+    func testForcedLook_plainScene_isNil() {
+        let phrases = ["person by a window", "low light cafe", "grab and walk"]
         for phrase in phrases {
-            XCTAssertFalse(
-                ApplyFiltersIntent.isBlackAndWhite(phrase),
-                "isBlackAndWhite unexpectedly true for \(phrase)"
-            )
-            let look = ApplyFiltersIntent.forcedLook(for: phrase)
-            XCTAssertTrue(
-                look == nil,
-                "forcedLook unexpectedly \(look?.id ?? "?") for \(phrase)"
-            )
+            XCTAssertFalse(ApplyFiltersIntent.isBlackAndWhite(phrase), phrase)
+            XCTAssertNil(ApplyFiltersIntent.forcedLook(for: phrase), phrase)
         }
+    }
+
+    func testForcedLook_namedLooks_mapToCatalogIds() {
+        XCTAssertEqual(ApplyFiltersIntent.forcedLook(for: "warm")?.id, "warmGlow")
+        XCTAssertEqual(ApplyFiltersIntent.forcedLook(for: "cinematic")?.id, "blockbuster")
+        XCTAssertEqual(ApplyFiltersIntent.forcedLook(for: "teal orange")?.id, "tealOrange")
     }
 
     // MARK: - resolvedLook / mergeCreativeLook (nested preferred)
