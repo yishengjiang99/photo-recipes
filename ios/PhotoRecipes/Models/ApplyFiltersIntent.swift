@@ -38,11 +38,11 @@ enum ApplyFiltersIntent {
         // Named look / grade shortcuts (with or without "make it")
         let named = [
             "cinematic", "moody film", "warm film", "warm glow", "golden hour look",
-            "black and white", "black & white", "b&w", "b and w",
+            "black and white", "black & white", "b&w", "b and w", "bw", "monochrome",
             "teal and orange", "teal orange", "teal & orange",
             "add grain", "film grain", "soft dream", "dreamy look",
             "cool blue", "night grade", "crisp cool", "blockbuster",
-            "lo-fi", "lofi", "editorial red", "soft vintage", "mono ink",
+            "lo-fi", "lofi", "lo fi punch", "lo fi", "editorial red", "soft vintage", "mono ink",
         ]
         if named.contains(where: { t.contains($0) }) { return true }
 
@@ -51,7 +51,7 @@ enum ApplyFiltersIntent {
         // is less likely to false-positive when callers pass full scene text.
         let shortLooks = [
             "warm", "cool", "moody", "cinematic", "grain", "grainy",
-            "mono", "vintage", "dreamy", "filmic", "golden",
+            "mono", "bw", "vintage", "dreamy", "filmic", "golden",
         ]
         let tokens = t
             .split(whereSeparator: { !$0.isLetter && $0 != "&" })
@@ -211,4 +211,136 @@ enum ApplyFiltersIntent {
 
     static let missingLookMessage =
         "No look returned — try again (server should send a creativeLook)"
+
+    // MARK: - LOOK_UTTERANCE_MATRIX (server recommend.ts — one-for-one)
+
+    /// Mirrors server `LOOK_UTTERANCE_MATRIX` / `CREATIVE_LOOK_OVERRIDE_RULES` (Build 29 / #131).
+    /// Do not invent ids — only `CreativeLookCatalog.allIds`.
+    static let lookUtteranceMatrix: [(utterance: String, id: String)] = [
+        ("apply black and white filter", "monoInk"),
+        ("black and white", "monoInk"),
+        ("B&W", "monoInk"),
+        ("b and w", "monoInk"),
+        ("bw", "monoInk"),
+        ("mono", "monoInk"),
+        ("monochrome", "monoInk"),
+        ("make it black and white", "monoInk"),
+        ("mono ink", "monoInk"),
+        ("warm pop", "warmPop"),
+        ("warm glow", "warmGlow"),
+        ("warm film", "warmGlow"),
+        ("warm", "warmGlow"),
+        ("crisp cool", "crispCool"),
+        ("editorial red", "editorialRed"),
+        ("soft vintage", "softVintage"),
+        ("vintage look", "softVintage"),
+        ("vintage", "softVintage"),
+        ("golden hour", "goldenHour"),
+        ("lo-fi", "loFiPunch"),
+        ("lofi", "loFiPunch"),
+        ("lo fi punch", "loFiPunch"),
+        ("teal and orange", "tealOrange"),
+        ("teal orange", "tealOrange"),
+        ("teal & orange", "tealOrange"),
+        ("blockbuster", "blockbuster"),
+        ("cinematic", "blockbuster"),
+        ("moody film", "moodyFilm"),
+        ("moody", "moodyFilm"),
+        ("cool blue", "coolBlue"),
+        ("night grade", "coolBlue"),
+        ("soft dream", "softDream"),
+        ("dreamy", "softDream"),
+        ("film grain", "filmGrain"),
+        ("grainy", "filmGrain"),
+        ("add grain", "filmGrain"),
+    ]
+
+    // MARK: - Agentic field → iOS method mapping (documented for InferenceApplyPathTests)
+
+    ///
+    /// | agentic field | iOS method / property |
+    /// | phoneTargets.creativeLook | applyPhoneTargets(..., autoApplyLook:) / setActiveLook / activeCreativeLook |
+    /// | phoneTargets.shutter/ISO/EV/WB/focus/zoom/focusPoint/flash/torch | applyPhoneTargets dials |
+    /// | panCue | ViewfinderPanCueResolver (down≠L/R) |
+    /// | coachOnly | NOT applied as phone dials |
+    /// | top-level creativeLook | fallback via mergeCreativeLook |
+    ///
+    /// Routing (Build 29): APPLY-FILTERS / named look → `runRecommend(messageOverride:)` +
+    /// `applyPhoneTargets(..., autoApplyLook: true)`; forcedLook always wins last @ 0.55.
+    /// Empty utterance → no cancel / `.none` (AO button uses `runOptimize`).
+    /// Non-look scene / control text → `runOptimize` (AO applyPhoneTargets, autoApplyLook false).
+    enum ApplyPathMethod: String, Equatable {
+        /// Voice/typed APPLY-FILTERS → Recommend SSE + bake look immediately.
+        case runRecommendAutoApplyLook
+        /// Scene / control utterance → Auto Optimize (dials via applyPhoneTargets, no forced look).
+        case runOptimize
+        case none
+    }
+
+    struct ApplyPathResolution: Equatable {
+        var matches: Bool
+        var forcedLookId: String?
+        var method: ApplyPathMethod
+        /// Recommend apply path always uses autoApplyLook: true when baking a look.
+        var autoApplyLook: Bool
+        var cancelInFlight: Bool
+        /// iOS entry used by CameraView voice final.
+        var iosEntry: String
+    }
+
+    /// Resolve utterance → matches / forcedLook / iOS method (Recommend vs AO).
+    static func resolveApplyPath(_ raw: String) -> ApplyPathResolution {
+        let plan = planVoiceEndpoint(raw)
+        let forced = forcedLook(for: raw)
+        switch plan.action {
+        case .recommend:
+            return ApplyPathResolution(
+                matches: true,
+                forcedLookId: forced?.id,
+                method: .runRecommendAutoApplyLook,
+                autoApplyLook: true,
+                cancelInFlight: plan.cancelInFlight,
+                iosEntry: "runRecommend(messageOverride:)"
+            )
+        case .optimize:
+            return ApplyPathResolution(
+                matches: false,
+                forcedLookId: forced?.id,
+                method: .runOptimize,
+                autoApplyLook: false,
+                cancelInFlight: plan.cancelInFlight,
+                iosEntry: "runOptimize"
+            )
+        case .none:
+            return ApplyPathResolution(
+                matches: false,
+                forcedLookId: forced?.id,
+                method: .none,
+                autoApplyLook: false,
+                cancelInFlight: false,
+                iosEntry: "none"
+            )
+        }
+    }
+
+    /// Client matched APPLY-FILTERS but response has neither nested/top look nor forcedLook.
+    static func reportsMissingLook(message: String, response: RecommendResponse) -> Bool {
+        guard matches(message) else { return false }
+        if resolvedLook(from: response) != nil { return false }
+        if forcedLook(for: message) != nil { return false }
+        return true
+    }
+
+    /// PhoneTargets keys that become AV writes via `applyPhoneTargets` (never coachOnly).
+    static let phoneTargetDialKeyNames: [String] = [
+        "shutter", "exposureDurationSec", "iso", "ev", "whiteBalance",
+        "focusMode", "zoom", "focusPoint", "lensPosition", "torch", "flash",
+        "lowLightBoost", "videoHDR", "cameraDevice", "frameRate", "preferFormatHint",
+        "bracket", "monitorSubjectAreaChange", "maxPhotoDimensions", "previewLUT",
+        "creativeLook", "simulatedAperture",
+    ]
+
+    /// coachOnly keys — UI/Teach only; never mapped onto applyPhoneTargets dials.
+    static let coachOnlyKeyNames: [String] = ["aperture", "nd", "tripod", "notes"]
 }
+
