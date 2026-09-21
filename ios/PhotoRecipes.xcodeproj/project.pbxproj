@@ -52,6 +52,7 @@
 		B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */; };
 		E1F2A3B4C5D60101TESTBF01 /* ApplyFiltersIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60102TESTFR01 /* ApplyFiltersIntentTests.swift */; };
 		E1F2A3B4C5D60111TESTBF02 /* ViewfinderPanCueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */; };
+		E1F2A3B4C5D60121TESTBF03 /* InferenceApplyPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60122TESTFR03 /* InferenceApplyPathTests.swift */; };
 		E1F2A3B4C5D60202ANALYTBF /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */; };
 /* End PBXBuildFile section */
 
@@ -106,6 +107,7 @@
 		E1F2A3B4C5D60103TESTPR01 /* PhotoRecipesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoRecipesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewfinderPanCueTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60122TESTFR03 /* InferenceApplyPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceApplyPathTests.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -283,6 +285,7 @@
 			children = (
 				E1F2A3B4C5D60102TESTFR01 /* ApplyFiltersIntentTests.swift */,
 				E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */,
+				E1F2A3B4C5D60122TESTFR03 /* InferenceApplyPathTests.swift */,
 			);
 			path = PhotoRecipesTests;
 			sourceTree = "<group>";
@@ -452,6 +455,7 @@
 			files = (
 				E1F2A3B4C5D60101TESTBF01 /* ApplyFiltersIntentTests.swift in Sources */,
 				E1F2A3B4C5D60111TESTBF02 /* ViewfinderPanCueTests.swift in Sources */,
+				E1F2A3B4C5D60121TESTBF03 /* InferenceApplyPathTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -506,7 +510,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -535,7 +539,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipesRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
