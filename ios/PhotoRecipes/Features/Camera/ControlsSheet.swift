@@ -34,14 +34,10 @@ struct ControlsSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Controls", selection: $tab) {
-                    ForEach(Tab.allCases) { t in
-                        Text(t.rawValue).tag(t)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, AppTheme.space3)
-                .padding(.vertical, AppTheme.space2)
+                // Exclusive tap tabs — segmented Picker lost first hits to sheet
+                // drag + presentationBackgroundInteraction / viewfinder gestures.
+                controlsTabBar
+                    .zIndex(10)
 
                 ScrollView {
                     Group {
@@ -76,7 +72,49 @@ struct ControlsSheet: View {
             }
         }
         .presentationDetents([.fraction(0.5), .large])
+        .presentationDragIndicator(.visible)
+        .presentationContentInteraction(.scrolls)
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.5)))
+    }
+
+    /// Exclusive tap tabs — sheet drag / background interaction must not eat the first hit.
+    private var controlsTabBar: some View {
+        HStack(spacing: 2) {
+            ForEach(Tab.allCases) { t in
+                let selected = tab == t
+                Button {
+                    tab = t
+                } label: {
+                    Text(t.rawValue)
+                        .font(AppTheme.bodySmMedium())
+                        .foregroundStyle(selected ? AppTheme.accentOnAccent : AppTheme.inkSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusSm)
+                                .fill(selected ? AppTheme.accent : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                // Win over sheet resize pan + presentationBackgroundInteraction hits.
+                .highPriorityGesture(
+                    TapGesture().onEnded { tab = t }
+                )
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityLabel(t.rawValue)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMd)
+                .fill(AppTheme.surface)
+        )
+        .padding(.horizontal, AppTheme.space3)
+        .padding(.vertical, AppTheme.space2)
     }
 
     private var footer: some View {
