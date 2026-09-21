@@ -8,6 +8,9 @@ import {
   inferCreativeLookOverride,
   applyCreativeLookMessageOverride,
   shouldUseRecommendToolLoop,
+  finalizeCreativeLookForClient,
+  redactDataUrls,
+  isApplyFiltersIntent,
 } from './recommend.ts'
 
 function isError(r: ReturnType<typeof parsePhoneTargets>): r is { error: string } {
@@ -331,5 +334,50 @@ describe('shouldUseRecommendToolLoop (message routing)', () => {
     process.env.RECOMMEND_TOOL_LOOP = '1'
     assert.equal(shouldUseRecommendToolLoop({ message: '' }), true)
     delete process.env.RECOMMEND_TOOL_LOOP
+  })
+})
+
+describe('redactDataUrls', () => {
+  it('replaces base64 image payloads with length markers', () => {
+    const raw = 'prefix data:image/jpeg;base64,QUJDREVGR0g= suffix'
+    const out = redactDataUrls(raw)
+    assert.match(out, /data:image\/jpeg;base64,<len=\d+>/)
+    assert.equal(out.includes('QUJD'), false)
+  })
+})
+
+describe('finalizeCreativeLookForClient', () => {
+  it('forces monoInk onto phoneTargets for B&W even when model omitted look', () => {
+    const r = finalizeCreativeLookForClient('B&W please', {}, undefined)
+    assert.equal(r.overrideMatched, true)
+    assert.deepEqual(r.creativeLook, {
+      id: 'monoInk',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
+    assert.deepEqual(r.phoneTargets.creativeLook, {
+      id: 'monoInk',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
+  })
+
+  it('replaces a prior color look when message is black and white', () => {
+    const r = finalizeCreativeLookForClient(
+      'black and white',
+      { creativeLook: { id: 'warmGlow', intensity: 0.8 } },
+      { id: 'tealOrange', intensity: 0.4 },
+    )
+    assert.equal(r.overrideMatched, true)
+    assert.equal(r.creativeLook?.id, 'monoInk')
+    assert.equal(r.phoneTargets.creativeLook?.id, 'monoInk')
+    assert.deepEqual(r.rawCreativeLook, { id: 'tealOrange', intensity: 0.4 })
+  })
+})
+
+describe('isApplyFiltersIntent', () => {
+  it('detects apply-filters phrasing without forcing a look', () => {
+    assert.equal(isApplyFiltersIntent('apply filters'), true)
+    assert.equal(isApplyFiltersIntent('add a look'), true)
+    assert.equal(isApplyFiltersIntent('exposure up'), false)
+    assert.equal(inferCreativeLookOverride('apply filters'), undefined)
   })
 })

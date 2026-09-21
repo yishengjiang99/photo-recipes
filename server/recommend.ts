@@ -1,5 +1,6 @@
 import { presets } from '../src/data/presets.ts'
 import type { RecipePreset } from '../src/types/index.ts'
+import crypto from 'node:crypto'
 import { shrinkVisionDataUrl } from './image.ts'
 import { fetchWithTimeout } from './fetchTimeout.ts'
 
@@ -32,11 +33,22 @@ const FAST_VISION_TIMEOUT_MS = 35_000
 /** @deprecated use FAST_TEXT / FAST_VISION — kept for exports/tests */
 const FAST_TIMEOUT_MS = FAST_VISION_TIMEOUT_MS
 
+export interface RecommendLogContext {
+  /** Short correlation id shared across one recommend request's log lines. */
+  correlationId: string
+  /** Truncated guest/anon id (never full if long). */
+  guestIdShort?: string
+  /** ios | web | android | server */
+  platform?: string
+}
+
 export interface RecommendRequest {
   message: string
   favorites?: string[]
   /** data:image/...;base64,... — when set, uses vision model + multimodal user content */
   imageDataUrl?: string
+  /** Optional structured-debug context from the HTTP layer. */
+  log?: RecommendLogContext
 }
 
 /** Values a phone camera API can typically apply (AVFoundation / Camera2-style).
@@ -206,6 +218,102 @@ export function applyCreativeLookMessageOverride(
   const forced = inferCreativeLookOverride(message)
   if (forced) return forced
   return look
+}
+
+/** APPLY-FILTERS-style intents (logging / diagnostics only — does not force a look). */
+const APPLY_FILTERS_LOOK_RE =
+  /\b(apply\s+filters?|add\s+a\s+filter|put\s+a\s+filter\s+on|use\s+a\s+filter|apply\s+a\s+look|add\s+a\s+look|grade\s+this|color\s+grade|give\s+it\s+a\s+look|make\s+it\s+cinematic|make\s+it\s+moody|make\s+it\s+warm|film\s+look|teal\s+and\s+orange|add\s+grain)\b/i
+
+/** True when the utterance looks like an APPLY-FILTERS ask (model should emit creativeLook). */
+export function isApplyFiltersIntent(message: string): boolean {
+  return APPLY_FILTERS_LOOK_RE.test(message.trim())
+}
+
+/** Redact vision data URLs / base64 blobs for safe structured logs. */
+export function redactDataUrls(text: string): string {
+  return text.replace(
+    /data:(image\/[a-z0-9.+-]+);base64,[A-Za-z0-9+/=\s]+/gi,
+    (match, mime: string) => {
+      const comma = match.indexOf(',')
+      const b64 = comma >= 0 ? match.slice(comma + 1).replace(/\s/g, '') : ''
+      return `data:${mime};base64,<len=${b64.length}>`
+    },
+  )
+}
+
+export function newRecommendCorrelationId(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+}
+
+/** Truncate guest/anon ids for logs (keep recognizable short form). */
+export function shortGuestId(id: string | undefined | null): string | undefined {
+  if (!id) return undefined
+  const s = id.trim()
+  if (!s) return undefined
+  if (s.length <= 10) return s
+  return `${s.slice(0, 4)}…${s.slice(-4)}`
+}
+
+type RecommendLogPrefix = 'recommend' | 'creativeLook'
+
+/**
+ * Structured JSON log line for Recommend / creativeLook debug.
+ * Never logs raw vision data URLs or API keys.
+ */
+export function logRecommend(
+  prefix: RecommendLogPrefix,
+  event: string,
+  fields: Record<string, unknown> = {},
+): void {
+  const safe: Record<string, unknown> = { event }
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined) continue
+    if (typeof v === 'string') {
+      safe[k] = redactDataUrls(v).slice(0, 2000)
+    } else {
+      safe[k] = v
+    }
+  }
+  console.info(`[${prefix}] ${JSON.stringify(safe)}`)
+}
+
+/** Fingerprint a prompt for logs (length + short sha) — never the full text with images. */
+export function promptFingerprint(text: string): { len: number; sha8: string } {
+  const redacted = redactDataUrls(text)
+  const sha8 = crypto.createHash('sha256').update(redacted).digest('hex').slice(0, 8)
+  return { len: redacted.length, sha8 }
+}
+
+/**
+ * Apply message look override to both top-level creativeLook and phoneTargets.creativeLook.
+ * Returns raw (pre-override) and final looks for structured logging.
+ */
+export function finalizeCreativeLookForClient(
+  message: string,
+  phoneTargets: PhoneTargets,
+  topLevelLook?: CreativeLook,
+): {
+  phoneTargets: PhoneTargets
+  creativeLook?: CreativeLook
+  rawCreativeLook?: CreativeLook
+  overrideMatched: boolean
+} {
+  const rawCreativeLook = topLevelLook ?? phoneTargets.creativeLook
+  const forced = inferCreativeLookOverride(message)
+  const creativeLook = applyCreativeLookMessageOverride(message, rawCreativeLook)
+  if (!creativeLook) {
+    return {
+      phoneTargets,
+      rawCreativeLook,
+      overrideMatched: Boolean(forced),
+    }
+  }
+  return {
+    phoneTargets: { ...phoneTargets, creativeLook },
+    creativeLook,
+    rawCreativeLook,
+    overrideMatched: Boolean(forced),
+  }
 }
 
 const CREATIVE_LOOK_ID_SET = new Set<string>(CREATIVE_LOOK_IDS)
@@ -1339,13 +1447,51 @@ async function recommendWithToolLoop(
 ): Promise<RecommendResult> {
   const vision = Boolean(req.imageDataUrl)
   const timeoutMs = vision ? FAST_VISION_TIMEOUT_MS : FAST_TEXT_TIMEOUT_MS
+  const cid = req.log?.correlationId ?? newRecommendCorrelationId()
+  const lookOverride = inferCreativeLookOverride(req.message)
   if (!vision && !req.message.trim()) {
     throw Object.assign(new Error('Message or image is required'), { status: 400 })
   }
 
+  const systemPrompt = buildSystemPrompt(req.favorites, vision)
+  const userContent = buildUserContent(req)
+  const sysFp = promptFingerprint(systemPrompt)
+  const userTextForLog =
+    typeof userContent === 'string'
+      ? userContent
+      : userContent
+          .map((p) =>
+            p.type === 'text'
+              ? p.text
+              : p.type === 'image_url'
+                ? redactDataUrls(p.image_url.url)
+                : '',
+          )
+          .join('\n')
+
+  logRecommend('recommend', 'request_in', {
+    correlationId: cid,
+    guestId: req.log?.guestIdShort,
+    platform: req.log?.platform,
+    message: req.message,
+    vision,
+    path: 'tool-loop',
+    applyFiltersIntent: isApplyFiltersIntent(req.message),
+    creativeLookOverride: lookOverride ?? null,
+    systemPromptLen: sysFp.len,
+    systemPromptSha8: sysFp.sha8,
+  })
+  logRecommend('creativeLook', 'request_in', {
+    correlationId: cid,
+    message: req.message,
+    override: lookOverride ?? null,
+    applyFiltersIntent: isApplyFiltersIntent(req.message),
+    path: 'tool-loop',
+  })
+
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(req.favorites, vision) },
-    { role: 'user', content: buildUserContent(req) },
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent },
   ]
 
   const modelQueue = vision
@@ -1374,6 +1520,18 @@ async function recommendWithToolLoop(
           : 'auto'
 
     const started = Date.now()
+    logRecommend('recommend', 'xai_outbound', {
+      correlationId: cid,
+      path: 'tool-loop',
+      model,
+      round,
+      toolChoice:
+        typeof toolChoice === 'string' ? toolChoice : toolChoice.function.name,
+      message: req.message,
+      userText: userTextForLog.slice(0, 500),
+      systemPromptLen: sysFp.len,
+      systemPromptSha8: sysFp.sha8,
+    })
     let response = await callXai(apiKey, model, messages, toolChoice)
 
     while (
@@ -1400,6 +1558,14 @@ async function recommendWithToolLoop(
     }
 
     if (!response.ok) {
+      logRecommend('recommend', 'xai_error', {
+        correlationId: cid,
+        path: 'tool-loop',
+        model,
+        round,
+        status: response.status,
+        bodySnippet: redactDataUrls(response.body).slice(0, 400),
+      })
       const visionHint = vision
         ? ' Vision models may be unavailable for this API key; try text Ask Grok or check xAI model access.'
         : ''
@@ -1415,6 +1581,24 @@ async function recommendWithToolLoop(
     const choices = response.data.choices as
       | Array<{ message?: ChatMessage; finish_reason?: string }>
       | undefined
+    const finishReason = choices?.[0]?.finish_reason
+    const usage = response.data.usage
+    const toolCallsSummary = (choices?.[0]?.message?.tool_calls ?? []).map((tc) => ({
+      name: tc.function.name,
+      argsLen: tc.function.arguments?.length ?? 0,
+    }))
+    logRecommend('recommend', 'xai_response', {
+      correlationId: cid,
+      path: 'tool-loop',
+      model,
+      round,
+      ms: Date.now() - started,
+      finishReason: finishReason ?? null,
+      toolCalls: toolCallsSummary,
+      usage: usage ?? null,
+      toolChoice:
+        typeof toolChoice === 'string' ? toolChoice : toolChoice.function.name,
+    })
     console.info(`[recommend] round=${round} model=${model} tool_choice=${typeof toolChoice === 'string' ? toolChoice : toolChoice.function.name} ${Date.now() - started}ms`)
 
     const assistant = choices?.[0]?.message
@@ -1453,15 +1637,33 @@ async function recommendWithToolLoop(
         content: JSON.stringify(result),
       })
       if (sel) {
-        const look = applyCreativeLookMessageOverride(
+        const rawLook = sel.creativeLook ?? sel.phoneTargets.creativeLook
+        logRecommend('creativeLook', 'xai_raw', {
+          correlationId: cid,
+          path: 'tool-loop',
+          model,
+          phoneTargetsCreativeLook: sel.phoneTargets.creativeLook ?? null,
+          topLevelCreativeLook: sel.creativeLook ?? null,
+          rawCreativeLook: rawLook ?? null,
+        })
+        const finalized = finalizeCreativeLookForClient(
           req.message,
-          sel.creativeLook ?? sel.phoneTargets.creativeLook,
+          sel.phoneTargets,
+          sel.creativeLook,
         )
-        if (look) {
+        logRecommend('creativeLook', 'after_override', {
+          correlationId: cid,
+          path: 'tool-loop',
+          model,
+          rawCreativeLook: finalized.rawCreativeLook ?? null,
+          finalCreativeLook: finalized.creativeLook ?? null,
+          overrideMatched: finalized.overrideMatched,
+        })
+        if (finalized.creativeLook) {
           selection = {
             ...sel,
-            creativeLook: look,
-            phoneTargets: { ...sel.phoneTargets, creativeLook: look },
+            creativeLook: finalized.creativeLook,
+            phoneTargets: finalized.phoneTargets,
           }
         } else {
           selection = sel
@@ -1471,6 +1673,13 @@ async function recommendWithToolLoop(
 
     if (selection) {
       const preset = presets.find((p) => p.id === selection!.presetId)!
+      logRecommend('recommend', 'result', {
+        correlationId: cid,
+        path: 'tool-loop',
+        model,
+        presetId: selection.presetId,
+        creativeLook: selection.creativeLook ?? selection.phoneTargets.creativeLook ?? null,
+      })
       return {
         presetId: selection.presetId,
         reason: selection.reason,
@@ -1480,10 +1689,7 @@ async function recommendWithToolLoop(
         coachOnly: selection.coachOnly,
         panCue: selection.panCue,
         senseSummary: selection.senseSummary,
-        ...(() => {
-          const look = applyCreativeLookMessageOverride(req.message, selection.creativeLook)
-          return look ? { creativeLook: look } : {}
-        })(),
+        ...(selection.creativeLook ? { creativeLook: selection.creativeLook } : {}),
         preset,
         model,
         // Do not return `messages` — they embed the vision data URL (pass-through only).
@@ -1782,6 +1988,8 @@ async function recommendFastOneShot(
 ): Promise<RecommendResult> {
   const vision = Boolean(req.imageDataUrl)
   const timeoutMs = vision ? FAST_VISION_TIMEOUT_MS : FAST_TEXT_TIMEOUT_MS
+  const cid = req.log?.correlationId ?? newRecommendCorrelationId()
+  const lookOverride = inferCreativeLookOverride(req.message)
   if (!vision && !req.message.trim()) {
     throw Object.assign(new Error('Message or image is required'), { status: 400 })
   }
@@ -1795,11 +2003,47 @@ async function recommendFastOneShot(
     )
   }
 
+  const systemPrompt = buildFastSystemPrompt(req.favorites, vision)
+  const userContent = buildFastUserContent({ ...req, imageDataUrl })
+  const sysFp = promptFingerprint(systemPrompt)
+  const userTextForLog =
+    typeof userContent === 'string'
+      ? userContent
+      : userContent
+          .map((p) =>
+            p.type === 'text'
+              ? p.text
+              : p.type === 'image_url'
+                ? redactDataUrls(p.image_url.url)
+                : '',
+          )
+          .join('\n')
+
+  logRecommend('recommend', 'request_in', {
+    correlationId: cid,
+    guestId: req.log?.guestIdShort,
+    platform: req.log?.platform,
+    message: req.message,
+    vision,
+    path: 'fast',
+    applyFiltersIntent: isApplyFiltersIntent(req.message),
+    creativeLookOverride: lookOverride ?? null,
+    systemPromptLen: sysFp.len,
+    systemPromptSha8: sysFp.sha8,
+  })
+  logRecommend('creativeLook', 'request_in', {
+    correlationId: cid,
+    message: req.message,
+    override: lookOverride ?? null,
+    applyFiltersIntent: isApplyFiltersIntent(req.message),
+    path: 'fast',
+  })
+
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildFastSystemPrompt(req.favorites, vision) },
+    { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content: buildFastUserContent({ ...req, imageDataUrl }),
+      content: userContent,
     },
   ]
 
@@ -1810,6 +2054,15 @@ async function recommendFastOneShot(
   let modelIndex = 0
 
   const started = Date.now()
+  logRecommend('recommend', 'xai_outbound', {
+    correlationId: cid,
+    path: 'fast',
+    model,
+    message: req.message,
+    userText: userTextForLog.slice(0, 500),
+    systemPromptLen: sysFp.len,
+    systemPromptSha8: sysFp.sha8,
+  })
   let response = await callXaiJson(apiKey, model, messages, timeoutMs)
 
   while (
@@ -1870,6 +2123,13 @@ async function recommendFastOneShot(
   }
 
   if (!response.ok) {
+    logRecommend('recommend', 'xai_error', {
+      correlationId: cid,
+      path: 'fast',
+      model,
+      status: response.status,
+      bodySnippet: redactDataUrls(response.body).slice(0, 400),
+    })
     if (response.status === 504) {
       throw Object.assign(new Error('Recommend timed out — try again'), {
         status: 504,
@@ -1889,6 +2149,14 @@ async function recommendFastOneShot(
   const choices = response.data.choices as
     | Array<{ message?: ChatMessage; finish_reason?: string }>
     | undefined
+  logRecommend('recommend', 'xai_response', {
+    correlationId: cid,
+    path: 'fast',
+    model,
+    ms: Date.now() - started,
+    finishReason: choices?.[0]?.finish_reason ?? null,
+    usage: response.data.usage ?? null,
+  })
   console.info(
     `[recommend] fast=1 model=${model} ${Date.now() - started}ms`,
   )
@@ -1921,7 +2189,7 @@ async function recommendFastOneShot(
   }
 
   const preset = presets.find((p) => p.id === selection.presetId)!
-  const phoneTargets =
+  const phoneTargetsBase =
     selection.phoneTargets && Object.keys(selection.phoneTargets).length > 0
       ? selection.phoneTargets
       : phoneTargetsFromPreset(preset)
@@ -1937,23 +2205,45 @@ async function recommendFastOneShot(
             ? { tripod: true }
             : {}),
         }
-  const look = applyCreativeLookMessageOverride(
+  const rawLook = selection.creativeLook ?? phoneTargetsBase.creativeLook
+  logRecommend('creativeLook', 'xai_raw', {
+    correlationId: cid,
+    path: 'fast',
+    model,
+    phoneTargetsCreativeLook: phoneTargetsBase.creativeLook ?? null,
+    topLevelCreativeLook: selection.creativeLook ?? null,
+    rawCreativeLook: rawLook ?? null,
+  })
+  const finalized = finalizeCreativeLookForClient(
     req.message,
-    selection.creativeLook ?? phoneTargets.creativeLook,
+    phoneTargetsBase,
+    selection.creativeLook,
   )
-  const phoneTargetsOut = look
-    ? { ...phoneTargets, creativeLook: look }
-    : phoneTargets
+  logRecommend('creativeLook', 'after_override', {
+    correlationId: cid,
+    path: 'fast',
+    model,
+    rawCreativeLook: finalized.rawCreativeLook ?? null,
+    finalCreativeLook: finalized.creativeLook ?? null,
+    overrideMatched: finalized.overrideMatched,
+  })
+  logRecommend('recommend', 'result', {
+    correlationId: cid,
+    path: 'fast',
+    model,
+    presetId: selection.presetId,
+    creativeLook: finalized.creativeLook ?? null,
+  })
   return {
     presetId: selection.presetId,
     reason: selection.reason,
     teachWhy: selection.teachWhy,
     tips: selection.tips,
-    phoneTargets: phoneTargetsOut,
+    phoneTargets: finalized.phoneTargets,
     coachOnly,
     panCue: selection.panCue,
     senseSummary: selection.senseSummary,
-    ...(look ? { creativeLook: look } : {}),
+    ...(finalized.creativeLook ? { creativeLook: finalized.creativeLook } : {}),
     preset,
     model,
   }

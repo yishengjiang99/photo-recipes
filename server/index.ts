@@ -5,13 +5,17 @@ import express from 'express'
 import multer from 'multer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkAskGrokQuota, identityMiddleware } from './entitlements.ts'
+import { checkAskGrokQuota, getGuestId, identityMiddleware } from './entitlements.ts'
 import {
   MAX_IMAGE_BYTES,
   mimeFromFilename,
   normalizeMime,
 } from './image.ts'
-import { recommendWithGrok } from './recommend.ts'
+import {
+  newRecommendCorrelationId,
+  recommendWithGrok,
+  shortGuestId,
+} from './recommend.ts'
 import {
   recommendWithGrokStream,
   writeSse,
@@ -144,6 +148,28 @@ function parseJsonRecommend(body: Record<string, unknown>): ParsedRecommend | { 
   return { message, favorites, imageDataUrl }
 }
 
+
+function clientPlatform(req: express.Request): string {
+  const hdr = req.headers['x-client-platform']
+  const raw = Array.isArray(hdr) ? hdr[0] : hdr
+  if (typeof raw === 'string') {
+    const p = raw.trim().toLowerCase()
+    if (['ios', 'web', 'android', 'server'].includes(p)) return p
+  }
+  const ua = (req.headers['user-agent'] || '').toLowerCase()
+  if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('cfnetwork')) return 'ios'
+  if (ua.includes('android')) return 'android'
+  return 'web'
+}
+
+function recommendLogContext(req: express.Request, res: express.Response) {
+  return {
+    correlationId: newRecommendCorrelationId(),
+    guestIdShort: shortGuestId(getGuestId(req, res)),
+    platform: clientPlatform(req),
+  }
+}
+
 function runRecommend(
   req: express.Request,
   res: express.Response,
@@ -170,6 +196,7 @@ function runRecommend(
         message: parsed.message || (parsed.imageDataUrl ? 'Recommend a recipe for this photo.' : ''),
         favorites: parsed.favorites,
         imageDataUrl: parsed.imageDataUrl,
+        log: recommendLogContext(req, res),
       })
       quota.consume()
       // Never echo image bytes back
@@ -356,6 +383,7 @@ app.post('/api/recommend/stream', (req, res) => {
           (parsed.imageDataUrl ? 'Recommend a recipe for this photo.' : ''),
         favorites: parsed.favorites,
         imageDataUrl: parsed.imageDataUrl,
+        log: recommendLogContext(req, res),
       },
       {
         onPhase: (phase) => writeSse(res, 'phase', { phase }),
