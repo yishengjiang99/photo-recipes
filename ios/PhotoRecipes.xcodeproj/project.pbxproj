@@ -52,6 +52,7 @@
 		B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */; };
 		E1F2A3B4C5D60101TESTBF01 /* ApplyFiltersIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60102TESTFR01 /* ApplyFiltersIntentTests.swift */; };
 		E1F2A3B4C5D60111TESTBF02 /* ViewfinderPanCueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */; };
+		E1F2A3B4C5D60202ANALYTBF /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -105,6 +106,7 @@
 		E1F2A3B4C5D60103TESTPR01 /* PhotoRecipesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhotoRecipesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F6470BONBOARD01 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E1F2A3B4C5D60112TESTFR02 /* ViewfinderPanCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewfinderPanCueTests.swift; sourceTree = "<group>"; };
+		E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -228,6 +230,7 @@
 				3177C4F563ED4537A4D8C20F /* PhotoLibrarySaver.swift */,
 				A6E3AAA2455783C2B657CAF3 /* VoiceCaptureController.swift */,
 				A1B2C3D4E5F64709LOOKENGIN1 /* CreativeLookEngine.swift */,
+				E1F2A3B4C5D60201ANALYTFR /* Analytics.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -411,6 +414,7 @@
 				6AD87EF0E9FB4696BE23A769 /* RecommendResponse.swift in Sources */,
 				8FD7A38199554458A83E85DF /* SubscriptionStatus.swift in Sources */,
 				5DA94385C26C40B28C22FCDD /* PhotoRecipesApp.swift in Sources */,
+				E1F2A3B4C5D60202ANALYTBF /* Analytics.swift in Sources */,
 				B2C3D4E5F647180CONBOARDBF /* OnboardingView.swift in Sources */,
 				D6E866D9770F4A329B26B1BA /* APIClient.swift in Sources */,
 				E4026E962A56404EBA5D5CC6 /* EntitlementsStore.swift in Sources */,

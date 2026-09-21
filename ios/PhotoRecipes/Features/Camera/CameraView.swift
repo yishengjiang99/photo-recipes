@@ -841,7 +841,20 @@ struct CameraView: View {
                 )
             }
 
-            if sceneExpanded && !isVoiceListening {
+            // Build 28: never stack voice error with Collapse — one row only.
+            if case .error(let msg) = voice.phase {
+                Button {
+                    voice.clearError()
+                } label: {
+                    Text(msg)
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.danger)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(msg)
+                .accessibilityHint("Dismisses the voice error")
+            } else if sceneExpanded && !isVoiceListening {
                 Button {
                     dismissSceneKeyboard()
                     withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = false }
@@ -851,9 +864,9 @@ struct CameraView: View {
                         .foregroundStyle(AppTheme.inkTertiary)
                 }
                 .buttonStyle(.plain)
+            } else {
+                VoiceStatusCaption(controller: voice)
             }
-
-            VoiceStatusCaption(controller: voice)
         }
     }
 
