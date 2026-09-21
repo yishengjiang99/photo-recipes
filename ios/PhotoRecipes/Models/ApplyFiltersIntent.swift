@@ -38,11 +38,11 @@ enum ApplyFiltersIntent {
         // Named look / grade shortcuts (with or without "make it")
         let named = [
             "cinematic", "moody film", "warm film", "warm glow", "golden hour look",
-            "black and white", "black & white", "b&w", "b and w",
+            "black and white", "black & white", "b&w", "b and w", "bw", "monochrome",
             "teal and orange", "teal orange", "teal & orange",
             "add grain", "film grain", "soft dream", "dreamy look",
             "cool blue", "night grade", "crisp cool", "blockbuster",
-            "lo-fi", "lofi", "editorial red", "soft vintage", "mono ink",
+            "lo-fi", "lofi", "lo fi punch", "lo fi", "editorial red", "soft vintage", "mono ink",
         ]
         if named.contains(where: { t.contains($0) }) { return true }
 
@@ -51,7 +51,7 @@ enum ApplyFiltersIntent {
         // is less likely to false-positive when callers pass full scene text.
         let shortLooks = [
             "warm", "cool", "moody", "cinematic", "grain", "grainy",
-            "mono", "vintage", "dreamy", "filmic", "golden",
+            "mono", "bw", "vintage", "dreamy", "filmic", "golden",
         ]
         let tokens = t
             .split(whereSeparator: { !$0.isLetter && $0 != "&" })
@@ -59,6 +59,10 @@ enum ApplyFiltersIntent {
         if shortLooks.contains(where: { tokens.contains($0) }) { return true }
         // Exact short utterance
         if shortLooks.contains(t) { return true }
+
+        // Build 29: any LOOK_UTTERANCE_MATRIX / CREATIVE_LOOK_OVERRIDE_RULES hit is APPLY-FILTERS
+        // (covers bare "bw", "monochrome", "lo fi punch", etc. not listed above).
+        if forcedLook(for: raw) != nil { return true }
 
         return false
     }
@@ -305,7 +309,7 @@ enum ApplyFiltersIntent {
         case .optimize:
             return ApplyPathResolution(
                 matches: false,
-                forcedLookId: nil,
+                forcedLookId: forced?.id,
                 method: .runOptimize,
                 autoApplyLook: false,
                 cancelInFlight: plan.cancelInFlight,
@@ -314,7 +318,7 @@ enum ApplyFiltersIntent {
         case .none:
             return ApplyPathResolution(
                 matches: false,
-                forcedLookId: nil,
+                forcedLookId: forced?.id,
                 method: .none,
                 autoApplyLook: false,
                 cancelInFlight: false,
