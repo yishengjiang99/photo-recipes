@@ -3,8 +3,11 @@ import assert from 'node:assert/strict'
 import {
   parsePhoneTargets,
   CREATIVE_LOOK_DEFAULT_INTENSITY,
+  CREATIVE_LOOK_IDS,
+  LOOK_UTTERANCE_MATRIX,
   inferCreativeLookOverride,
   applyCreativeLookMessageOverride,
+  shouldUseRecommendToolLoop,
 } from './recommend.ts'
 
 function isError(r: ReturnType<typeof parsePhoneTargets>): r is { error: string } {
@@ -215,23 +218,62 @@ describe('parsePhoneTargets', () => {
   })
 })
 
-describe('creativeLook message override (B&W / look replace)', () => {
-  it('maps B&W utterances to monoInk @ default intensity', () => {
+describe('creativeLook message override (named looks / look replace)', () => {
+  it('maps B&W utterances including apply black and white filter → monoInk', () => {
     for (const msg of [
+      'apply black and white filter',
       'black and white',
+      'B&W',
       'B&W please',
+      'b and w',
+      'b&w',
+      'bw',
       'make it black and white',
       'mono',
       'monochrome look',
+      'mono ink',
     ]) {
       const o = inferCreativeLookOverride(msg)
-      assert.deepEqual(o, { id: 'monoInk', intensity: CREATIVE_LOOK_DEFAULT_INTENSITY })
+      assert.deepEqual(
+        o,
+        { id: 'monoInk', intensity: CREATIVE_LOOK_DEFAULT_INTENSITY },
+        `expected monoInk for: ${msg}`,
+      )
     }
   })
 
-  it('does not force a look for generic apply-filters (model still must emit)', () => {
+  it('LOOK_UTTERANCE_MATRIX: each V1 id has ≥1 utterance → expected id', () => {
+    const seen = new Set<string>()
+    for (const { utterance, id } of LOOK_UTTERANCE_MATRIX) {
+      const o = inferCreativeLookOverride(utterance)
+      assert.deepEqual(
+        o,
+        { id, intensity: CREATIVE_LOOK_DEFAULT_INTENSITY },
+        `utterance "${utterance}" → expected ${id}, got ${o?.id}`,
+      )
+      seen.add(id)
+    }
+    for (const id of CREATIVE_LOOK_IDS) {
+      assert.ok(seen.has(id), `missing matrix coverage for V1 id: ${id}`)
+    }
+  })
+
+  it('does not force a look for generic apply-filters or shutter asks', () => {
     assert.equal(inferCreativeLookOverride('apply filters'), undefined)
-    assert.equal(inferCreativeLookOverride('warm film look'), undefined)
+    assert.equal(inferCreativeLookOverride('apply filter'), undefined)
+    assert.equal(inferCreativeLookOverride('slower shutter'), undefined)
+    assert.equal(inferCreativeLookOverride(''), undefined)
+  })
+
+  it('warm film / warm look force warmGlow (not undefined)', () => {
+    assert.deepEqual(inferCreativeLookOverride('warm film look'), {
+      id: 'warmGlow',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
+    assert.deepEqual(inferCreativeLookOverride('warm pop'), {
+      id: 'warmPop',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
   })
 
   it('replaces a prior look when the new message is B&W', () => {
@@ -245,11 +287,49 @@ describe('creativeLook message override (B&W / look replace)', () => {
     })
   })
 
-  it('keeps model look when message has no B&W override', () => {
+  it('withCreativeLookOverride nest: override lands on phoneTargets.creativeLook + top-level', () => {
+    const look = applyCreativeLookMessageOverride('apply black and white filter', {
+      id: 'tealOrange',
+      intensity: 0.6,
+    })
+    assert.deepEqual(look, {
+      id: 'monoInk',
+      intensity: CREATIVE_LOOK_DEFAULT_INTENSITY,
+    })
+    // Mirror what recommendFastOneShot / tool-loop do when nesting
+    const phoneTargets = { shutter: '1/60', creativeLook: look }
+    const top = look
+    assert.equal(phoneTargets.creativeLook?.id, 'monoInk')
+    assert.equal(top?.id, 'monoInk')
+  })
+
+  it('keeps model look when message has no named override', () => {
     const kept = applyCreativeLookMessageOverride('apply filters', {
       id: 'tealOrange',
       intensity: 0.6,
     })
     assert.deepEqual(kept, { id: 'tealOrange', intensity: 0.6 })
+  })
+})
+
+describe('shouldUseRecommendToolLoop (message routing)', () => {
+  it('non-empty message → tool-loop (STT / typed / APPLY-FILTERS)', () => {
+    delete process.env.RECOMMEND_TOOL_LOOP
+    assert.equal(shouldUseRecommendToolLoop({ message: 'apply black and white filter' }), true)
+    assert.equal(shouldUseRecommendToolLoop({ message: 'B&W' }), true)
+    assert.equal(shouldUseRecommendToolLoop({ message: '  warm glow  ' }), true)
+    assert.equal(shouldUseRecommendToolLoop({ message: 'slower shutter' }), true)
+  })
+
+  it('empty / whitespace-only message → fast one-shot (image-only AO)', () => {
+    delete process.env.RECOMMEND_TOOL_LOOP
+    assert.equal(shouldUseRecommendToolLoop({ message: '' }), false)
+    assert.equal(shouldUseRecommendToolLoop({ message: '   ' }), false)
+  })
+
+  it('RECOMMEND_TOOL_LOOP=1 forces tool-loop even for empty message', () => {
+    process.env.RECOMMEND_TOOL_LOOP = '1'
+    assert.equal(shouldUseRecommendToolLoop({ message: '' }), true)
+    delete process.env.RECOMMEND_TOOL_LOOP
   })
 })

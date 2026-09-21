@@ -5,6 +5,7 @@ import {
   extractJsonObject,
   parseFastRecommendPayload,
   useRecommendToolLoop,
+  shouldUseRecommendToolLoop,
 } from './recommend.ts'
 import { presets } from '../src/data/presets.ts'
 
@@ -18,6 +19,12 @@ describe('recommend fast path helpers', () => {
     process.env.RECOMMEND_TOOL_LOOP = '1'
     assert.equal(useRecommendToolLoop(), true)
     delete process.env.RECOMMEND_TOOL_LOOP
+  })
+
+  it('shouldUseRecommendToolLoop: non-empty → true, empty → false', () => {
+    delete process.env.RECOMMEND_TOOL_LOOP
+    assert.equal(shouldUseRecommendToolLoop({ message: 'apply filters' }), true)
+    assert.equal(shouldUseRecommendToolLoop({ message: '' }), false)
   })
 
   it('compact catalog lists every preset id + title', () => {
