@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           pip install -q PyJWT cryptography
           python3 <<'PY'
-          import json, os, time, urllib.request, urllib.error, urllib.parse
+          import json, os, re, time, urllib.request, urllib.error, urllib.parse
           import jwt
 
           key_id = os.environ['APP_STORE_CONNECT_KEY_ID'].strip()
@@ -297,9 +297,10 @@ jobs:
 
           # --- Submit via reviewSubmissions (prefer) ---
           def list_submission_items(submission_id):
+            # Related collection is /items (not /reviewSubmissionItems).
             st_items, items = api(
               'GET',
-              f'/v1/reviewSubmissions/{submission_id}/reviewSubmissionItems'
+              f'/v1/reviewSubmissions/{submission_id}/items'
               f'?include=appStoreVersion&limit=50',
               ok_statuses={404},
             )
@@ -346,6 +347,7 @@ jobs:
             if st_rel < 400 and (rel.get('data') or []):
               # Items exist; for our single-version flow treat as present after a successful add.
               print('submission has', len(rel.get('data') or []), 'item linkage(s)')
+              return True
             return False
 
           def add_version_to_submission(submission_id):
@@ -391,11 +393,27 @@ jobs:
                 items_now = list_submission_items(submission_id)
                 if items_now:
                   return True, st_item, {'already': True, **(item_resp if isinstance(item_resp, dict) else {})}
-              # Still locked by canceled/other submission — wait and retry
+              # Still locked by canceled/other submission — switch or retry
               if any('ITEM_PART_OF_ANOTHER_SUBMISSION' in c for c in codes):
                 # If THIS submission already holds an item, proceed
                 if list_submission_items(submission_id):
                   return True, st_item, {'already': True}
+                # Parse the holding submission id from the error detail and switch to it.
+                other_id = None
+                blob = json.dumps(item_resp)
+                m = re.search(
+                  r'reviewSubmission with id ([0-9a-fA-F-]{36})',
+                  blob,
+                )
+                if not m:
+                  m = re.search(
+                    r'another reviewSubmission with id ([0-9a-fA-F-]{36})',
+                    blob,
+                  )
+                if m:
+                  other_id = m.group(1)
+                  print('version held by reviewSubmission', other_id, '— switching')
+                  return True, 200, {'switch_to': other_id}
                 time.sleep(5)
                 continue
               # Stale empty READY_FOR_REVIEW that cannot take this version
@@ -477,6 +495,10 @@ jobs:
                   return False, st_c, created
 
             ok_add, st_add, add_resp = add_version_to_submission(submission_id)
+            if ok_add and isinstance(add_resp, dict) and add_resp.get('switch_to'):
+              submission_id = add_resp['switch_to']
+              print('switched to holding reviewSubmission', submission_id)
+              ok_add, st_add, add_resp = True, 200, {'already': True}
             if not ok_add:
               print('failed to attach version to submission', submission_id, st_add, json.dumps(add_resp)[:1200])
               # Last resort: another fresh create (in case prior create raced)
