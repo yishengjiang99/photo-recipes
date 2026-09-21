@@ -21,7 +21,8 @@ const MAX_ROUNDS = 4
  */
 const VISION_IMAGE_DETAIL: 'auto' | 'low' | 'high' = 'low'
 /**
- * Default path = one-shot JSON (no tools). Set RECOMMEND_TOOL_LOOP=1 for legacy multi-round tools.
+ * Routing: non-empty message → tool-loop; empty message → fast one-shot (image-only AO).
+ * RECOMMEND_TOOL_LOOP=1 forces tool-loop for empty-message AO (debug).
  * Text-only stays snappy; vision needs headroom (grok-4.6 often 12–35s on night scenes).
  * Nginx proxy_read_timeout is 120s — keep well under that.
  */
@@ -110,15 +111,86 @@ export type CreativeLook = {
 export const CREATIVE_LOOK_DEFAULT_INTENSITY = 0.55
 
 
-/** Deterministic look overrides from the latest user message (replaces any prior look intent). */
-const BW_LOOK_RE =
-  /\b(black\s*and\s*white|b\s*&\s*w|b\s*\/\s*w|bw|mono(?:chrome)?)\b|make\s+it\s+black\s+and\s+white/i
+/**
+ * Ordered utterance → CreativeLookId rules (first match wins).
+ * More specific multi-word phrases before bare tokens to avoid collisions.
+ */
+export const CREATIVE_LOOK_OVERRIDE_RULES: ReadonlyArray<{
+  re: RegExp
+  id: CreativeLookId
+}> = [
+  // monoInk — B&W / mono (incl. "apply black and white filter")
+  {
+    re: /\b(?:apply\s+)?black\s*(?:and|&)\s*white(?:\s+filter)?\b|\bb\s*&\s*w\b|\bb\s+and\s+w\b|\bb\s*\/\s*w\b|\bbw\b|\bmono(?:chrome)?\b|\bmono\s*ink\b|make\s+it\s+black\s+and\s+white/i,
+    id: 'monoInk',
+  },
+  { re: /\bwarm\s*pop\b/i, id: 'warmPop' },
+  { re: /\bcrisp\s*cool\b/i, id: 'crispCool' },
+  { re: /\beditorial\s*red\b/i, id: 'editorialRed' },
+  { re: /\bsoft\s*vintage\b|\bvintage\s*look\b|\bvintage\b/i, id: 'softVintage' },
+  { re: /\bgolden\s*hour\b/i, id: 'goldenHour' },
+  { re: /\blo[\s-]?fi(?:\s*punch)?\b|\blofi\b/i, id: 'loFiPunch' },
+  { re: /\bteal\s*(?:and|&)?\s*orange\b/i, id: 'tealOrange' },
+  { re: /\bblockbuster\b|\bcinematic\b/i, id: 'blockbuster' },
+  { re: /\bmoody\s*film\b|\bmoody\b/i, id: 'moodyFilm' },
+  { re: /\bcool\s*blue\b|\bnight\s*grade\b/i, id: 'coolBlue' },
+  { re: /\bsoft\s*dream\b|\bdreamy\b/i, id: 'softDream' },
+  { re: /\bfilm\s*grain\b|\bgrainy\b|\badd\s+grain\b/i, id: 'filmGrain' },
+  // warmGlow after warmPop; bare "warm" last among warm*
+  { re: /\bwarm\s*glow\b|\bwarm\s*film\b|\bwarm\s*look\b|\bwarm\b/i, id: 'warmGlow' },
+]
 
+/** Canonical utterance → id pairs for unit tests (one+ per V1 look). */
+export const LOOK_UTTERANCE_MATRIX: ReadonlyArray<{
+  utterance: string
+  id: CreativeLookId
+}> = [
+  { utterance: 'apply black and white filter', id: 'monoInk' },
+  { utterance: 'black and white', id: 'monoInk' },
+  { utterance: 'B&W', id: 'monoInk' },
+  { utterance: 'b and w', id: 'monoInk' },
+  { utterance: 'bw', id: 'monoInk' },
+  { utterance: 'mono', id: 'monoInk' },
+  { utterance: 'monochrome', id: 'monoInk' },
+  { utterance: 'make it black and white', id: 'monoInk' },
+  { utterance: 'mono ink', id: 'monoInk' },
+  { utterance: 'warm pop', id: 'warmPop' },
+  { utterance: 'warm glow', id: 'warmGlow' },
+  { utterance: 'warm film', id: 'warmGlow' },
+  { utterance: 'warm', id: 'warmGlow' },
+  { utterance: 'crisp cool', id: 'crispCool' },
+  { utterance: 'editorial red', id: 'editorialRed' },
+  { utterance: 'soft vintage', id: 'softVintage' },
+  { utterance: 'vintage look', id: 'softVintage' },
+  { utterance: 'vintage', id: 'softVintage' },
+  { utterance: 'golden hour', id: 'goldenHour' },
+  { utterance: 'lo-fi', id: 'loFiPunch' },
+  { utterance: 'lofi', id: 'loFiPunch' },
+  { utterance: 'lo fi punch', id: 'loFiPunch' },
+  { utterance: 'teal and orange', id: 'tealOrange' },
+  { utterance: 'teal orange', id: 'tealOrange' },
+  { utterance: 'teal & orange', id: 'tealOrange' },
+  { utterance: 'blockbuster', id: 'blockbuster' },
+  { utterance: 'cinematic', id: 'blockbuster' },
+  { utterance: 'moody film', id: 'moodyFilm' },
+  { utterance: 'moody', id: 'moodyFilm' },
+  { utterance: 'cool blue', id: 'coolBlue' },
+  { utterance: 'night grade', id: 'coolBlue' },
+  { utterance: 'soft dream', id: 'softDream' },
+  { utterance: 'dreamy', id: 'softDream' },
+  { utterance: 'film grain', id: 'filmGrain' },
+  { utterance: 'grainy', id: 'filmGrain' },
+  { utterance: 'add grain', id: 'filmGrain' },
+]
+
+/** Deterministic look overrides from the latest user message (replaces any prior look intent). */
 export function inferCreativeLookOverride(message: string): CreativeLook | undefined {
   const m = message.trim()
   if (!m) return undefined
-  if (BW_LOOK_RE.test(m)) {
-    return { id: 'monoInk', intensity: CREATIVE_LOOK_DEFAULT_INTENSITY }
+  for (const rule of CREATIVE_LOOK_OVERRIDE_RULES) {
+    if (rule.re.test(m)) {
+      return { id: rule.id, intensity: CREATIVE_LOOK_DEFAULT_INTENSITY }
+    }
   }
   return undefined
 }
@@ -1437,9 +1509,24 @@ async function recommendWithToolLoop(
 }
 
 
-/** True when RECOMMEND_TOOL_LOOP=1 — legacy multi-round tool path. Default is fast one-shot. */
+/**
+ * Env-only legacy switch (empty-message AO debug). Prefer shouldUseRecommendToolLoop(req).
+ * Non-empty spoken/typed messages always use the tool loop regardless of this flag.
+ */
 export function useRecommendToolLoop(): boolean {
   return process.env.RECOMMEND_TOOL_LOOP === '1'
+}
+
+/**
+ * Product routing: non-empty req.message (STT / typed Scene Ask / APPLY-FILTERS)
+ * → recommendWithToolLoop. Empty message → fast one-shot (image-only Auto Optimize).
+ * RECOMMEND_TOOL_LOOP=1 still forces tool-loop for empty-message AO (debug).
+ */
+export function shouldUseRecommendToolLoop(
+  req: Pick<RecommendRequest, 'message'>,
+): boolean {
+  if (typeof req.message === 'string' && req.message.trim().length > 0) return true
+  return useRecommendToolLoop()
 }
 
 /** Compact catalog for one-shot prompt (id + short title/when). */
@@ -1873,14 +1960,16 @@ async function recommendFastOneShot(
 }
 
 /**
- * Recommend: default = one-shot vision JSON + in-memory shrink (no tools).
- * Legacy tool loop: set RECOMMEND_TOOL_LOOP=1.
+ * Recommend routing:
+ * - Non-empty message (STT / typed / APPLY-FILTERS) → agentic recommendWithToolLoop
+ * - Empty message (image-only Auto Optimize shutter) → recommendFastOneShot
+ * - RECOMMEND_TOOL_LOOP=1 forces tool-loop even for empty-message AO (debug)
  */
 export async function recommendWithGrok(
   apiKey: string,
   req: RecommendRequest,
 ): Promise<RecommendResult> {
-  if (useRecommendToolLoop()) {
+  if (shouldUseRecommendToolLoop(req)) {
     return recommendWithToolLoop(apiKey, req)
   }
   return recommendFastOneShot(apiKey, req)

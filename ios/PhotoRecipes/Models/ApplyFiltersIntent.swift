@@ -63,7 +63,7 @@ enum ApplyFiltersIntent {
         return false
     }
 
-    /// Deterministic B&W → monoInk (mirrors server BW_LOOK_RE / #119).
+    /// Deterministic B&W → monoInk (mirrors server CREATIVE_LOOK_OVERRIDE_RULES / #119).
     /// Used client-side so spoken B&W still bakes if SSE omits or wrong-looks.
     static func isBlackAndWhite(_ raw: String) -> Bool {
         let t = raw
@@ -72,7 +72,7 @@ enum ApplyFiltersIntent {
         guard !t.isEmpty else { return false }
         if t.contains("black and white") || t.contains("black & white") { return true }
         if t.contains("b&w") || t.contains("b & w") || t.contains("b and w") { return true }
-        if t.contains("monochrome") { return true }
+        if t.contains("monochrome") || t.contains("mono ink") { return true }
         let tokens = t
             .split(whereSeparator: { !$0.isLetter && $0 != "&" })
             .map(String.init)
@@ -81,10 +81,59 @@ enum ApplyFiltersIntent {
         return false
     }
 
-    /// Force look when utterance is B&W (replaces prior/wrong look).
+    /// Ordered named-look phrases → CreativeLook id (mirrors server CREATIVE_LOOK_OVERRIDE_RULES).
+    /// More specific phrases first; first match wins. "apply filters" alone does not force.
+    private static let namedLookPhrases: [(phrases: [String], id: String)] = [
+        (["apply black and white filter", "black and white", "black & white",
+          "b&w", "b & w", "b and w", "monochrome", "mono ink", "make it black and white"], "monoInk"),
+        (["warm pop"], "warmPop"),
+        (["crisp cool"], "crispCool"),
+        (["editorial red"], "editorialRed"),
+        (["soft vintage", "vintage look", "vintage"], "softVintage"),
+        (["golden hour"], "goldenHour"),
+        (["lo-fi", "lofi", "lo fi punch", "lo fi"], "loFiPunch"),
+        (["teal and orange", "teal orange", "teal & orange"], "tealOrange"),
+        (["blockbuster", "cinematic"], "blockbuster"),
+        (["moody film", "moody"], "moodyFilm"),
+        (["cool blue", "night grade"], "coolBlue"),
+        (["soft dream", "dreamy"], "softDream"),
+        (["film grain", "grainy", "add grain"], "filmGrain"),
+        (["warm glow", "warm film", "warm look", "warm"], "warmGlow"),
+    ]
+
+    /// Force look for named utterances (B&W + full V1 map). Replaces prior/wrong look.
     static func forcedLook(for message: String) -> CreativeLook? {
-        guard isBlackAndWhite(message) else { return nil }
-        return CreativeLook(id: "monoInk", intensity: CreativeLookCatalog.defaultIntensity)
+        let t = message
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !t.isEmpty else { return nil }
+
+        // Token-level short forms for B&W (bw / mono) — same as isBlackAndWhite.
+        if isBlackAndWhite(t) {
+            return CreativeLook(id: "monoInk", intensity: CreativeLookCatalog.defaultIntensity)
+        }
+
+        for entry in namedLookPhrases {
+            if entry.phrases.contains(where: { t.contains($0) || t == $0 }) {
+                return CreativeLook(id: entry.id, intensity: CreativeLookCatalog.defaultIntensity)
+            }
+        }
+
+        // Bare short tokens that are whole utterances / word tokens
+        let tokens = t
+            .split(whereSeparator: { !$0.isLetter && $0 != "&" && $0 != "-" })
+            .map(String.init)
+        let bare: [(String, String)] = [
+            ("warm", "warmGlow"), ("moody", "moodyFilm"), ("cinematic", "blockbuster"),
+            ("vintage", "softVintage"), ("dreamy", "softDream"), ("grainy", "filmGrain"),
+            ("lofi", "loFiPunch"),
+        ]
+        for (token, id) in bare {
+            if tokens.contains(token) || t == token {
+                return CreativeLook(id: id, intensity: CreativeLookCatalog.defaultIntensity)
+            }
+        }
+        return nil
     }
 
     /// Prefer nested phoneTargets.creativeLook; accept top-level fallback.
