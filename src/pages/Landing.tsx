@@ -10,7 +10,7 @@ import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, TESTFLIGHT_URL } from '..
 import { track } from '../lib/analytics'
 
 const TRUST_LINE =
-  'Free Peek · 1 Auto Optimize/day · Pro $7.99/mo or $59.99/yr · 7-day trial'
+  'Free Peek · 5 Auto Optimize/day · Pro $7.99/mo or $59.99/yr · 7-day trial'
 
 const HOW_STEPS = [
   {
@@ -81,7 +81,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'What’s free?',
-    a: 'Free Peek: browse recipes · 1 Auto Optimize/day until Pro.',
+    a: 'Free Peek: browse recipes · 5 Auto Optimize/day until Pro.',
   },
   {
     q: 'What’s in Pro?',
@@ -479,7 +479,7 @@ export function Landing() {
                     <Check className="h-4 w-4 shrink-0 text-success" /> Browse recipe library
                   </li>
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> 1 Auto Optimize / day
+                    <Check className="h-4 w-4 shrink-0 text-success" /> 5 Auto Optimize / day
                   </li>
                   <li className="flex gap-2">
                     <Check className="h-4 w-4 shrink-0 text-success" /> Teach mode teaser
