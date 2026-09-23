@@ -177,7 +177,7 @@ def main():
                     "marketingUrl": MARKETING_URL,
                     "promotionalText": PROMO[:170],
                     "supportUrl": SUPPORT_URL,
-                    "whatsNew": WHATS_NEW,
+                    # whatsNew is not editable on the first App Store version
                 },
             }
         },
