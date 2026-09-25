@@ -86,8 +86,6 @@ jobs:
               _, sref = api('GET', f'/v1/reviewSubmissions/{sid}')
               sstate = sref.get('data', {}).get('attributes', {}).get('state')
               print(f'poll {sid} {attempt+1}: {sstate}')
-              if sstate in ('COMPLETE', 'CANCELING') and sstate != 'CANCELING':
-                break
               if sstate == 'COMPLETE':
                 break
               if sstate not in ('CANCELING', 'READY_FOR_REVIEW', 'UNRESOLVED_ISSUES', 'WAITING_FOR_REVIEW', 'IN_REVIEW'):
