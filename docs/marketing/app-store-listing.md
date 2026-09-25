@@ -1,4 +1,4 @@
-# Grok Camera — iOS App Store Listing
+# AI Camera - Auto Recipes — iOS App Store Listing
 
 Bundle ID: `com.ragnus.mvp`
 
@@ -6,7 +6,7 @@ Bundle ID: `com.ragnus.mvp`
 
 | Field | Status | Notes |
 | --- | --- | --- |
-| App Name | **LOCKED** | `Grok Camera` — do not change without CoS |
+| App Name | **LOCKED** | `AI Camera - Auto Recipes` — ASC rejection fix (removed prior trademarked name) |
 | Bundle ID | **LOCKED** | `com.ragnus.mvp` — leave as-is |
 | Subtitle | **LOCKED** | `AI Auto: Shutter ISO Focus` (≤30) |
 | Promotional Text | **DRAFT** | Paste-ready (≤170; rotatable without resubmit) |
@@ -18,7 +18,7 @@ Bundle ID: `com.ragnus.mvp`
 Legend: **LOCKED** = CoS approval to change · **DRAFT** = ready for this ASC cycle.
 
 ## App Name (30 char max) — LOCKED
-Grok Camera
+AI Camera - Auto Recipes
 
 Former working names (historical only): Grepawk Photos / Photo Recipes. Do not use on-image or as ASC App Name.
 
@@ -31,7 +31,7 @@ AI Auto Optimize applies shutter, ISO, EV, WB & focus — real capture dials, no
 
 ## Description (full — App Store; use line breaks) — DRAFT
 
-AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. Grok Camera is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
+AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. AI Camera - Auto Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
 
 Set the shot. Then take it.
 
@@ -64,7 +64,7 @@ Ask “Why this?” after a run. See the recipe choice, which dials moved (shutt
 
 FREE PEEK vs PRO
 • Free Peek: browse recipes, live viewfinder, 1 Auto Optimize per day
-• Grok Camera Pro: unlimited Auto Optimize, manual dials, apply recipes to the live session, full Teach mode, interactive field checklists
+• AI Camera Pro: unlimited Auto Optimize, manual dials, apply recipes to the live session, full Teach mode, interactive field checklists
 
 Pricing: $7.99/month or $59.99/year (best value), both with a 7-day free trial. Subscriptions via Apple In-App Purchase.
 
@@ -89,7 +89,7 @@ Suggested exact string (count in editor):
 (Verify character count when pasting; if over, drop “landscape” then “optimize.” Prefer craft terms; add look/grade carefully — never “filter.”)
 
 ## What’s New (iOS-first · AI-applied dials · field looks) — DRAFT
-AI Auto Optimize applies shutter, ISO, EV, WB, focus lock/POI, zoom/lens, torch when needed, plus field look intensity — real capture dials on your iPhone, not filters. Aperture/ND/tripod stay coach-only. Free Peek: 1/day. Set the shot. Then take it.
+Renamed to AI Camera - Auto Recipes (removed prior name). AI Auto Optimize applies shutter, ISO, EV, WB, focus lock/POI, zoom/lens, torch when needed, plus field look intensity — real capture dials on your iPhone, not filters. Aperture/ND/tripod stay coach-only. Free Peek: 1/day. Set the shot. Then take it.
 
 ## Screenshot captions (5) — DRAFT · Build 16
 1. Auto Optimize writes shutter, ISO, EV, WB & focus
@@ -111,4 +111,6 @@ Files: `iphone-{67,61}-01-ao-dial-burst.png` … `05-hero-value.png` — see `as
 - ICP language: high-end photography enthusiasts throughout; avoid casual filter framing; field looks = capture grades only.
 
 ## Review notes snippet (for ASC)
+Resolution: Renamed the app to **AI Camera - Auto Recipes** and removed the prior trademarked name from the display name, onboarding, paywall, Settings, permission strings, Support/Privacy/Terms, and App Store listing/screenshots. Pro marketing name is now **AI Camera Pro**.
+
 Demo account N/A (guest session). Free Peek allows 1 Auto Optimize/day without purchase. IAP yearly/monthly with 7-day trials. No Stripe inside iOS app. App writes shutter/ISO/EV/WB/focus and expanded iOS levers (custom exposure, WB temp/tint, torch, low-light, lens pick, brackets, etc. when available); aperture/ND/tripod are coach guidance only. Field looks are capture grades on viewfinder/capture — not beauty filters.

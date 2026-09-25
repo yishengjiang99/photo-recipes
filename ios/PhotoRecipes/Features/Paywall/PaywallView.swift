@@ -19,7 +19,7 @@ struct PaywallView: View {
                             .padding(.vertical, 6)
                             .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
 
-                        Text("Grok Camera Pro")
+                        Text("AI Camera Pro")
                             .font(AppTheme.displayLG())
                             .foregroundStyle(AppTheme.ink)
                             .multilineTextAlignment(.center)

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Grok Camera</string>
+	<string>AI Camera - Auto Recipes</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -21,7 +21,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>29</string>
+	<string>30</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -47,22 +47,22 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Grok Camera uses your photo to recommend a field technique recipe via Ask Grok Photo Vision.</string>
+	<string>AI Camera - Auto Recipes uses your photo to recommend a field technique recipe via Photo Vision.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Grok Camera uses the camera to apply field recipes and Auto Optimize live capture settings.</string>
+	<string>AI Camera - Auto Recipes uses the camera to apply field recipes and Auto Optimize live capture settings.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Grok Camera saves captures to your Camera Roll.</string>
+	<string>AI Camera - Auto Recipes saves captures to your Camera Roll.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Grok Camera uses motion to show a horizon level while shooting.</string>
+	<string>AI Camera - Auto Recipes uses motion to show a horizon level while shooting.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Grok Camera uses the microphone so you can dictate a scene description for Field Coach and Auto Optimize.</string>
+	<string>AI Camera - Auto Recipes uses the microphone so you can dictate a scene description for Field Coach and Auto Optimize.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Grok Camera uses on-device speech recognition so your scene dictation appears in the text field as you speak.</string>
+	<string>AI Camera - Auto Recipes uses on-device speech recognition so your scene dictation appears in the text field as you speak.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -74,6 +74,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

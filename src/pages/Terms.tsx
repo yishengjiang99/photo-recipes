@@ -17,12 +17,12 @@ export function Terms() {
   return (
     <LegalShell
       title="Terms of Use"
-      description={`Last updated ${LAST_UPDATED}. Terms for Grok Camera (Photo Recipes / Grepawk Photos).`}
+      description={`Last updated ${LAST_UPDATED}. Terms for AI Camera - Auto Recipes (Photo Recipes / Grepawk Photos).`}
       path="/terms"
     >
       <p>
         These Terms of Use (“Terms”) govern your access to and use of{' '}
-        <strong className="text-ink">Grok Camera</strong> (the iOS app; also known as{' '}
+        <strong className="text-ink">AI Camera - Auto Recipes</strong> (the iOS app; also known as{' '}
         <strong className="text-ink">Photo Recipes</strong> /{' '}
         <strong className="text-ink">Grepawk Photos</strong> as alternate or former names; the
         “Service”), including the website at{' '}
@@ -34,8 +34,8 @@ export function Terms() {
 
       <Section title="1. The Service">
         <p>
-          Grok Camera / Photo Recipes provides educational field photography presets, live camera
-          coaching, Recommend / Apply look, Auto Optimize (where available), Ask Grok / Photo Vision
+          AI Camera - Auto Recipes / Photo Recipes provides educational field photography presets, live camera
+          coaching, Recommend / Apply look, Auto Optimize (where available), Ask / Photo Vision
           recommendations, optional product push notifications when you opt in, and related tools.
           Recommendations and dial suggestions are informational. You remain responsible for camera
           settings, safe shooting, and the photos you capture.
@@ -57,8 +57,8 @@ export function Terms() {
       <Section title="3. Free Peek and Pro">
         <p>
           Browsing recipes and limited Free Peek features (for example, a limited number of Auto
-          Optimize, Recommend, or Ask Grok uses per day) may be available without payment. Paid
-          features (“Grok Camera Pro” / “Photo Recipes Pro”) unlock additional capability as
+          Optimize, Recommend, or Ask uses per day) may be available without payment. Paid
+          features (“AI Camera - Auto Recipes Pro” / “Photo Recipes Pro”) unlock additional capability as
           described in the product UI.
         </p>
         <ul className="list-disc space-y-2 pl-5">
@@ -95,7 +95,7 @@ export function Terms() {
 
       <Section title="5. AI features">
         <p>
-          Recommend, Apply look, Ask Grok, Photo Vision, speech-to-text, and Auto Optimize vision
+          Recommend, Apply look, Ask, Photo Vision, speech-to-text, and Auto Optimize vision
           steps may send text and/or a compressed probe frame or photo you select to our API and
           then to third-party AI providers (including xAI) for that request only, to generate
           recommendations. We do not sync your full Camera Roll for these features. Outputs can be

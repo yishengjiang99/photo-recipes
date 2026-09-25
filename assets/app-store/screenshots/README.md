@@ -1,12 +1,12 @@
 # App Store screenshots
 
-Darkroom App Store screenshot exports for **Grok Camera** (Bundle ID `com.ragnus.mvp`).
+Darkroom App Store screenshot exports for **AI Camera - Auto Recipes** (Bundle ID `com.ragnus.mvp`).
 
-## Primary set — Build 16 MOCK (Grok Camera)
+## Primary set — Build 16 MOCK (AI Camera - Auto Recipes)
 
 **Status:** Build 16 HTML/Playwright **MOCK** exports. Prefer real device stills before final ASC upload when available. Marketing owns ASC upload. Ad Designer may supersede with ASC v2 finals.
 
-**App Name (LOCKED):** Grok Camera  
+**App Name (LOCKED):** AI Camera - Auto Recipes  
 **Signal Amber (Palette A):** `#E0A812` (from Theme / brand lock).  
 **Viewfinder chrome:** hue-neutral (no amber wash).
 
@@ -25,7 +25,7 @@ Darkroom App Store screenshot exports for **Grok Camera** (Bundle ID `com.ragnus
 | `iphone-67-04-manual-teach.png` / `iphone-61-04-manual-teach.png` | 4 Manual dials / Teach | See shutter · ISO · EV · WB · focus — then override |
 | `iphone-67-05-hero-value.png` / `iphone-61-05-hero-value.png` | 5 Hero value prop | Set the shot. Then take it. |
 
-Frames **1–5 required** for this ASC draft. On-image wordmark: **Grok Camera**. Every capture-dial frame shows shutter / ISO / EV / WB / focus (no aperture-as-applied; no beauty/filter photo B/A). STT is secondary only.
+Frames **1–5 required** for this ASC draft. On-image wordmark: **AI Camera**. Every capture-dial frame shows shutter / ISO / EV / WB / focus (no aperture-as-applied; no beauty/filter photo B/A). STT is secondary only.
 
 ### Source
 

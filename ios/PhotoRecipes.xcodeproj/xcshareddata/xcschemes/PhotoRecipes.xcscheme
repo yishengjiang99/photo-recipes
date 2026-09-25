@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "85D59AD1DAD74D348F7957D5"
-               BuildableName = "Grok Camera.app"
+               BuildableName = "AI Camera - Auto Recipes.app"
                BlueprintName = "PhotoRecipes"
                ReferencedContainer = "container:PhotoRecipes.xcodeproj">
             </BuildableReference>
@@ -71,7 +71,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "85D59AD1DAD74D348F7957D5"
-            BuildableName = "Grok Camera.app"
+            BuildableName = "AI Camera - Auto Recipes.app"
             BlueprintName = "PhotoRecipes"
             ReferencedContainer = "container:PhotoRecipes.xcodeproj">
          </BuildableReference>
@@ -88,7 +88,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "85D59AD1DAD74D348F7957D5"
-            BuildableName = "Grok Camera.app"
+            BuildableName = "AI Camera - Auto Recipes.app"
             BlueprintName = "PhotoRecipes"
             ReferencedContainer = "container:PhotoRecipes.xcodeproj">
          </BuildableReference>

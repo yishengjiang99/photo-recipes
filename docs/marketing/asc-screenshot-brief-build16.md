@@ -1,14 +1,14 @@
-# ASC Screenshot Brief — Build 16 (Grok Camera)
+# ASC Screenshot Brief — Build 16 (AI Camera - Auto Recipes)
 
 **Status:** DRAFT HTML/Playwright mocks for App Store Connect upload review.  
-**App display name (LOCKED):** **Grok Camera**  
+**App display name (LOCKED):** **AI Camera - Auto Recipes**  
 **Bundle ID (LOCKED):** `com.ragnus.mvp`  
 **Subtitle (LOCKED for this cycle):** AI Auto: Shutter ISO Focus  
 **Slogan:** Set the shot. Then take it.  
 **Palette A — Signal Amber:** `#E0A812` (accent CTA); accent-soft `#F5C518`; label-on-amber `#121212`; bg `#111111`; surface `#1C1C1E`; ink `#F5F5F7`.  
 **Viewfinder chrome:** hue-neutral (no amber wash on finder glass).
 
-Historical note: former store working names included Grepawk Photos / Photo Recipes; on-image wordmark and ASC App Name for this cycle are **Grok Camera**.
+Historical note: former store working names included Grepawk Photos / Photo Recipes; on-image wordmark is **AI Camera**; ASC App Name is **AI Camera - Auto Recipes**.
 
 ## Frame set (5 required)
 
@@ -18,7 +18,7 @@ Historical note: former store working names included Grepawk Photos / Photo Reci
 | 2 | `02-recommend` | Recommend labeled lower-left + recipe apply with dials on finder | Recommend applies the recipe — dials on the finder |
 | 3 | `03-stt-scene` | Scene coach box; STT secondary / optional (not hero) | Scene coach in the box (optional STT) |
 | 4 | `04-manual-teach` | Manual dials + Teach / Why this? override | See shutter · ISO · EV · WB · focus — then override |
-| 5 | `05-hero-value` | Hero value prop — slogan + **Grok Camera** | Set the shot. Then take it. |
+| 5 | `05-hero-value` | Hero value prop — slogan + **AI Camera** | Set the shot. Then take it. |
 
 ## Sizes
 
@@ -29,7 +29,7 @@ Historical note: former store working names included Grepawk Photos / Photo Reci
 
 - No beauty filters; no fake aperture applied as a written dial.
 - STT is secondary — never the hero frame or lead caption.
-- On-image wordmark: **Grok Camera** only (not App Name, not Grepawk Photos, not Photo Recipes).
+- On-image wordmark: **AI Camera** (ASC App Name remains **AI Camera - Auto Recipes**).
 - Prefer HTML/CSS UI chrome for dial readability over AI image generation.
 
 ## Generator

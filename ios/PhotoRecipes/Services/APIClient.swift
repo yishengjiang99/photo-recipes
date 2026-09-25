@@ -36,13 +36,13 @@ enum RecommendStreamEvent: Sendable {
         switch phase {
         case "started": return "Matching a recipe…"
         case "sensing": return "Reading the scene…"
-        case "thinking": return "Grok is thinking…"
+        case "thinking": return "Matching a recipe…"
         case "writing": return "Writing tips…"
         case "done": return "Recipe ready…"
         // Aliases if an older/newer contract slips through
         case "start": return "Matching a recipe…"
         case "sense": return "Reading the scene…"
-        case "reason", "reasoning": return "Grok is thinking…"
+        case "reason", "reasoning": return "Matching a recipe…"
         case "write", "content": return "Writing tips…"
         default: return nil
         }

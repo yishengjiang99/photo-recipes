@@ -1,0 +1,30 @@
+name: ASC AI Camera listing upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_screenshots:
+        description: Upload screenshots (1/0)
+        required: false
+        type: string
+        default: "1"
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload listing (+ optional screenshots)
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          UPLOAD_SCREENSHOTS: ${{ inputs.upload_screenshots }}
+          SHOT_DIR: assets/app-store/screenshots
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography
+          python3 scripts/upload_aicamera_asc_listing.py
