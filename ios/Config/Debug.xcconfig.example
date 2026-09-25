@@ -5,4 +5,4 @@
 
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
 PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp
-PRODUCT_NAME = Grok Camera
+PRODUCT_NAME = AI Camera - Auto Recipes

@@ -44,7 +44,7 @@
           },
           "localizations" : [
             {
-              "description" : "Unlimited Ask Grok, Photo Vision, and interactive checklists. Billed monthly.",
+              "description" : "Unlimited Ask, Photo Vision, and interactive checklists. Billed monthly.",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
@@ -74,7 +74,7 @@
           },
           "localizations" : [
             {
-              "description" : "Unlimited Ask Grok, Photo Vision, and interactive checklists. Best value — billed yearly.",
+              "description" : "Unlimited Ask, Photo Vision, and interactive checklists. Best value — billed yearly.",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

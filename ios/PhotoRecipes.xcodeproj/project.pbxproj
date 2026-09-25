@@ -510,7 +510,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -520,7 +520,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp;
-				PRODUCT_NAME = "Grok Camera";
+				PRODUCT_NAME = "AI Camera - Auto Recipes";
 				PRODUCT_MODULE_NAME = PhotoRecipes;
 				ENABLE_TESTABILITY = YES;
 				SDKROOT = iphoneos;
@@ -539,7 +539,7 @@
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipesRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoRecipes/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -549,7 +549,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp;
-				PRODUCT_NAME = "Grok Camera";
+				PRODUCT_NAME = "AI Camera - Auto Recipes";
 				PRODUCT_MODULE_NAME = PhotoRecipes;
 				ENABLE_TESTABILITY = YES;
 				SDKROOT = iphoneos;
@@ -581,7 +581,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Grok Camera.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Grok Camera";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AI Camera - Auto Recipes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AI Camera - Auto Recipes";
 			};
 			name = Debug;
 		};
@@ -606,7 +606,7 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Grok Camera.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Grok Camera";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AI Camera - Auto Recipes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AI Camera - Auto Recipes";
 			};
 			name = Release;
 		};

@@ -55,7 +55,7 @@ export function Success() {
           setState('ok')
           setDetail(
             data.status === 'trialing'
-              ? 'Your 7-day free trial is active. Enjoy unlimited Ask Grok and field checklists.'
+              ? 'Your 7-day free trial is active. Enjoy unlimited Ask and field checklists.'
               : `Pro is unlocked${data.plan ? ` (${data.plan})` : ''}.`,
           )
         } else {

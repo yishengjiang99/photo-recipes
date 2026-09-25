@@ -6,11 +6,11 @@ import { track } from '../lib/analytics'
 const FEATURES_FREE = [
   'Browse all recipe presets',
   'Favorites & filters',
-  'Ask Grok 5× per day (Free Peek)',
+  'Ask 5× per day (Free Peek)',
 ]
 
 const FEATURES_PRO = [
-  'Unlimited Ask Grok recommendations',
+  'Unlimited Ask recommendations',
   'Interactive field checklists',
   '7-day free trial, cancel anytime',
   'Support ongoing recipe updates',
@@ -65,7 +65,7 @@ export function PricingModal() {
             Photo Recipes Pro
           </h2>
           <p className="mt-1.5 text-sm text-ink-secondary">
-            Free Peek lets you explore presets. Pro unlocks unlimited Ask Grok and
+            Free Peek lets you explore presets. Pro unlocks unlimited Ask and
             field checklists.
           </p>
         </div>

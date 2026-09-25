@@ -55,7 +55,7 @@ struct SettingsView: View {
                     Section("Billing") {
                         Text("Pro on iOS is unlocked only via App Store In-App Purchase (StoreKit 2). Web Stripe checkout does not unlock this app build.")
                             .font(.caption)
-                        Text("Manage or cancel: Settings → [your name] → Subscriptions → Grok Camera Pro.")
+                        Text("Manage or cancel: Settings → [your name] → Subscriptions → AI Camera Pro.")
                             .font(.caption)
                     }
 
@@ -71,7 +71,7 @@ struct SettingsView: View {
                         Text("Replays the 3 field tips on the Camera tab (Auto Optimize → chips → Controls).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Toggle("Cloud refine (Grok)", isOn: $deepCoachEnabled)
+                        Toggle("Cloud refine (AI)", isOn: $deepCoachEnabled)
                             .onChange(of: deepCoachEnabled) { _, on in
                                 AutoOptimizeController.cloudRefineEnabled = on
                             }

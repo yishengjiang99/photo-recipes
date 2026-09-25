@@ -368,14 +368,14 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     }) => {
       if (!data.presetId) {
         track('auto_optimize_fail', { source: 'field_coach', error_code: 'no_preset' })
-        throw new Error('No preset returned from Grok')
+        throw new Error('No preset returned from AI')
       }
       const state: AiRecommendState = {
         reason:
           data.reason ||
           (opts.image
-            ? 'Grok picked this recipe from your photo. On web this is coaching only — dials apply in the iOS app.'
-            : 'Grok picked this recipe for your scene. On web this is coaching only — dials apply in the iOS app.'),
+            ? 'AI picked this recipe from your photo. On web this is coaching only — dials apply in the iOS app.'
+            : 'AI picked this recipe for your scene. On web this is coaching only — dials apply in the iOS app.'),
         tips: Array.isArray(data.tips) ? data.tips : [],
         fromAsk: true,
       }
@@ -408,7 +408,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         setPaywalled(true)
         setError(
           data.error ||
-            'Free Peek limit reached. Upgrade for unlimited Ask Grok & Photo Vision.',
+            'Free Peek limit reached. Upgrade for unlimited Ask & Photo Vision.',
         )
         track('auto_optimize_fail', { source: 'field_coach', error_code: 'paywall' })
         track('paywall_view', { source: 'auto_optimize_limit' })
@@ -469,7 +469,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
           if (event === 'status' && typeof payload.message === 'string') {
             setStreamStatus(payload.message)
           } else if (event === 'phase' && typeof payload.phase === 'string') {
-            if (payload.phase === 'thinking') setStreamStatus('Grok is thinking…')
+            if (payload.phase === 'thinking') setStreamStatus('Matching a recipe…')
             if (payload.phase === 'writing') setStreamStatus('Writing tips…')
             if (payload.phase === 'sensing') setStreamStatus('Reading the scene…')
           } else if (event === 'result') {

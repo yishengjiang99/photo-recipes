@@ -1,8 +1,8 @@
-# App Store screenshots — Build 16 (Grok Camera)
+# App Store screenshots — Build 16 (AI Camera - Auto Recipes)
 
 HTML/Playwright generator for ASC screenshot mocks.
 
-**On-image wordmark:** Grok Camera  
+**On-image wordmark:** AI Camera  
 **Signal Amber:** `#E0A812`  
 **Slogan:** Set the shot. Then take it.
 

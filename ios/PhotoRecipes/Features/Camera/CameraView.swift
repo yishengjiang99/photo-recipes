@@ -71,7 +71,7 @@ struct CameraView: View {
             case .notDetermined:
                 permissionCover(
                     title: "Camera access",
-                    body: "Grok Camera needs the camera to apply field recipes to live capture.",
+                    body: "AI Camera - Auto Recipes needs the camera to apply field recipes to live capture.",
                     primary: "Continue",
                     primaryAction: {
                         Task {

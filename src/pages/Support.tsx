@@ -17,11 +17,11 @@ export function Support() {
   return (
     <LegalShell
       title="Support"
-      description="Help for Grok Camera (Photo Recipes) — billing, camera, and Pro."
+      description="Help for AI Camera - Auto Recipes (Photo Recipes) — billing, camera, and Pro."
       path="/support"
     >
       <p>
-        We’re happy to help with <strong className="text-ink">Grok Camera</strong> on iOS and the
+        We’re happy to help with <strong className="text-ink">AI Camera - Auto Recipes</strong> on iOS and the
         Photo Recipes website (Field Coach, Recommend, and Pro). Grepawk Photos may appear as a
         former or alternate name. For the fastest reply, email us directly.
       </p>
@@ -31,7 +31,7 @@ export function Support() {
           Email:{' '}
           <a
             className="text-lg font-medium text-accent-soft hover:underline"
-            href={`mailto:${SUPPORT_EMAIL}?subject=Grok%20Camera%20support`}
+            href={`mailto:${SUPPORT_EMAIL}?subject=AI%20Camera%20-%20Auto%20Recipes%20support`}
           >
             {SUPPORT_EMAIL}
           </a>
@@ -45,7 +45,7 @@ export function Support() {
       <Section title="Common topics">
         <ul className="list-disc space-y-3 pl-5">
           <li>
-            <strong className="text-ink">Camera permission.</strong> iOS Settings → Grok Camera →
+            <strong className="text-ink">Camera permission.</strong> iOS Settings → AI Camera - Auto Recipes →
             allow Camera. On the website, allow camera access in the browser for Field Coach live
             view, or upload a photo instead.
           </li>
@@ -55,8 +55,8 @@ export function Support() {
           </li>
           <li>
             <strong className="text-ink">Notifications (optional).</strong> If you opt in after a
-            first capture, Grok Camera may send product push notifications. Turn them off anytime
-            in iOS Settings → Grok Camera → Notifications.
+            first capture, AI Camera - Auto Recipes may send product push notifications. Turn them off anytime
+            in iOS Settings → AI Camera - Auto Recipes → Notifications.
           </li>
           <li>
             <strong className="text-ink">Pro on the web (Stripe).</strong> Use Manage billing in the
@@ -65,7 +65,7 @@ export function Support() {
           </li>
           <li>
             <strong className="text-ink">Pro on iOS (Apple IAP).</strong> Settings → [your name] →
-            Subscriptions → Grok Camera Pro. Refunds and billing disputes for App Store purchases
+            Subscriptions → AI Camera - Auto Recipes Pro. Refunds and billing disputes for App Store purchases
             go through Apple.
           </li>
           <li>

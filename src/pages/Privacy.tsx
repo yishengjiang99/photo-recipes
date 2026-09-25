@@ -17,11 +17,11 @@ export function Privacy() {
   return (
     <LegalShell
       title="Privacy Policy"
-      description={`Last updated ${LAST_UPDATED}. How Grok Camera (Photo Recipes / Grepawk Photos) handles your data.`}
+      description={`Last updated ${LAST_UPDATED}. How AI Camera - Auto Recipes (Photo Recipes / Grepawk Photos) handles your data.`}
       path="/privacy"
     >
       <p>
-        This Privacy Policy describes how <strong className="text-ink">Grok Camera</strong> (the
+        This Privacy Policy describes how <strong className="text-ink">AI Camera - Auto Recipes</strong> (the
         iOS app; also known as <strong className="text-ink">Photo Recipes</strong> /{' '}
         <strong className="text-ink">Grepawk Photos</strong> as alternate or former names; together,
         the “Service”), operated at{' '}
@@ -55,7 +55,7 @@ export function Privacy() {
         </p>
         <p>
           <strong className="text-ink">Recommend / Apply look / Auto Optimize vision.</strong> When
-          you use Recommend, Apply look, Ask Grok with an image, or Auto Optimize’s vision step, a
+          you use Recommend, Apply look, Ask with an image, or Auto Optimize’s vision step, a
           compressed probe frame or a photo you select may be sent to our API and then to xAI for
           that request only, solely to return recipe / dial recommendations. We do not upload your
           full Camera Roll. Images are held in memory for that request (not written to our disk or
@@ -106,7 +106,7 @@ export function Privacy() {
           <li>
             <strong className="text-ink">iOS:</strong> In-app purchases use Apple StoreKit / In-App
             Purchase. Apple processes payment. We verify receipts with Apple to unlock Pro. Manage
-            or cancel iOS subscriptions in your Apple ID subscription settings (Grok Camera Pro).
+            or cancel iOS subscriptions in your Apple ID subscription settings (AI Camera - Auto Recipes Pro).
           </li>
         </ul>
         <p>
@@ -135,7 +135,7 @@ export function Privacy() {
       <Section title="3. How we use information">
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            Provide live camera coaching, Recommend / Apply look, Auto Optimize, Ask Grok / Photo
+            Provide live camera coaching, Recommend / Apply look, Auto Optimize, Ask / Photo
             Vision, and recipes
           </li>
           <li>Authenticate Pro entitlements (Stripe web or Apple IAP)</li>
@@ -151,7 +151,7 @@ export function Privacy() {
         <p>We share data only as needed to run the Service:</p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong className="text-ink">xAI</strong> — for Recommend / Apply look frames, Ask Grok,
+            <strong className="text-ink">xAI</strong> — for Recommend / Apply look frames, Ask,
             vision, cloud STT fallback, and related AI features when you use them
           </li>
           <li>
