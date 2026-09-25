@@ -1,0 +1,123 @@
+name: ASC cancel stuck submissions
+
+on:
+  workflow_dispatch:
+    inputs:
+      then_submit_build:
+        description: If set (e.g. 30), run submit after cancel settles
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Cancel READY_FOR_REVIEW / UNRESOLVED_ISSUES shells
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          BUNDLE_ID: com.ragnus.mvp
+          THEN_BUILD: ${{ inputs.then_submit_build }}
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography
+          python3 <<'PY'
+          import json, os, time, urllib.request, urllib.error, urllib.parse
+          import jwt
+
+          key_id = os.environ['APP_STORE_CONNECT_KEY_ID'].strip()
+          issuer = os.environ['APP_STORE_CONNECT_ISSUER_ID'].strip()
+          p8 = os.environ['APP_STORE_CONNECT_API_KEY_P8'].replace('\\n', '\n').strip()
+          bundle_id = os.environ['BUNDLE_ID'].strip()
+          then_build = os.environ.get('THEN_BUILD', '').strip()
+
+          now = int(time.time())
+          token = jwt.encode(
+            {'iss': issuer, 'iat': now, 'exp': now + 1200, 'aud': 'appstoreconnect-v1'},
+            p8, algorithm='ES256', headers={'kid': key_id},
+          )
+
+          def api(method, path, body=None, ok_statuses=None):
+            data = None if body is None else json.dumps(body).encode()
+            req = urllib.request.Request(
+              'https://api.appstoreconnect.apple.com' + path,
+              data=data, method=method,
+              headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            )
+            try:
+              with urllib.request.urlopen(req, timeout=90) as r:
+                raw = r.read().decode() or '{}'
+                return r.status, json.loads(raw)
+            except urllib.error.HTTPError as e:
+              err = e.read().decode()
+              if ok_statuses and e.code in ok_statuses:
+                try:
+                  parsed = json.loads(err) if err else {}
+                except json.JSONDecodeError:
+                  parsed = {'raw': err}
+                return e.code, parsed
+              raise SystemExit(f'{method} {path} -> {e.code}: {err[:2000]}')
+
+          _, apps = api('GET', f'/v1/apps?filter[bundleId]={urllib.parse.quote(bundle_id)}')
+          app_id = apps['data'][0]['id']
+          print('APP', app_id, apps['data'][0]['attributes'].get('name'))
+
+          _, subs = api('GET', f'/v1/apps/{app_id}/reviewSubmissions?filter[platform]=IOS&limit=20')
+          cancel_states = {'READY_FOR_REVIEW', 'UNRESOLVED_ISSUES', 'WAITING_FOR_REVIEW', 'IN_REVIEW'}
+          canceled_ids = []
+          for s in subs.get('data', []):
+            a = s['attributes']
+            st = a.get('state')
+            print('SUBMISSION', s['id'], st, 'submitted=', a.get('submittedDate'))
+            if st in cancel_states:
+              print('canceling', s['id'], st)
+              cst, resp = api('PATCH', f'/v1/reviewSubmissions/{s["id"]}', {
+                'data': {'type': 'reviewSubmissions', 'id': s['id'], 'attributes': {'canceled': True}}
+              }, ok_statuses={409, 422})
+              print('cancel result', cst, json.dumps(resp)[:500])
+              if cst < 400:
+                canceled_ids.append(s['id'])
+
+          for sid in canceled_ids:
+            for attempt in range(30):
+              _, sref = api('GET', f'/v1/reviewSubmissions/{sid}')
+              sstate = sref.get('data', {}).get('attributes', {}).get('state')
+              print(f'poll {sid} {attempt+1}: {sstate}')
+              if sstate in ('COMPLETE', 'CANCELING') and sstate != 'CANCELING':
+                break
+              if sstate == 'COMPLETE':
+                break
+              if sstate not in ('CANCELING', 'READY_FOR_REVIEW', 'UNRESOLVED_ISSUES', 'WAITING_FOR_REVIEW', 'IN_REVIEW'):
+                break
+              time.sleep(10)
+            else:
+              print('WARN poll timeout', sid)
+
+          _, vers = api('GET', f'/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=5')
+          for v in vers.get('data', []):
+            a = v['attributes']
+            print('VERSION', v['id'], a.get('versionString'), a.get('appStoreState'))
+
+          _, subs2 = api('GET', f'/v1/apps/{app_id}/reviewSubmissions?filter[platform]=IOS&limit=20')
+          open_count = 0
+          for s in subs2.get('data', []):
+            st = s['attributes'].get('state')
+            print('AFTER', s['id'], st)
+            if st not in ('COMPLETE',):
+              open_count += 1
+          print('open_non_complete', open_count)
+          print('THEN_BUILD', then_build or '(none)')
+          PY
+
+      - name: Trigger ASC submit if requested
+        if: ${{ inputs.then_submit_build != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run "ASC submit App Store" --repo "$GITHUB_REPOSITORY" --ref main \
+            -f build_number="${{ inputs.then_submit_build }}" -f version_string=1.0
+          echo "Triggered ASC submit for build ${{ inputs.then_submit_build }}"

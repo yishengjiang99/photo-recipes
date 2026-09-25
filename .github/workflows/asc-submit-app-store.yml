@@ -176,7 +176,7 @@ jobs:
 
           # --- Cancel/withdraw prior review submission if waiting/in review ---
           canceled_submission_ids = []
-          if vstate in ('WAITING_FOR_REVIEW', 'IN_REVIEW', 'PENDING_APPLE_RELEASE'):
+          if vstate in ('WAITING_FOR_REVIEW', 'IN_REVIEW', 'PENDING_APPLE_RELEASE', 'REJECTED', 'METADATA_REJECTED', 'DEVELOPER_REJECTED'):
             print(f'version state {vstate}; looking for open reviewSubmissions to cancel...')
             st, subs = api(
               'GET',
