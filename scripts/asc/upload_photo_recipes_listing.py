@@ -244,10 +244,10 @@ def upload_one(set_id, f: Path) -> str:
         "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
     for _ in range(60):
         st = (api("GET", f"/v1/appScreenshots/{shot['id']}")["data"]["attributes"].get("assetDeliveryState") or {})
-        if st.get("state") in ("UPLOAD_COMPLETE", "FAILED"):
+        if st.get("state") in ("UPLOAD_COMPLETE", "COMPLETE", "FAILED"):
             break
         time.sleep(5)
-    if st.get("state") != "UPLOAD_COMPLETE":
+    if st.get("state") not in ("UPLOAD_COMPLETE", "COMPLETE"):
         raise SystemExit(f"screenshot {f.name} delivery {st}")
     print("  uploaded", f.name, shot["id"], st.get("state"))
     return shot["id"]
@@ -268,7 +268,16 @@ def replace_screenshots(vloc_id, shots, warnings):
         if sset is None:
             sset = api("POST", "/v1/appScreenshotSets", {"data": {"type": "appScreenshotSets", "attributes": {"screenshotDisplayType": dtype},
                        "relationships": {"appStoreVersionLocalization": {"data": {"type": "appStoreVersionLocalizations", "id": vloc_id}}}}})["data"]
-        old = [x["id"] for x in api("GET", f"/v1/appScreenshotSets/{sset['id']}/appScreenshots")["data"]]
+        old_items = api("GET", f"/v1/appScreenshotSets/{sset['id']}/appScreenshots")["data"]
+        want_names = [f.name for f in files]
+        got_names = [x["attributes"].get("fileName") for x in old_items]
+        states_ok = all(
+            ((x["attributes"].get("assetDeliveryState") or {}).get("state") in ("UPLOAD_COMPLETE", "COMPLETE"))
+            for x in old_items)
+        if got_names == want_names and states_ok:
+            print(f"{dtype}: set {sset['id']}, {len(files)} screenshot(s) already in place, skipping upload")
+            continue
+        old = [x["id"] for x in old_items]
         print(f"{dtype}: set {sset['id']}, replacing {len(old)} old screenshot(s)")
         for oid in old:  # Apple caps a set at 10; delete first, then upload in order
             api("DELETE", f"/v1/appScreenshots/{oid}")
@@ -326,23 +335,38 @@ def verify(app_id, app, vid, info_id, L, copyright_, cat1, R, shots, warnings) -
           and rd.get("contactPhone") == R["phone_number"] and rd.get("contactEmail") == R["email_address"],
           f"{rd.get('contactFirstName')} {rd.get('contactLastName')} {rd.get('contactPhone')} {rd.get('contactEmail')} demo={rd.get('demoAccountRequired')}")
     if vloc:
-        sets = api("GET", f"/v1/appStoreVersionLocalizations/{vloc['id']}/appScreenshotSets?limit=50")["data"]
-        seen = {}
-        for s in sets:
-            dt = s["attributes"]["screenshotDisplayType"]
-            items = api("GET", f"/v1/appScreenshotSets/{s['id']}/appScreenshots")["data"]
-            desc = []
-            for it in items:
-                ia = it["attributes"]
-                img = ia.get("imageAsset") or {}
-                desc.append((ia.get("fileName"), img.get("width"), img.get("height"), (ia.get("assetDeliveryState") or {}).get("state")))
-            seen[dt] = desc
+        def fetch_seen():
+            seen = {}
+            for s in api("GET", f"/v1/appStoreVersionLocalizations/{vloc['id']}/appScreenshotSets?limit=50")["data"]:
+                dt = s["attributes"]["screenshotDisplayType"]
+                items = api("GET", f"/v1/appScreenshotSets/{s['id']}/appScreenshots")["data"]
+                desc = []
+                for it in items:
+                    ia = it["attributes"]
+                    img = ia.get("imageAsset") or {}
+                    desc.append((ia.get("fileName"), img.get("width"), img.get("height"),
+                                 (ia.get("assetDeliveryState") or {}).get("state")))
+                seen[dt] = desc
+            return seen
+        seen = fetch_seen()
+        # Apple derives image assets asynchronously: states move UPLOAD_COMPLETE -> COMPLETE
+        # and dimensions appear a few minutes after upload. Wait for it to settle.
+        for _ in range(32):
+            pending = [(dt, n) for dt, items in seen.items() for n, w, h, st in items
+                       if st not in ("UPLOAD_COMPLETE", "COMPLETE") or not w or not h]
+            if not pending:
+                break
+            print(f"      screenshots still processing: {pending[:4]}{'...' if len(pending) > 4 else ''}")
+            time.sleep(15)
+            seen = fetch_seen()
+        for dt, desc in seen.items():
             print(f"      SET {dt}: {desc}")
         for dtype, files in shots.items():
             size = next(sz for dt, sz in SHOT_TYPES.values() if dt == dtype)
             want = [(f.name, *size) for f in files]
             got = [(n, w, h) for n, w, h, st in seen.get(dtype, [])]
-            check(f"screenshots {dtype}", got == want and all(st == "UPLOAD_COMPLETE" for *_, st in seen.get(dtype, [])), f"{len(got)} present, want {len(want)} in order")
+            states_ok = all(st in ("UPLOAD_COMPLETE", "COMPLETE") for *_, st in seen.get(dtype, []))
+            check(f"screenshots {dtype}", got == want and states_ok, f"{len(got)} present, want {len(want)} in order")
         extra = [d for d in seen if d not in shots or not shots[d]]
         check("no stale screenshot sets", not extra, str(extra))
     # Read-only extras the submit needs but this script does not set
