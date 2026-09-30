@@ -1,14 +1,15 @@
-name: ASC AI Camera listing upload
+name: ASC Photo Recipes upload listing
 
-# Back-compat name. Same job as asc-photo-recipes-upload.yml: listing v2 from
-# docs/asc/metadata + docs/asc/screenshots/en-US via scripts/asc/upload_photo_recipes_listing.py.
-# Does not use the superseded assets/app-store/screenshots set.
+# Listing prep for AI Camera - Auto Recipes (com.ragnus.mvp) version 1.0: metadata, URLs,
+# categories, copyright, App Review contact, age rating, export compliance, attach build,
+# screenshots from docs/asc/screenshots/en-US (listing v2), then a read-only verification.
+# NEVER submits for review (that is asc-submit-app-store.yml, run by hand).
 
 on:
   workflow_dispatch:
     inputs:
       build_number:
-        description: CFBundleVersion to attach to the version
+        description: CFBundleVersion to attach to the version (export compliance cleared too)
         required: true
         type: string
         default: "30"
@@ -40,7 +41,10 @@ jobs:
           import struct
           from pathlib import Path
           root = Path("docs/asc/screenshots/en-US")
-          expect = {"iphone-69": (1320, 2868), "ipad-13": (2064, 2752)}
+          expect = {
+              "iphone-69": (1320, 2868),
+              "ipad-13": (2064, 2752),
+          }
           for prefix, size in expect.items():
               files = sorted(root.glob(f"{prefix}-*.png"))
               assert len(files) >= 5, f"{prefix}: expected >=5 frames, got {len(files)}"
