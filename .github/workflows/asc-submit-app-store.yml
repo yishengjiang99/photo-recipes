@@ -43,6 +43,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           set -euo pipefail
+          pip install -q numpy pillow
           python3 docs/asc/check_copy.py
           pip install -q PyJWT cryptography requests
           python3 scripts/asc/upload_photo_recipes_listing.py

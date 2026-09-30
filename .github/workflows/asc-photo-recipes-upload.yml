@@ -36,6 +36,7 @@ jobs:
       - name: Check listing copy + screenshot set
         run: |
           set -euo pipefail
+          pip install -q numpy pillow
           python3 docs/asc/check_copy.py
           python3 - <<'PY'
           import struct
