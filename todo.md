@@ -1,10 +1,10 @@
 # TODO — AI Camera - Auto Recipes
-_Last updated: 2026-09-26 PT by Chief of Staff_
+_Last updated: 2026-09-30 9:17 AM PT by Chief of Staff_
 
-iOS-first; web feature work paused. Nothing new on main since `e5b3c40` (2026-09-24); no open issues.
+iOS-first; web feature work paused. No product commits on main since `e5b3c40` (2026-09-24); tip is `d03ed72` (todo only). No open issues. ASC status run 2026-09-29 still shows WAITING_FOR_REVIEW + build 30 VALID.
 
 ## Now (in progress)
-- [ ] v1.0 build 30 in App Review (WAITING_FOR_REVIEW, submitted 2026-09-24 ~5:59 PM PT). Check with read-only **ASC status** only; do NOT re-run asc-cancel-stuck-submissions / asc-submit-app-store — Chief of Staff
+- [ ] v1.0 build 30 in App Review (WAITING_FOR_REVIEW; submission `0fdda5f9` submitted 2026-09-24 ~5:59 PM PT / 2026-09-25 00:59 UTC). Check with read-only **ASC status** only; do NOT re-run asc-cancel-stuck-submissions / asc-submit-app-store — Chief of Staff
 
 ## Next
 - [ ] Viewfinder-first Auto Optimize — iOS
