@@ -85,16 +85,17 @@ AI Auto Optimize now writes shutter, ISO, EV, white balance, focus, zoom and tor
 
 ## Support URL
 ```
-https://grepawk.com/photo-recipes/support.html
+https://photo.grepawk.com/support
 ```
 
 ## Marketing URL
 ```
+https://photo.grepawk.com
 ```
 
 ## Privacy Policy URL
 ```
-https://grepawk.com/photo-recipes/privacy.html
+https://photo.grepawk.com/privacy
 ```
 
 ## Copyright
@@ -112,8 +113,9 @@ Point at a scene and tap Auto Optimize: the app should pick a photo recipe and a
 ```
 
 ## URLs: publishing status
-Support/privacy URLs follow the sister app's grepawk.com pattern — VERIFY they return HTTP 200
-before upload (the upload script's verify step does not check this). Marketing URL: blank.
+Support/privacy/marketing URLs confirmed live in App Store Connect 2026-09-30
+(`https://photo.grepawk.com[/support|/privacy]`) — the earlier grepawk.com/photo-recipes/*.html
+guesses were wrong and have been replaced.
 
 ## App Privacy
 Camera and photo library access are used for capture and Auto Optimize. Confirm the privacy

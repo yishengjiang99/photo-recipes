@@ -108,8 +108,15 @@ def main():
     print("APP", app_id, app["attributes"].get("name"), BUNDLE_ID)
     vers = api("GET", f"/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&filter[versionString]={VERSION}")["data"]
     if not vers:
-        raise SystemExit(f"version {VERSION} not found")
-    ver = vers[0]
+        if VERIFY_ONLY:
+            raise SystemExit(f"version {VERSION} not found")
+        print(f"No IOS version {VERSION}; creating PREPARE_FOR_SUBMISSION...")
+        ver = api("POST", "/v1/appStoreVersions", {"data": {"type": "appStoreVersions",
+            "attributes": {"platform": "IOS", "versionString": VERSION},
+            "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})["data"]
+        print("created version", ver["id"], ver["attributes"].get("appStoreState"))
+    else:
+        ver = vers[0]
     vstate = ver["attributes"].get("appVersionState") or ver["attributes"].get("appStoreState")
     print("VERSION", ver["id"], VERSION, ver["attributes"].get("appStoreState"), ver["attributes"].get("appVersionState"))
     infos = api("GET", f"/v1/apps/{app_id}/appInfos")["data"]

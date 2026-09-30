@@ -1,6 +1,6 @@
 name: ASC Photo Recipes upload listing
 
-# Listing prep for AI Camera - Auto Recipes (com.ragnus.mvp) version 1.0: metadata, URLs,
+# Listing prep for AI Camera - Auto Recipes (com.ragnus.mvp): metadata, URLs,
 # categories, copyright, App Review contact, age rating, export compliance, attach build,
 # screenshots from docs/asc/screenshots/en-US (listing v2), then a read-only verification.
 # NEVER submits for review (that is asc-submit-app-store.yml, run by hand).
@@ -8,6 +8,11 @@ name: ASC Photo Recipes upload listing
 on:
   workflow_dispatch:
     inputs:
+      version_string:
+        description: App Store version to sync (created as PREPARE_FOR_SUBMISSION if missing)
+        required: true
+        type: string
+        default: "1.1"
       build_number:
         description: CFBundleVersion to attach to the version (export compliance cleared too)
         required: true
@@ -61,7 +66,7 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
           BUNDLE_ID: com.ragnus.mvp
-          VERSION_STRING: "1.0"
+          VERSION_STRING: ${{ inputs.version_string }}
           BUILD_NUMBER: ${{ inputs.build_number }}
           UPLOAD_SCREENSHOTS: ${{ inputs.screenshots }}
           VERIFY_ONLY: ${{ inputs.verify_only }}
