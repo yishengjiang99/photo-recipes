@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the App Store screenshots for AI Camera - Auto Recipes (photo-recipes).
+"""Build the App Store screenshots for ProTune AI Camera (photo-recipes).
 
 5 frames x {iphone-69 1320x2868, ipad-13 2064x2752}, RGB PNG, no alpha.
 Brand style: Signal Amber #E0A812 on dark #111111 (the app's palette). Every frame

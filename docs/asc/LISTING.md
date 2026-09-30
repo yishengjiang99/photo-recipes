@@ -1,4 +1,4 @@
-# App Store listing — AI Camera - Auto Recipes (en-US)
+# App Store listing — ProTune AI Camera (en-US)
 
 Source of truth for the ASC listing. `scripts/asc/upload_photo_recipes_listing.py` reads the
 fastlane-layout files under `docs/asc/metadata/` and pushes them to App Store Connect
@@ -18,7 +18,7 @@ review is a separate manual step, run by the owner only.
 
 ## Name (30)
 ```
-AI Camera - Auto Recipes
+ProTune AI Camera
 ```
 
 Recommendation: keep. 24/30 chars, "AI Camera" front-loaded for search, and this name already
@@ -53,7 +53,7 @@ raw, dslr, aperture, macro.
 ```
 Better photos from your iPhone — no f-stops required. Point at the scene, tap Auto Optimize, and the camera sets itself: real shutter, ISO, EV, white balance and focus dials, written for you.
 
-AI Camera - Auto Recipes is a field camera for photographers who want the recipe AND the dial position. Auto Optimize reads the scene, picks the right photo recipe, and writes real capture dials on your iPhone — shutter, ISO, EV, white balance, focus and zoom. Not filters. Real dials.
+ProTune AI Camera is a field camera for photographers who want the recipe AND the dial position. Auto Optimize reads the scene, picks the right photo recipe, and writes real capture dials on your iPhone — shutter, ISO, EV, white balance, focus and zoom. Not filters. Real dials.
 
 WHAT AUTO OPTIMIZE SETS
 • Shutter / exposure duration
