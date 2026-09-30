@@ -1,0 +1,131 @@
+# App Store listing — AI Camera - Auto Recipes (en-US)
+
+Source of truth for the ASC listing. `scripts/asc/upload_photo_recipes_listing.py` reads the
+fastlane-layout files under `docs/asc/metadata/` and pushes them to App Store Connect
+(bundle `com.ragnus.mvp`). Limits are Apple's. Never use the word "Grok" anywhere in the
+upload-ready listing (Apple rejected it on the sister app before); say "AI" / "Auto Optimize".
+
+The fenced Subtitle / Promotional text / Keywords / Description blocks are the **upload-ready**
+copy and must equal `metadata/en-US/*.txt` (fastlane deliver layout).
+Check: `python3 docs/asc/check_copy.py`.
+
+Status: listing v2 (name/subtitle confirmed, description rewritten benefit-led, keywords rebuilt
+without name/subtitle repeats, screenshots regenerated with large hero text). Upload + verify with
+the manual workflow (script `scripts/asc/upload_photo_recipes_listing.py`, VERIFY_ONLY=true for a
+dry run). Submitting for review is a separate manual step, run by the owner only.
+
+## Name (30)
+```
+AI Camera - Auto Recipes
+```
+
+Recommendation: keep. 24/30 chars, "AI Camera" front-loaded for search, and this name already
+survived a trademark rejection (Sep 2026) — renaming now re-opens review for no search gain.
+Alt (ties to the slogan "Set the shot. Then take it."): `AI Camera - Shot Recipes` (25).
+
+## Subtitle (30)
+```
+AI Auto: Shutter ISO Focus
+```
+
+Confirmed: 27/30, names the concrete dials photographers search for (shutter, ISO, focus).
+Alt: `Auto Optimize: Pro Dials` (25).
+
+## Promotional text (170)
+```
+Point, tap Auto Optimize — your iPhone sets shutter, ISO, EV, white balance and focus. Real capture dials, not filters. Browse pro photo recipes free.
+```
+
+## Keywords (100, comma-separated, no spaces after commas)
+```
+photography,exposure,white balance,HDR,panning,landscape,portrait,long exposure,bracketing,optimize
+```
+
+Rebuilt so no keyword repeats a word already in the name or subtitle (Apple combines them for
+search; repeats waste the 100 chars). "camera"/"shutter"/"ISO"/"focus" live in name+subtitle.
+
+## Description (4000)
+```
+Point your iPhone at the scene. Tap Auto Optimize. The camera sets itself.
+
+AI Camera - Auto Recipes is a field camera for photographers who want the recipe AND the dial position. Auto Optimize reads the scene, picks the right photo recipe, and writes real capture dials on your iPhone — shutter, ISO, EV, white balance, focus and zoom. Not filters. Real dials.
+
+WHAT AUTO OPTIMIZE SETS
+• Shutter / exposure duration
+• ISO
+• EV bias
+• White balance (temp & tint)
+• Focus lock
+• Zoom / lens and torch, when the scene calls for it
+
+EVERY DIAL, EXPLAINED
+Teach Mode shows which recipe was chosen, which dials moved and why — an instructor over your shoulder, not a chat wall.
+
+REAL DIALS, NOT FILTERS
+Field looks are capture grades applied live in the viewfinder — golden hour, mono ink, teal orange and more — with intensity you control. Never beauty filters. Never sky replacement.
+
+FREE PEEK VS PRO
+• Free: browse every recipe, live viewfinder, 1 Auto Optimize per day
+• AI Camera Pro: unlimited Auto Optimize, manual dials, full Teach Mode, interactive field checklists
+$7.99/month or $59.99/year with a 7-day free trial. Subscriptions via Apple In-App Purchase.
+
+BUILT FOR THE FIELD
+Recipes come from classic field technique — panning, motion control, HDR, focus discipline, low angle — each with dials, steps and checklists.
+```
+
+## What's New
+```
+AI Auto Optimize now writes shutter, ISO, EV, white balance, focus, zoom and torch straight to your iPhone's capture dials — real settings, not filters. Teach Mode explains every dial move, and field looks grade the shot live in the viewfinder. Set the shot. Then take it.
+```
+
+## Support URL
+```
+https://grepawk.com/photo-recipes/support.html
+```
+
+## Marketing URL
+```
+```
+
+## Privacy Policy URL
+```
+https://grepawk.com/photo-recipes/privacy.html
+```
+
+## Copyright
+```
+2026 Yisheng Jiang
+```
+
+## Categories
+- Primary: `PHOTO_AND_VIDEO`
+- Secondary: `EDUCATION`
+
+## TestFlight: What to Test
+```
+Point at a scene and tap Auto Optimize: the app should pick a photo recipe and apply shutter, ISO, EV, white balance and focus to the live viewfinder. Try Teach Mode ("Why this?") after a run, and the field looks. Free Peek allows 1 Auto Optimize per day without purchase. Please report wrong recipe picks or dials that don't stick.
+```
+
+## URLs: publishing status
+Support/privacy URLs follow the sister app's grepawk.com pattern — VERIFY they return HTTP 200
+before upload (the upload script's verify step does not check this). Marketing URL: blank.
+
+## App Privacy
+Camera and photo library access are used for capture and Auto Optimize. Confirm the privacy
+nutrition label in the App Store Connect web UI (the public ASC API has no endpoint for it).
+
+## Screenshots
+Brand style: Signal Amber `#E0A812` on dark `#111111` (the app's palette), large ExtraBold hero
+text at the top of every frame explaining the functionality, hero frame first. Generated by
+`docs/asc/screenshots/en-US/make_store_screenshots.py` (Pillow + numpy + Inter; viewfinder still
+from `source/viewfinder-scene.jpg`, UI chrome drawn as mock frames — not pixel-perfect device
+captures). Order: 01 Set the shot, 02 Auto Optimize dials, 03 Real dials not filters,
+04 Teach Mode, 05 Field looks.
+
+| ASC display type | Size | Files |
+|---|---|---|
+| `APP_IPHONE_67` (6.9" iPhone) | 1320 × 2868 | `screenshots/en-US/iphone-69-0{1,2,3,4,5}-*.png` |
+| `APP_IPAD_PRO_3GEN_129` (13" iPad) | 2064 × 2752 | `screenshots/en-US/ipad-13-0{1,2,3,4,5}-*.png` |
+
+The older sets under `assets/app-store/screenshots/` (build16 HTML mocks, 6.7"/6.1") are superseded
+for ASC upload by this set. Keep them for reference until after upload.

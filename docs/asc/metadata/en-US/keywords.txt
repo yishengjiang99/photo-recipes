@@ -1,0 +1,1 @@
+photography,exposure,white balance,HDR,panning,landscape,portrait,long exposure,bracketing,optimize
