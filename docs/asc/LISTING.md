@@ -9,10 +9,12 @@ The fenced Subtitle / Promotional text / Keywords / Description blocks are the *
 copy and must equal `metadata/en-US/*.txt` (fastlane deliver layout).
 Check: `python3 docs/asc/check_copy.py`.
 
-Status: listing v2 (name/subtitle confirmed, description rewritten benefit-led, keywords rebuilt
-without name/subtitle repeats, screenshots regenerated with large hero text). Upload + verify with
-the manual workflow (script `scripts/asc/upload_photo_recipes_listing.py`, VERIFY_ONLY=true for a
-dry run). Submitting for review is a separate manual step, run by the owner only.
+Status: listing v3 (name/subtitle confirmed, description rewritten benefit-led with a stronger
+above-the-fold hook, keywords rebuilt v3 — no spaces, no name/subtitle repeats, high-traffic
+single-word terms — promo text sharpened to a benefit-led hook, screenshots regenerated with
+large hero text). Upload + verify with the manual workflow (script
+`scripts/asc/upload_photo_recipes_listing.py`, VERIFY_ONLY=true for a dry run). Submitting for
+review is a separate manual step, run by the owner only.
 
 ## Name (30)
 ```
@@ -33,20 +35,23 @@ Alt: `Auto Optimize: Pro Dials` (25).
 
 ## Promotional text (170)
 ```
-Point, tap Auto Optimize — your iPhone sets shutter, ISO, EV, white balance and focus. Real capture dials, not filters. Browse pro photo recipes free.
+Your iPhone, shooting like a pro. Tap Auto Optimize — shutter, ISO, EV, white balance and focus set themselves. Real capture dials, not filters.
 ```
 
 ## Keywords (100, comma-separated, no spaces after commas)
 ```
-photography,exposure,white balance,HDR,panning,landscape,portrait,long exposure,bracketing,optimize
+photography,exposure,hdr,manual,night,raw,dslr,panning,landscape,portrait,bracketing,aperture,macro
 ```
 
 Rebuilt so no keyword repeats a word already in the name or subtitle (Apple combines them for
 search; repeats waste the 100 chars). "camera"/"shutter"/"ISO"/"focus" live in name+subtitle.
+v3: dropped spaced terms ("white balance", "long exposure" — Apple splits on spaces, wasting
+chars) and added high-traffic single-word terms photographers actually search: manual, night,
+raw, dslr, aperture, macro.
 
 ## Description (4000)
 ```
-Point your iPhone at the scene. Tap Auto Optimize. The camera sets itself.
+Better photos from your iPhone — no f-stops required. Point at the scene, tap Auto Optimize, and the camera sets itself: real shutter, ISO, EV, white balance and focus dials, written for you.
 
 AI Camera - Auto Recipes is a field camera for photographers who want the recipe AND the dial position. Auto Optimize reads the scene, picks the right photo recipe, and writes real capture dials on your iPhone — shutter, ISO, EV, white balance, focus and zoom. Not filters. Real dials.
 
