@@ -86,14 +86,15 @@ def png_size(p: Path):
 
 def main():
     L = {k: txt(LOC_DIR / f"{k}.txt") for k in ("name", "subtitle", "description", "keywords", "promotional_text",
-                                                  "support_url", "marketing_url", "privacy_url")}
+                                                  "support_url", "marketing_url", "privacy_url", "whatsnew")}
     copyright_ = txt(META / "copyright.txt")
     cat1, cat2 = txt(META / "primary_category.txt"), txt(META / "secondary_category.txt")
     R = {k: txt(META / "review_information" / f"{k}.txt") for k in ("first_name", "last_name", "phone_number", "email_address", "demo_required")}
     blob = " ".join(L.values()).lower()
     for banned in ("grok",):
         assert banned not in blob, f"metadata mentions {banned!r}"
-    for k, lim in (("name", 30), ("subtitle", 30), ("promotional_text", 170), ("keywords", 100), ("description", 4000)):
+    for k, lim in (("name", 30), ("subtitle", 30), ("promotional_text", 170), ("keywords", 100), ("description", 4000),
+                   ("whatsnew", 4000)):
         assert 0 < len(L[k]) <= lim, f"{k}: {len(L[k])} chars (limit {lim})"
     shots = {}
     for prefix, (dtype, size) in SHOT_TYPES.items():
@@ -193,7 +194,7 @@ def write(app_id, ver, info, build, L, copyright_, cat1, cat2, R, shots, warning
     vlocs = api("GET", f"/v1/appStoreVersions/{vid}/appStoreVersionLocalizations")["data"]
     vloc = next((l for l in vlocs if l["attributes"]["locale"] == LOCALE), None)
     vattrs = {"description": L["description"], "keywords": L["keywords"], "promotionalText": L["promotional_text"],
-              "supportUrl": L["support_url"]}
+              "supportUrl": L["support_url"], "whatsNew": L["whatsnew"]}
     if L["marketing_url"]:
         vattrs["marketingUrl"] = L["marketing_url"]
     elif vloc and vloc["attributes"].get("marketingUrl"):
@@ -307,6 +308,7 @@ def verify(app_id, app, vid, info_id, L, copyright_, cat1, R, shots, warnings) -
     vloc = next((l for l in api("GET", f"/v1/appStoreVersions/{vid}/appStoreVersionLocalizations")["data"] if l["attributes"]["locale"] == LOCALE), None)
     va = vloc["attributes"] if vloc else {}
     check("description", va.get("description") == L["description"], f"{len(va.get('description') or '')} chars")
+    check("whatsNew", va.get("whatsNew") == L["whatsnew"], f"{len(va.get('whatsNew') or '')} chars")
     check("keywords", va.get("keywords") == L["keywords"])
     check("promotional text", va.get("promotionalText") == L["promotional_text"])
     check("support URL", va.get("supportUrl") == L["support_url"], repr(va.get("supportUrl")))
