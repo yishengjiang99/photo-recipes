@@ -244,10 +244,10 @@ def upload_one(set_id, f: Path) -> str:
         "attributes": {"uploaded": True, "sourceFileChecksum": hashlib.md5(data).hexdigest()}}})
     for _ in range(60):
         st = (api("GET", f"/v1/appScreenshots/{shot['id']}")["data"]["attributes"].get("assetDeliveryState") or {})
-        if st.get("state") in ("COMPLETE", "FAILED"):
+        if st.get("state") in ("UPLOAD_COMPLETE", "FAILED"):
             break
         time.sleep(5)
-    if st.get("state") != "COMPLETE":
+    if st.get("state") != "UPLOAD_COMPLETE":
         raise SystemExit(f"screenshot {f.name} delivery {st}")
     print("  uploaded", f.name, shot["id"], st.get("state"))
     return shot["id"]
@@ -342,7 +342,7 @@ def verify(app_id, app, vid, info_id, L, copyright_, cat1, R, shots, warnings) -
             size = next(sz for dt, sz in SHOT_TYPES.values() if dt == dtype)
             want = [(f.name, *size) for f in files]
             got = [(n, w, h) for n, w, h, st in seen.get(dtype, [])]
-            check(f"screenshots {dtype}", got == want and all(st == "COMPLETE" for *_, st in seen.get(dtype, [])), f"{len(got)} present, want {len(want)} in order")
+            check(f"screenshots {dtype}", got == want and all(st == "UPLOAD_COMPLETE" for *_, st in seen.get(dtype, [])), f"{len(got)} present, want {len(want)} in order")
         extra = [d for d in seen if d not in shots or not shots[d]]
         check("no stale screenshot sets", not extra, str(extra))
     # Read-only extras the submit needs but this script does not set
