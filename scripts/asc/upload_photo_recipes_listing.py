@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the App Store listing of AI Camera - Auto Recipes (com.ragnus.mvp, version 1.0, en-US).
+"""Prepare the App Store listing of ProTune AI Camera (com.ragnus.mvp, version 1.0, en-US).
 
 Listing prep only. This script NEVER creates a review submission and never submits for review
 (that is .github/workflows/asc-submit-app-store.yml, run by hand by the owner).

@@ -56,7 +56,7 @@ struct LibraryView: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(AppTheme.accent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("AI Camera - Auto Recipes")
+                    Text("ProTune AI Camera")
                         .font(.system(size: 18, weight: .regular, design: .serif))
                         .foregroundStyle(AppTheme.ink)
                     Text("Field presets · 30 Recipes book")

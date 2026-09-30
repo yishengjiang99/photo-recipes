@@ -19,12 +19,12 @@ const NAV = [
 export function LegalShell({ title, description, path, children }: LegalShellProps) {
   return (
     <div className="min-h-dvh">
-      <Seo title={`${title} — Photo Recipes`} description={description} path={path} />
+      <Seo title={`${title} — ProTune AI Camera`} description={description} path={path} />
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-[720px] items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link to="/" className="flex items-center gap-2 text-ink hover:opacity-90">
             <Camera className="h-4 w-4 text-accent-soft" />
-            <span className="font-display text-lg">Photo Recipes</span>
+            <span className="font-display text-lg">ProTune AI Camera</span>
           </Link>
           <nav className="flex flex-wrap gap-3 text-sm text-ink-tertiary">
             {NAV.map((item) => (
@@ -53,7 +53,7 @@ export function LegalShell({ title, description, path, children }: LegalShellPro
           <Link to="/" className="hover:text-ink">
             ← Back to home
           </Link>
-          <p>© {new Date().getFullYear()} Photo Recipes · Grepawk Photos</p>
+          <p>© {new Date().getFullYear()} ProTune AI Camera · Grepawk Photos</p>
         </div>
       </footer>
     </div>

@@ -71,7 +71,7 @@ struct CameraView: View {
             case .notDetermined:
                 permissionCover(
                     title: "Camera access",
-                    body: "AI Camera - Auto Recipes needs the camera to apply field recipes to live capture.",
+                    body: "ProTune AI Camera needs the camera to apply field recipes to live capture.",
                     primary: "Continue",
                     primaryAction: {
                         Task {

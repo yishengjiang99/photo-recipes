@@ -323,7 +323,7 @@ export function Admin() {
             <h1 className="font-display text-2xl text-[var(--color-ink)]">Admin</h1>
           </div>
           <p className="mb-4 text-sm text-[var(--color-ink-secondary)]">
-            Photo Recipes safelight desk — telemetry &amp; income snapshot.
+            ProTune AI Camera safelight desk — telemetry &amp; income snapshot.
           </p>
           {!configured ? (
             <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
@@ -372,7 +372,7 @@ export function Admin() {
             <p className="text-xs text-[var(--color-ink-tertiary)]">
               {summary?.generatedAt
                 ? `Updated ${fmtTime(summary.generatedAt)}`
-                : 'Photo Recipes · /admin'}
+                : 'ProTune AI Camera · /admin'}
             </p>
           </div>
           <div className="flex items-center gap-2">

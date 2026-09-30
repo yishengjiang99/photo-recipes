@@ -25,7 +25,7 @@ export function Layout() {
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-muted ring-1 ring-accent/30">
               <Camera className="h-4 w-4 text-accent-soft" strokeWidth={1.75} />
             </span>
-            <span className="font-display text-base tracking-tight text-ink">Photo Recipes</span>
+            <span className="font-display text-base tracking-tight text-ink">ProTune AI Camera</span>
           </Link>
         </header>
       ) : null}

@@ -17,13 +17,12 @@ export function Privacy() {
   return (
     <LegalShell
       title="Privacy Policy"
-      description={`Last updated ${LAST_UPDATED}. How AI Camera - Auto Recipes (Photo Recipes / Grepawk Photos) handles your data.`}
+      description={`Last updated ${LAST_UPDATED}. How ProTune AI Camera (by Grepawk Photos) handles your data.`}
       path="/privacy"
     >
       <p>
-        This Privacy Policy describes how <strong className="text-ink">AI Camera - Auto Recipes</strong> (the
-        iOS app; also known as <strong className="text-ink">Photo Recipes</strong> /{' '}
-        <strong className="text-ink">Grepawk Photos</strong> as alternate or former names; together,
+        This Privacy Policy describes how <strong className="text-ink">ProTune AI Camera</strong> (the
+        iOS app by <strong className="text-ink">Grepawk Photos</strong>; together,
         the “Service”), operated at{' '}
         <a className="text-accent-soft hover:underline" href="https://photo.grepawk.com">
           https://photo.grepawk.com
@@ -97,7 +96,7 @@ export function Privacy() {
         </p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong className="text-ink">Web:</strong> Photo Recipes Pro is sold via Stripe
+            <strong className="text-ink">Web:</strong> ProTune AI Camera Pro is sold via Stripe
             Checkout. Stripe processes your payment details. We receive subscription status,
             customer/subscription identifiers, and the email Stripe associates with the purchase so
             we can unlock Pro (signed httpOnly cookies / entitlements). We do not store full card
@@ -106,7 +105,7 @@ export function Privacy() {
           <li>
             <strong className="text-ink">iOS:</strong> In-app purchases use Apple StoreKit / In-App
             Purchase. Apple processes payment. We verify receipts with Apple to unlock Pro. Manage
-            or cancel iOS subscriptions in your Apple ID subscription settings (AI Camera - Auto Recipes Pro).
+            or cancel iOS subscriptions in your Apple ID subscription settings (ProTune AI Camera Pro).
           </li>
         </ul>
         <p>

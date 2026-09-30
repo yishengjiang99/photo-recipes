@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
         >
           <h1 style={{ fontSize: '1.25rem', margin: 0 }}>Something went wrong</h1>
           <p style={{ margin: 0, opacity: 0.8, maxWidth: '28rem' }}>
-            Photo Recipes failed to load. Clear Safari cache / try Private Tab, or hard
+            ProTune AI Camera failed to load. Clear Safari cache / try Private Tab, or hard
             refresh (Ctrl/Cmd+Shift+R).
           </p>
           <pre

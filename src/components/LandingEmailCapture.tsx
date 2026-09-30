@@ -149,7 +149,7 @@ export function LandingEmailCapture({ className = '' }: { className?: string }) 
           </p>
         ) : (
           <p className="mt-2.5 text-xs text-ink-tertiary">
-            We’ll only use this for Photo Recipes field notes.
+            We’ll only use this for ProTune AI Camera field notes.
           </p>
         )}
       </form>

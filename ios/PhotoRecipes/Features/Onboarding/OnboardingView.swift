@@ -85,7 +85,7 @@ struct OnboardingView: View {
 
     private var wordmark: some View {
         VStack(spacing: AppTheme.space2) {
-            Text("AI Camera - Auto Recipes")
+            Text("ProTune AI Camera")
                 .font(.system(size: 28, weight: .semibold, design: .default))
                 .foregroundStyle(AppTheme.ink)
                 .tracking(0.4)

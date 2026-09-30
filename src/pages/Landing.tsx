@@ -140,7 +140,7 @@ export function Landing() {
       {
         '@context': 'https://schema.org',
         '@type': 'SoftwareApplication',
-        name: 'Photo Recipes',
+        name: 'ProTune AI Camera',
         applicationCategory: 'PhotographyApplication',
         operatingSystem: 'iOS, Android, Web',
         description: DEFAULT_DESCRIPTION,
@@ -195,7 +195,7 @@ export function Landing() {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-muted ring-1 ring-accent/30">
               <Camera className="h-4 w-4 text-accent-soft" strokeWidth={1.75} />
             </span>
-            <span className="font-display text-lg tracking-tight text-ink">Photo Recipes</span>
+            <span className="font-display text-lg tracking-tight text-ink">ProTune AI Camera</span>
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-ink-secondary md:flex" aria-label="Primary">
@@ -307,7 +307,7 @@ export function Landing() {
             <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
               <img
                 src="/phones-duo-iphone-android-camera.png"
-                alt="Photo Recipes on iPhone and Android — Auto Optimize camera with recipe dials."
+                alt="ProTune AI Camera on iPhone and Android — Auto Optimize camera with recipe dials."
                 width={1200}
                 height={900}
                 className="h-auto w-full rounded-xl object-contain shadow-[0_24px_60px_-24px_rgba(0,0,0,0.65)] ring-1 ring-border"
@@ -595,7 +595,7 @@ export function Landing() {
           <div className="text-left">
             <div className="flex items-center gap-2">
               <Camera className="h-4 w-4 text-accent-soft" />
-              <span className="font-display text-lg text-ink">Photo Recipes</span>
+              <span className="font-display text-lg text-ink">ProTune AI Camera</span>
             </div>
             <p className="mt-2 text-sm text-ink-tertiary">Field presets for live capture</p>
             <p className="mt-1 text-xs text-ink-tertiary">
@@ -627,7 +627,7 @@ export function Landing() {
           </div>
         </div>
         <p className="mx-auto mt-8 max-w-[1120px] px-4 text-xs text-ink-tertiary sm:px-6">
-          © {new Date().getFullYear()} Photo Recipes
+          © {new Date().getFullYear()} ProTune AI Camera
         </p>
       </footer>
     </div>

@@ -17,14 +17,13 @@ export function Terms() {
   return (
     <LegalShell
       title="Terms of Use"
-      description={`Last updated ${LAST_UPDATED}. Terms for AI Camera - Auto Recipes (Photo Recipes / Grepawk Photos).`}
+      description={`Last updated ${LAST_UPDATED}. Terms for ProTune AI Camera (by Grepawk Photos).`}
       path="/terms"
     >
       <p>
         These Terms of Use (“Terms”) govern your access to and use of{' '}
-        <strong className="text-ink">AI Camera - Auto Recipes</strong> (the iOS app; also known as{' '}
-        <strong className="text-ink">Photo Recipes</strong> /{' '}
-        <strong className="text-ink">Grepawk Photos</strong> as alternate or former names; the
+        <strong className="text-ink">ProTune AI Camera</strong> (the iOS app by{' '}
+        <strong className="text-ink">Grepawk Photos</strong>; the
         “Service”), including the website at{' '}
         <a className="text-accent-soft hover:underline" href="https://photo.grepawk.com">
           https://photo.grepawk.com
@@ -34,7 +33,7 @@ export function Terms() {
 
       <Section title="1. The Service">
         <p>
-          AI Camera - Auto Recipes / Photo Recipes provides educational field photography presets, live camera
+          ProTune AI Camera provides educational field photography presets, live camera
           coaching, Recommend / Apply look, Auto Optimize (where available), Ask / Photo Vision
           recommendations, optional product push notifications when you opt in, and related tools.
           Recommendations and dial suggestions are informational. You remain responsible for camera
@@ -58,7 +57,7 @@ export function Terms() {
         <p>
           Browsing recipes and limited Free Peek features (for example, a limited number of Auto
           Optimize, Recommend, or Ask uses per day) may be available without payment. Paid
-          features (“AI Camera - Auto Recipes Pro” / “Photo Recipes Pro”) unlock additional capability as
+          features (“ProTune AI Camera Pro”) unlock additional capability as
           described in the product UI.
         </p>
         <ul className="list-disc space-y-2 pl-5">

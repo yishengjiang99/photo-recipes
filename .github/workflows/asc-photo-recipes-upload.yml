@@ -1,6 +1,6 @@
 name: ASC Photo Recipes upload listing
 
-# Listing prep for AI Camera - Auto Recipes (com.ragnus.mvp): metadata, URLs,
+# Listing prep for ProTune AI Camera (com.ragnus.mvp): metadata, URLs,
 # categories, copyright, App Review contact, age rating, export compliance, attach build,
 # screenshots from docs/asc/screenshots/en-US (listing v2), then a read-only verification.
 # NEVER submits for review (that is asc-submit-app-store.yml, run by hand).

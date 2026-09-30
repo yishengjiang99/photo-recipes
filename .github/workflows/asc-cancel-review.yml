@@ -1,6 +1,6 @@
 name: ASC cancel review (pull from review)
 
-# Pulls AI Camera - Auto Recipes (com.ragnus.mvp) out of App Review by cancelling the open
+# Pulls ProTune AI Camera (com.ragnus.mvp) out of App Review by cancelling the open
 # reviewSubmission (PATCH canceled=true), then polls until the version is editable again
 # (DEVELOPER_REJECTED / PREPARE_FOR_SUBMISSION). Never submits anything.
 # By default only WAITING_FOR_REVIEW / UNRESOLVED_ISSUES submissions are cancelled; an

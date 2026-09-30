@@ -13,12 +13,12 @@ export const OG_IMAGE_HEIGHT = 720
 
 /** Locked meta from docs/design-handoff-landing-v2.md §1 */
 export const DEFAULT_TITLE =
-  'Photo Recipes — Auto Optimize shutter, ISO & focus'
+  'ProTune AI Camera — Auto Optimize shutter, ISO & focus'
 
 export const DEFAULT_DESCRIPTION =
   'Point your phone at the shot — Auto Optimize writes shutter, ISO, EV, WB, and focus for live capture. Field recipes · Free Peek · Pro trial.'
 
 export const OG_IMAGE_ALT =
-  'Photo Recipes on iPhone and Android — before→after shutter and ISO dials (never aperture write).'
+  'ProTune AI Camera on iPhone and Android — before→after shutter and ISO dials (never aperture write).'
 
-export const SITE_NAME = 'Photo Recipes'
+export const SITE_NAME = 'ProTune AI Camera'

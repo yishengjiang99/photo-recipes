@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload AI Camera - Auto Recipes (com.ragnus.mvp) listing + screenshots to ASC."""
+"""Upload ProTune AI Camera (com.ragnus.mvp) listing + screenshots to ASC."""
 from __future__ import annotations
 
 import hashlib
@@ -15,13 +15,13 @@ import jwt
 BUNDLE_ID = "com.ragnus.mvp"
 SHOT_DIR = Path(os.environ.get("SHOT_DIR", "assets/app-store/screenshots"))
 
-NAME = "AI Camera - Auto Recipes"
+NAME = "ProTune AI Camera"
 SUBTITLE = "AI Auto: Shutter ISO Focus"
 PROMO = (
     "AI Auto Optimize applies shutter, ISO, EV, WB & focus — real capture dials, not filters. "
     "Field looks = viewfinder grades. Free Peek available. Get on TestFlight · App Store."
 )
-DESCRIPTION = """AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. AI Camera - Auto Recipes is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
+DESCRIPTION = """AI Auto Optimize applies shutter, ISO, EV, WB & focus on your iPhone — concrete capture dials, not filters. ProTune AI Camera is an agentic field camera for high-end photography enthusiasts — serious hobbyists with real cameras who use the iPhone as a companion tool.
 
 Set the shot. Then take it.
 
@@ -67,7 +67,7 @@ Tone: precise, craft-forward, field technique — never beauty filters, sky repl
 Privacy: Camera and photo library access are used for capture, Auto Optimize, and optional scene photos. See the privacy policy in the app."""
 KEYWORDS = "photography,camera settings,shutter,ISO,exposure,focus,HDR,panning,landscape,optimize"
 WHATS_NEW = (
-    "Renamed to AI Camera - Auto Recipes. AI Auto Optimize applies shutter, ISO, EV, WB, focus, "
+    "Renamed to ProTune AI Camera. AI Auto Optimize applies shutter, ISO, EV, WB, focus, "
     "zoom/lens, torch when needed, plus field look intensity — real capture dials, not filters. "
     "Set the shot. Then take it."
 )
@@ -75,7 +75,7 @@ SUPPORT_URL = "https://photo.grepawk.com/support"
 MARKETING_URL = "https://photo.grepawk.com"
 PRIVACY_URL = "https://photo.grepawk.com/privacy"
 REVIEW_NOTES = (
-    "Resolution: Renamed the app to AI Camera - Auto Recipes and removed the prior trademarked "
+    "Resolution: Renamed the app to ProTune AI Camera and removed the prior trademarked "
     "name from the display name, onboarding, paywall, Settings, permission strings, "
     "Support/Privacy/Terms, and App Store listing/screenshots. Pro marketing name is now AI Camera Pro. "
     "Demo account N/A (guest session). Free Peek allows limited Auto Optimize/day without purchase. "

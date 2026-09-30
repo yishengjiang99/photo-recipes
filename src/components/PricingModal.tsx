@@ -62,7 +62,7 @@ export function PricingModal() {
             Soft upgrade · browse stays free
           </p>
           <h2 id="pricing-title" className="font-display text-2xl text-ink">
-            Photo Recipes Pro
+            ProTune AI Camera Pro
           </h2>
           <p className="mt-1.5 text-sm text-ink-secondary">
             Free Peek lets you explore presets. Pro unlocks unlimited Ask and
