@@ -1,1 +1,74 @@
-PLACEHOLDER
+name: ASC submit App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: CFBundleVersion / ASC build version (e.g. 30)
+        required: false
+        type: string
+        default: "30"
+      version_string:
+        description: App Store versionString (marketing version)
+        required: false
+        type: string
+        default: "1.0"
+      sync_listing:
+        description: First sync the listing from the repo (docs/asc/metadata/en-US/*.txt, docs/asc/screenshots/en-US/*.png), attach the build, clear export compliance
+        type: boolean
+        default: true
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+
+      # Source of truth is the repo: same script as asc-photo-recipes-upload.yml (never submits).
+      - name: Sync listing from repo (metadata, URLs, screenshots, build, export compliance)
+        if: ${{ inputs.sync_listing }}
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          BUNDLE_ID: com.ragnus.mvp
+          VERSION_STRING: ${{ inputs.version_string }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          UPLOAD_SCREENSHOTS: "true"
+          VERIFY_ONLY: "false"
+          SKIP_IF_NOT_EDITABLE: "true"
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          python3 docs/asc/check_copy.py
+          pip install -q PyJWT cryptography requests
+          python3 scripts/asc/upload_photo_recipes_listing.py
+
+      # Submit body lives in commit f69eecf (last intact copy of the 600-line ASC client).
+      - name: Attach build and submit for review
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          VERSION_STRING: ${{ inputs.version_string }}
+          BUNDLE_ID: com.ragnus.mvp
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography
+          python3 - <<'EXTRACT'
+          import pathlib, re, textwrap, subprocess
+          raw = subprocess.check_output(
+              ["git", "show", "f69eecf73ee470fa1f5c5f8ab259f89a673e05a2:.github/workflows/asc-submit-app-store.yml"],
+              text=True,
+          )
+          m = re.search(r"python3 <<'PY'\n(.*)\n          PY\s*$", raw, re.S)
+          if not m:
+              raise SystemExit("could not extract submit script from f69eecf")
+          pathlib.Path("/tmp/submit_app_store.py").write_text(textwrap.dedent(m.group(1)))
+          EXTRACT
+          python3 /tmp/submit_app_store.py
