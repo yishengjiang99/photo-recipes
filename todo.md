@@ -1,10 +1,10 @@
 # TODO — ProTune AI Camera
-_Last updated: 2026-09-30 5:10 PM PT by Chief of Staff_
+_Last updated: 2026-10-04 9:07 AM PT by Chief of Staff_
 
 iOS-first; tip `dc05f6a`. App display name / ASC name is **ProTune AI Camera** (`com.ragnus.mvp`). v1.0 is **READY_FOR_SALE**; v1.1 build 45 is in App Review. Open draft PRs #141 and #138 unchanged.
 
 ## Now (in progress)
-- [ ] v1.1 build 45 in App Review (WAITING_FOR_REVIEW; ProTune rebrand + listing v3/ASO; submission `b0a3417b` submitted 2026-09-30 ~1:32 PM PT / 20:32 UTC). Check with read-only **ASC status** only; do NOT re-run asc-cancel / asc-submit while waiting — Chief of Staff — submit run 36773184671
+- [ ] v1.1 build 45 in App Review (WAITING_FOR_REVIEW; ProTune rebrand + listing v3/ASO; submission `b0a3417b` submitted 2026-09-30 ~1:32 PM PT / 20:32 UTC). Check with read-only **ASC status** only; do NOT re-run asc-cancel / asc-submit while waiting — Chief of Staff — submit run 36773184671; status rechecked 2026-10-04 ~9:10 AM PT (run 37215743164)
 - [ ] Viewfinder-first Auto Optimize — iOS
 - [ ] Agentic camera levers (capability-gated; skip unsupported levers without failing apply) — iOS + Backend
 - [ ] Creative looks — iOS + Design
