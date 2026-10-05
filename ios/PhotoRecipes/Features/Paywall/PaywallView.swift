@@ -289,6 +289,15 @@ struct PaywallView: View {
                 .font(AppTheme.caption())
                 .foregroundStyle(AppTheme.inkTertiary)
                 .multilineTextAlignment(.center)
+            HStack(spacing: 20) {
+                Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.accent)
+                Link("Privacy Policy", destination: URL(string: "https://photo.grepawk.com/privacy")!)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.accent)
+            }
+            .frame(minHeight: AppTheme.touchMin)
             Text("Product IDs: \(IAPProductID.yearly) · \(IAPProductID.monthly)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(AppTheme.inkTertiary)
