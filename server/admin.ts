@@ -142,6 +142,10 @@ async function telemetrySummary() {
     topEvents: [] as Array<{ event: string; count: number }>,
     topEvents8h: [] as Array<{ event: string; count: number }>,
     platformSplit: [] as Array<{ platform: string; count: number }>,
+    eventsByPlatform8h: {} as Record<string, number>,
+    activeByPlatform8h: {} as Record<string, number>,
+    topEventsByPlatform: {} as Record<string, Array<{ event: string; count: number }>>,
+    topEvents8hByPlatform: {} as Record<string, Array<{ event: string; count: number }>>,
   }
   const pool = getMysqlPool()
   if (!pool) return empty
@@ -186,6 +190,40 @@ async function telemetrySummary() {
        WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
        GROUP BY platform ORDER BY c DESC`,
     )
+    const [evPlat8h] = await pool.query(
+      `SELECT platform, COUNT(*) AS n FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       GROUP BY platform`,
+    )
+    const [actPlat8h] = await pool.query(
+      `SELECT platform, COUNT(DISTINCT anon_id) AS n FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       GROUP BY platform`,
+    )
+    const [topPlatRows] = await pool.query(
+      `SELECT platform, event, COUNT(*) AS c FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+       GROUP BY platform, event`,
+    )
+    const [topPlatRows8h] = await pool.query(
+      `SELECT platform, event, COUNT(*) AS c FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       GROUP BY platform, event`,
+    )
+    const topByPlatform = (
+      rows: Array<{ platform: string; event: string; c: number }>,
+    ): Record<string, Array<{ event: string; count: number }>> => {
+      const grouped: Record<string, Array<{ event: string; count: number }>> = {}
+      for (const r of rows) {
+        const p = r.platform || 'unknown'
+        ;(grouped[p] ??= []).push({ event: r.event, count: Number(r.c) || 0 })
+      }
+      for (const p of Object.keys(grouped)) {
+        grouped[p].sort((a, b) => b.count - a.count)
+        grouped[p] = grouped[p].slice(0, 15)
+      }
+      return grouped
+    }
     return {
       configured: true,
       events8h: Number(e8?.n) || 0,
@@ -206,6 +244,24 @@ async function telemetrySummary() {
         platform: r.platform,
         count: Number(r.c) || 0,
       })),
+      eventsByPlatform8h: Object.fromEntries(
+        (evPlat8h as Array<{ platform: string; n: number }>).map((r) => [
+          r.platform || 'unknown',
+          Number(r.n) || 0,
+        ]),
+      ),
+      activeByPlatform8h: Object.fromEntries(
+        (actPlat8h as Array<{ platform: string; n: number }>).map((r) => [
+          r.platform || 'unknown',
+          Number(r.n) || 0,
+        ]),
+      ),
+      topEventsByPlatform: topByPlatform(
+        topPlatRows as Array<{ platform: string; event: string; c: number }>,
+      ),
+      topEvents8hByPlatform: topByPlatform(
+        topPlatRows8h as Array<{ platform: string; event: string; c: number }>,
+      ),
     }
   } catch (err) {
     console.warn(

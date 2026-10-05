@@ -21,6 +21,10 @@ type Summary = {
     topEvents: Array<{ event: string; count: number }>
     topEvents8h: Array<{ event: string; count: number }>
     platformSplit: Array<{ platform: string; count: number }>
+    eventsByPlatform8h: Record<string, number>
+    activeByPlatform8h: Record<string, number>
+    topEventsByPlatform: Record<string, Array<{ event: string; count: number }>>
+    topEvents8hByPlatform: Record<string, Array<{ event: string; count: number }>>
     error?: string
   }
   stripe: {
@@ -150,6 +154,50 @@ function Kpi({
   )
 }
 
+function platformLabel(p: string): string {
+  const lower = p.toLowerCase()
+  if (lower === 'ios') return 'iOS'
+  return p.charAt(0).toUpperCase() + p.slice(1)
+}
+
+function PlatformFilter({
+  platforms,
+  value,
+  onChange,
+}: {
+  platforms: string[]
+  value: string
+  onChange: (p: string) => void
+}) {
+  const options = ['all', ...platforms]
+  return (
+    <div
+      className="inline-flex items-center gap-1 rounded-[var(--radius-pill)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1"
+      role="group"
+      aria-label="Filter by platform"
+    >
+      {options.map((p) => {
+        const active = value === p
+        return (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onChange(p)}
+            aria-pressed={active}
+            className={`rounded-[var(--radius-pill)] px-3 py-1 text-xs font-medium transition-colors ${
+              active
+                ? 'bg-[var(--color-tip)] text-black'
+                : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]'
+            }`}
+          >
+            {p === 'all' ? 'All' : platformLabel(p)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Admin() {
   const [checking, setChecking] = useState(true)
   const [configured, setConfigured] = useState(true)
@@ -165,6 +213,7 @@ export function Admin() {
   const [savingQuota, setSavingQuota] = useState(false)
   const [quotaSaveMsg, setQuotaSaveMsg] = useState('')
   const [quotaSaveError, setQuotaSaveError] = useState('')
+  const [platformFilter, setPlatformFilter] = useState('all')
 
   const refreshSession = useCallback(async () => {
     try {
@@ -309,6 +358,30 @@ export function Admin() {
     setSummary(null)
   }
 
+  // Platform filter: separate iOS from web events across the telemetry views.
+  const filterPlatforms: string[] = summary
+    ? Array.from(
+        new Set([
+          ...Object.keys(summary.telemetry.topEventsByPlatform ?? {}),
+          ...Object.keys(summary.telemetry.topEvents8hByPlatform ?? {}),
+          ...summary.telemetry.platformSplit.map((r) => r.platform),
+        ]),
+      ).sort()
+    : []
+  const pf = platformFilter === 'all' ? null : platformFilter
+  const events8hShown = pf
+    ? (summary?.telemetry.eventsByPlatform8h[pf] ?? 0)
+    : (summary?.telemetry.events8h ?? 0)
+  const active8hShown = pf
+    ? (summary?.telemetry.activeByPlatform8h[pf] ?? 0)
+    : (summary?.telemetry.active8h ?? 0)
+  const topEvents8hShown = pf
+    ? (summary?.telemetry.topEvents8hByPlatform[pf] ?? [])
+    : (summary?.telemetry.topEvents8h ?? [])
+  const topEventsShown = pf
+    ? (summary?.telemetry.topEventsByPlatform[pf] ?? [])
+    : (summary?.telemetry.topEvents ?? [])
+
   if (checking) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[var(--color-bg)] text-[var(--color-ink-secondary)]">
@@ -416,19 +489,26 @@ export function Admin() {
         {summary ? (
           <>
             <section>
-              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
-                Last 8 hours
-                {!summary.telemetry.configured ? (
-                  <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
-                    MySQL unset — empty snapshot
-                  </span>
-                ) : null}
-              </h2>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                  Last 8 hours
+                  {!summary.telemetry.configured ? (
+                    <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                      MySQL unset — empty snapshot
+                    </span>
+                  ) : null}
+                </h2>
+                <PlatformFilter
+                  platforms={filterPlatforms}
+                  value={platformFilter}
+                  onChange={setPlatformFilter}
+                />
+              </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Kpi label="Events 8h" value={summary.telemetry.events8h} />
+                <Kpi label="Events 8h" value={events8hShown} />
                 <Kpi
                   label="Active users 8h"
-                  value={summary.telemetry.active8h}
+                  value={active8hShown}
                   hint="Distinct anon_id · 8h"
                 />
               </div>
@@ -444,14 +524,14 @@ export function Admin() {
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.telemetry.topEvents8h.length === 0 ? (
+                    {topEvents8hShown.length === 0 ? (
                       <tr>
                         <td colSpan={2} className="px-3 py-3 text-[var(--color-ink-tertiary)]">
                           No events
                         </td>
                       </tr>
                     ) : (
-                      summary.telemetry.topEvents8h.map((row) => (
+                      topEvents8hShown.map((row) => (
                         <tr
                           key={row.event}
                           className="border-t border-[var(--color-border)]"
@@ -483,8 +563,15 @@ export function Admin() {
               </div>
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
-                  <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-secondary)]">
-                    Top events (7d)
+                  <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                    <span className="text-sm text-[var(--color-ink-secondary)]">
+                      Top events (7d)
+                    </span>
+                    <PlatformFilter
+                      platforms={filterPlatforms}
+                      value={platformFilter}
+                      onChange={setPlatformFilter}
+                    />
                   </div>
                   <table className="w-full text-left text-sm">
                     <thead>
@@ -494,14 +581,14 @@ export function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {summary.telemetry.topEvents.length === 0 ? (
+                      {topEventsShown.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="px-3 py-3 text-[var(--color-ink-tertiary)]">
                             No events
                           </td>
                         </tr>
                       ) : (
-                        summary.telemetry.topEvents.map((row) => (
+                        topEventsShown.map((row) => (
                           <tr
                             key={row.event}
                             className="border-t border-[var(--color-border)]"
