@@ -54,7 +54,7 @@ final class ViewfinderPanCueTests: XCTestCase {
 
     func testRecipe_getDownLow_chromeTitle_isShort() {
         let recipe = BundledPresets.recipe(id: "get-down-low")
-        XCTAssertEqual(recipe?.chromeTitle, "Get Down Low")
+        XCTAssertEqual(recipe?.chromeTitle, "Low Angle")
         XCTAssertFalse(recipe!.chromeTitle.lowercased().contains("shake"))
         XCTAssertFalse(recipe!.chromeTitle.lowercased().contains("perspective"))
     }
@@ -64,7 +64,7 @@ final class ViewfinderPanCueTests: XCTestCase {
             forStoredTitle: "Shake Up Your Perspective by Getting Down Low",
             id: "get-down-low"
         )
-        XCTAssertEqual(short, "Get Down Low")
+        XCTAssertEqual(short, "Low Angle")
     }
 
     func testChromeTitle_panningAndHdr() {

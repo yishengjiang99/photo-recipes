@@ -308,7 +308,7 @@ enum LocalAutoOptimizeEngine {
         case "get-down-low":
             return (
                 "Low angle — drop to knee height with the widest lens.",
-                "Local AO cues Get Down Low from orientation / note. Flip the phone if needed so the lens is closest to the ground."
+                "Local AO cues Low Angle from orientation / note. Flip the phone if needed so the lens is closest to the ground."
             )
         default:
             return (

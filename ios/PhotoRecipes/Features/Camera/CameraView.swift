@@ -20,6 +20,7 @@ struct CameraView: View {
     @State private var isDescribingScene = false
     @State private var showMicDenied = false
     @State private var describeTask: Task<Void, Never>?
+    @State private var lastSceneDescribeAt: Date?
     /// In-flight voice → Recommend/AO; each new endpointed utterance cancels & replaces.
     @State private var voiceIntentTask: Task<Void, Never>?
 
@@ -818,7 +819,7 @@ struct CameraView: View {
                     ProgressView().scaleEffect(0.7)
                 } else if !isVoiceListening {
                     Button {
-                        Task { await refreshSceneFromViewfinder() }
+                        Task { await refreshSceneFromViewfinder(auto: false) }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.caption.weight(.semibold))
@@ -1028,8 +1029,16 @@ struct CameraView: View {
         }
     }
 
-    private func refreshSceneFromViewfinder() async {
+    private func refreshSceneFromViewfinder(auto: Bool = true) async {
+        if auto {
+            // Automatic probes never clobber text the user typed themselves.
+            if !sceneNote.isEmpty && !sceneFromViewfinder { return }
+            // One automatic probe per camera visit is enough — tab switches
+            // must not re-capture, re-describe, or burn assist quota.
+            if let last = lastSceneDescribeAt, Date().timeIntervalSince(last) < 30 { return }
+        }
         describeTask?.cancel()
+        lastSceneDescribeAt = Date()
         let task = Task { @MainActor in
             isDescribingScene = true
             defer { isDescribingScene = false }

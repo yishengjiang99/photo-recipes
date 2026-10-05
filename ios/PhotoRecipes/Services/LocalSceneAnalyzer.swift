@@ -75,7 +75,7 @@ enum LocalSceneAnalyzer {
         let pitch = pitchDegrees ?? readPitchDegrees()
         let lowFromMotion: Bool = {
             guard let pitch else { return false }
-            // Phone tilted back / held low looking slightly up → composition "get down low"
+            // Phone tilted back / held low looking slightly up → "low angle" composition
             return pitch < -25 || pitch > 55
         }()
         let isLow = hints.wantsLowAngle || lowFromMotion

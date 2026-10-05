@@ -117,7 +117,7 @@ extension Recipe {
         case "sharp-front-to-back": return "Sharp Front to Back"
         case "blur-moving-subjects": return "Blur Motion"
         case "panning-sharp-subject": return "Panning"
-        case "get-down-low": return "Get Down Low"
+        case "get-down-low": return "Low Angle"
         case "hdr-brights-darks": return "HDR"
         default:
             let t = title.trimmingCharacters(in: .whitespacesAndNewlines)

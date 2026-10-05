@@ -1,6 +1,8 @@
 import AVFoundation
 import UIKit
 import Combine
+import CoreImage
+import CoreVideo
 
 @MainActor
 final class CameraSession: NSObject, ObservableObject {
@@ -48,6 +50,11 @@ final class CameraSession: NSObject, ObservableObject {
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "photo-recipes.camera")
     private let photoOutput = AVCapturePhotoOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
+    /// Latest viewfinder frame for silent probes. `nonisolated(unsafe)` is sound:
+    /// every access is serialized on `queue` (delegate runs on `queue`,
+    /// readers go through `queue.sync`).
+    private nonisolated(unsafe) var latestProbePixelBuffer: CVPixelBuffer?
     private var input: AVCaptureDeviceInput?
     private var photoCont: CheckedContinuation<Data, Error>?
 
@@ -236,6 +243,12 @@ final class CameraSession: NSObject, ObservableObject {
                     guard session.canAddOutput(photoOutput) else { throw CamError.badOutput }
                     session.addOutput(photoOutput)
                     photoOutput.maxPhotoQualityPrioritization = .quality
+                    // Silent viewfinder frames for the scene probe — no shutter, no flash.
+                    // Delivered on `queue`; latest frame retained for probe grabs.
+                    videoOutput.alwaysDiscardsLateVideoFrames = true
+                    videoOutput.setSampleBufferDelegate(self, queue: queue)
+                    guard session.canAddOutput(videoOutput) else { throw CamError.badOutput }
+                    session.addOutput(videoOutput)
                     session.commitConfiguration()
                     Task { @MainActor in
                         self.input = inp
@@ -1101,7 +1114,38 @@ final class CameraSession: NSObject, ObservableObject {
     }
 
 
-    func captureProbeFrame() async throws -> Data { try await capturePhoto(bakeLook: false) }
+    func captureProbeFrame() async throws -> Data {
+        // Prefer a silent viewfinder frame — no shutter sound, no flash.
+        // Waits briefly for the first live frame, then gives up quietly.
+        if let jpeg = viewfinderJPEG() { return jpeg }
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: 150_000_000)
+            try Task.checkCancellation()
+            if let jpeg = viewfinderJPEG() { return jpeg }
+        }
+        throw CamError.noFrame
+    }
+
+    /// Latest viewfinder frame as a small JPEG, or nil if the camera isn't streaming yet.
+    /// Called from Tasks; pixel buffer is retained/released on `queue`.
+    private func viewfinderJPEG(maxDimension: CGFloat = 768, quality: CGFloat = 0.6) -> Data? {
+        let pixelBuffer: CVPixelBuffer? = queue.sync { latestProbePixelBuffer }
+        guard let pixelBuffer else { return nil }
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let extent = ciImage.extent
+        let longest = max(extent.width, extent.height)
+        let scaled: CIImage
+        if longest > maxDimension {
+            let s = maxDimension / longest
+            scaled = ciImage.transformed(by: CGAffineTransform(scaleX: s, y: s))
+        } else {
+            scaled = ciImage
+        }
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage).jpegData(compressionQuality: quality)
+    }
 
     func refreshReadouts() {
         guard let device = input?.device else { return }
@@ -1126,13 +1170,14 @@ final class CameraSession: NSObject, ObservableObject {
     }
 
     enum CamError: LocalizedError {
-        case noDevice, badInput, badOutput, captureFailed
+        case noDevice, badInput, badOutput, captureFailed, noFrame
         var errorDescription: String? {
             switch self {
             case .noDevice: return "No camera available."
             case .badInput: return "Could not open camera input."
             case .badOutput: return "Could not configure photo output."
             case .captureFailed: return "Capture failed — try again"
+            case .noFrame: return "Camera preview not ready yet."
             }
         }
     }
@@ -1157,5 +1202,23 @@ extension CameraSession: AVCapturePhotoCaptureDelegate {
             lastThumb = UIImage(data: out)
             cont?.resume(returning: out)
         }
+    }
+}
+
+extension CameraSession: AVCaptureVideoDataOutputSampleBufferDelegate {
+    nonisolated func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        // Runs on `queue`. Retain the latest frame for silent probe grabs;
+        // the previous frame is released to keep memory flat.
+        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let pixelBuffer = imageBuffer as CVPixelBuffer
+        CVPixelBufferRetain(pixelBuffer)
+        if let old = latestProbePixelBuffer {
+            CVPixelBufferRelease(old)
+        }
+        latestProbePixelBuffer = pixelBuffer
     }
 }
