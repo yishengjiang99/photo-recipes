@@ -1214,7 +1214,7 @@ extension CameraSession: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Runs on `queue`. Storing into the strong var retains the frame
         // (Swift retains the unretained Get-rule return); the previous frame
         // is released by ARC, keeping memory flat.
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) as? CVPixelBuffer else { return }
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         latestProbePixelBuffer = pixelBuffer
     }
 }
