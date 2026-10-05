@@ -1211,14 +1211,10 @@ extension CameraSession: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        // Runs on `queue`. Retain the latest frame for silent probe grabs;
-        // the previous frame is released to keep memory flat.
-        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let pixelBuffer = imageBuffer as CVPixelBuffer
-        CVPixelBufferRetain(pixelBuffer)
-        if let old = latestProbePixelBuffer {
-            CVPixelBufferRelease(old)
-        }
+        // Runs on `queue`. Storing into the strong var retains the frame
+        // (Swift retains the unretained Get-rule return); the previous frame
+        // is released by ARC, keeping memory flat.
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) as? CVPixelBuffer else { return }
         latestProbePixelBuffer = pixelBuffer
     }
 }
