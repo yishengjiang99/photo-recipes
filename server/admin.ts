@@ -133,17 +133,24 @@ async function telemetrySummary() {
   const configured = isMysqlConfigured() && Boolean(getMysqlPool())
   const empty = {
     configured,
+    events8h: 0,
     events24h: 0,
     events7d: 0,
     dau: 0,
     wau: 0,
+    active8h: 0,
     topEvents: [] as Array<{ event: string; count: number }>,
+    topEvents8h: [] as Array<{ event: string; count: number }>,
     platformSplit: [] as Array<{ platform: string; count: number }>,
   }
   const pool = getMysqlPool()
   if (!pool) return empty
 
   try {
+    const [[e8]] = (await pool.query(
+      `SELECT COUNT(*) AS n FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)`,
+    )) as unknown as [Array<{ n: number }>]
     const [[e24]] = (await pool.query(
       `SELECT COUNT(*) AS n FROM telemetry_events
        WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
@@ -160,9 +167,18 @@ async function telemetrySummary() {
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
        WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
     )) as unknown as [Array<{ n: number }>]
+    const [[a8]] = (await pool.query(
+      `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)`,
+    )) as unknown as [Array<{ n: number }>]
     const [topRows] = await pool.query(
       `SELECT event, COUNT(*) AS c FROM telemetry_events
        WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+       GROUP BY event ORDER BY c DESC LIMIT 15`,
+    )
+    const [topRows8h] = await pool.query(
+      `SELECT event, COUNT(*) AS c FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
        GROUP BY event ORDER BY c DESC LIMIT 15`,
     )
     const [platRows] = await pool.query(
@@ -172,11 +188,17 @@ async function telemetrySummary() {
     )
     return {
       configured: true,
+      events8h: Number(e8?.n) || 0,
       events24h: Number(e24?.n) || 0,
       events7d: Number(e7?.n) || 0,
       dau: Number(dau?.n) || 0,
       wau: Number(wau?.n) || 0,
+      active8h: Number(a8?.n) || 0,
       topEvents: (topRows as Array<{ event: string; c: number }>).map((r) => ({
+        event: r.event,
+        count: Number(r.c) || 0,
+      })),
+      topEvents8h: (topRows8h as Array<{ event: string; c: number }>).map((r) => ({
         event: r.event,
         count: Number(r.c) || 0,
       })),

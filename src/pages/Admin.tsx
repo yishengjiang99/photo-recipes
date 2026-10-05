@@ -12,11 +12,14 @@ type Summary = {
   generatedAt: string
   telemetry: {
     configured: boolean
+    events8h: number
     events24h: number
     events7d: number
     dau: number
     wau: number
+    active8h: number
     topEvents: Array<{ event: string; count: number }>
+    topEvents8h: Array<{ event: string; count: number }>
     platformSplit: Array<{ platform: string; count: number }>
     error?: string
   }
@@ -412,6 +415,57 @@ export function Admin() {
 
         {summary ? (
           <>
+            <section>
+              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                Last 8 hours
+                {!summary.telemetry.configured ? (
+                  <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                    MySQL unset — empty snapshot
+                  </span>
+                ) : null}
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Kpi label="Events 8h" value={summary.telemetry.events8h} />
+                <Kpi
+                  label="Active users 8h"
+                  value={summary.telemetry.active8h}
+                  hint="Distinct anon_id · 8h"
+                />
+              </div>
+              <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-secondary)]">
+                  Top events (8h)
+                </div>
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-xs text-[var(--color-ink-tertiary)]">
+                      <th className="px-3 py-2 font-medium">Event</th>
+                      <th className="px-3 py-2 font-medium">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.telemetry.topEvents8h.length === 0 ? (
+                      <tr>
+                        <td colSpan={2} className="px-3 py-3 text-[var(--color-ink-tertiary)]">
+                          No events
+                        </td>
+                      </tr>
+                    ) : (
+                      summary.telemetry.topEvents8h.map((row) => (
+                        <tr
+                          key={row.event}
+                          className="border-t border-[var(--color-border)]"
+                        >
+                          <td className="px-3 py-2 font-mono text-xs">{row.event}</td>
+                          <td className="px-3 py-2">{row.count}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
                 Telemetry
