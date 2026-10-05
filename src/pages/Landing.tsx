@@ -6,7 +6,7 @@ import { LandingDialProof } from '../components/LandingDialProof'
 import { LandingEmailCapture } from '../components/LandingEmailCapture'
 import { Seo } from '../components/Seo'
 import { useSubscription } from '../hooks/useSubscription'
-import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, TESTFLIGHT_URL } from '../lib/site'
+import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, APP_STORE_URL } from '../lib/site'
 import { track } from '../lib/analytics'
 
 const TRUST_LINE =
@@ -287,11 +287,20 @@ export function Landing() {
               <div className="mt-7 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center">
                 <CameraCta size="lg" fullWidth className="min-[400px]:!w-auto" />
                 <a
-                  href={TESTFLIGHT_URL}
-                  onClick={() => track('landing_cta_testflight', { source: 'hero' })}
-                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold text-ink ring-1 ring-border hover:bg-surface min-[400px]:w-auto"
+                  href={APP_STORE_URL}
+                  onClick={() => track('landing_cta_appstore', { source: 'hero' })}
+                  className="inline-flex min-h-11 items-center justify-center min-[400px]:w-auto"
+                  aria-label="Download on the App Store"
                 >
-                  Get TestFlight
+                  {/* Official Apple badge artwork, unmodified per App Store marketing guidelines (min 40px onscreen). */}
+                  <img
+                    src="/download-on-the-app-store.svg"
+                    alt="Download on the App Store"
+                    width={120}
+                    height={40}
+                    className="h-10 w-auto"
+                    loading="lazy"
+                  />
                 </a>
                 <a
                   href="#notes"

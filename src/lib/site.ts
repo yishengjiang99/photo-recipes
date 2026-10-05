@@ -5,6 +5,10 @@ export const SITE_URL: string =
 /** Placeholder until TestFlight / store URL is wired. Documented in PR. */
 export const TESTFLIGHT_URL = '#testflight'
 
+/** App Store product page (Apple App Store marketing guidelines: badge links here). */
+export const APP_STORE_URL =
+  'https://apps.apple.com/us/app/ai-camera-auto-recipes/id6813991381'
+
 export const OG_IMAGE_PATH = '/phones-duo-iphone-android-camera.png'
 
 /** Intrinsic size of public OG image (phones-duo; 1280×720). */
