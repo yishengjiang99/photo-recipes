@@ -69,8 +69,11 @@ jobs:
           if not udid:
               sys.exit("No available iPhone simulator")
           print(f"Using simulator {chosen} ({udid})")
+          # macos-15 runners are Apple Silicon; pin arm64 so SwiftPM packages
+          # and the app target agree on architecture (xcodebuild can otherwise
+          # resolve the simulator as x86_64, breaking package module lookup).
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"destination=platform=iOS Simulator,id={udid}\n")
+              f.write(f"destination=platform=iOS Simulator,id={udid},arch=arm64\n")
           PY
 
       - name: Run PhotoRecipesTests
