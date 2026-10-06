@@ -8,9 +8,14 @@ on:
         required: false
         default: CI build
       marketing_version:
-        description: CFBundleShortVersionString (must exceed the live version, e.g. 1.1)
+        description: CFBundleShortVersionString (must exceed the live version; 1.1 is live)
         required: false
-        default: "1.1"
+        default: "1.2"
+      allow_missing_appsflyer:
+        description: Upload even if the APPSFLYER_DEV_KEY secret is missing (AppsFlyer + ATT prompt stay off in that build)
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: ios-testflight
@@ -29,10 +34,26 @@ jobs:
       EXPORT_PATH: ${{ github.workspace }}/build/export
       TEAM_ID: 83D36RPMUM
       BUNDLE_ID: com.ragnus.mvp
+      # AppsFlyer dev key → APPSFLYER_DEV_KEY build setting → Info.plist AppsFlyerDevKey.
+      APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check AppsFlyer dev key
+        env:
+          ALLOW_MISSING: ${{ inputs.allow_missing_appsflyer }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${APPSFLYER_DEV_KEY:-}" ]]; then
+            echo "APPSFLYER_DEV_KEY present (${#APPSFLYER_DEV_KEY} chars) — AppsFlyer enabled in this build"
+          elif [[ "${ALLOW_MISSING:-false}" == "true" ]]; then
+            echo "::warning::APPSFLYER_DEV_KEY secret missing — AppsFlyer and the ATT prompt are disabled in this build"
+          else
+            echo "::error::APPSFLYER_DEV_KEY secret missing. Add it (gh secret set APPSFLYER_DEV_KEY) or re-run with allow_missing_appsflyer=true."
+            exit 1
+          fi
 
       - name: Select Xcode
         run: |
@@ -154,6 +175,7 @@ jobs:
             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             MARKETING_VERSION="${{ inputs.marketing_version }}" \
+            APPSFLYER_DEV_KEY="${APPSFLYER_DEV_KEY:-}" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="Grepawk Photos App Store" \
@@ -205,7 +227,8 @@ jobs:
           {
             echo "### TestFlight upload"
             echo "- Bundle: \`$BUNDLE_ID\`"
-            echo "- Build: \`${{ github.run_number }}\`"
+            echo "- Build: \`${{ github.run_number }}\` (marketing ${{ inputs.marketing_version }})"
+            if [[ -n "${APPSFLYER_DEV_KEY:-}" ]]; then echo "- AppsFlyer: enabled"; else echo "- AppsFlyer: **disabled** (no APPSFLYER_DEV_KEY)"; fi
             echo "- Notes: ${{ github.event.inputs.notes }}"
             echo "- Wait a few minutes in App Store Connect for processing, then assign testers."
           } >> "$GITHUB_STEP_SUMMARY"
