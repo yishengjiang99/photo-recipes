@@ -37,11 +37,13 @@ targets:
       - path: PhotoRecipes
         excludes:
           - "**/*.md"
-          - "Resources/Assets.xcassets"
+          # PrivacyInfo + storekit must be resources only (not compiled as sources).
+          # Keep Assets.xcassets in sources so XcodeGen treats it as an asset catalog
+          # (excluding it and listing under resources copies the folder raw → missing
+          # AppIcon / CFBundleIconName → ASC validation 409).
           - "Resources/Products.storekit"
           - "Resources/PrivacyInfo.xcprivacy"
     resources:
-      - path: PhotoRecipes/Resources/Assets.xcassets
       - path: PhotoRecipes/Resources/Products.storekit
       - path: PhotoRecipes/Resources/PrivacyInfo.xcprivacy
     dependencies:
