@@ -1,62 +1,10 @@
 /**
  * In-house funnel telemetry — POST /api/telemetry, GET /api/telemetry/funnels.
- * Allowlisted events only; no photos/PII. Soft no-op when MySQL unset.
+ * All events accepted; no photos/PII. Soft no-op when MySQL unset.
  */
 import crypto from 'node:crypto'
 import type { Express, Request, Response } from 'express'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
-
-export const TELEMETRY_EVENT_ALLOWLIST = new Set([
-  // Acquisition (web)
-  'landing_view',
-  'landing_cta_camera',
-  'landing_cta_waitlist',
-  'waitlist_submit',
-  'waitlist_success',
-  'waitlist_fail',
-  'landing_cta_testflight',
-  // Shell / session
-  'app_open',
-  'session_start',
-  'session_end',
-  'tab_library',
-  'tab_camera',
-  'tab_pro',
-  // Activation
-  'camera_open',
-  'camera_permission_granted',
-  'camera_permission_denied',
-  'camera_start_ok',
-  'camera_start_fail',
-  'auto_optimize_start',
-  'auto_optimize_success',
-  'auto_optimize_fail',
-  'look_suggested',
-  'look_applied',
-  'look_dismissed',
-  'shutter_tap',
-  'capture_success',
-  'recipe_open',
-  'teach_open',
-  // Monetization
-  'paywall_view',
-  'paywall_plan_select',
-  'purchase_start',
-  'purchase_success',
-  'purchase_fail',
-  'purchase_restore',
-  'trial_start',
-  'checkout_redirect',
-  // Push (mirror; PushAnalytics allowlist stays separate)
-  'push_opened',
-  // Server-side / opaque API failures (also inserted by logApiError)
-  'api_error',
-  'optimize_error',
-  // Ad attribution (1.2+): ATT prompt outcome + server-side postback copies
-  'att_prompt_result',
-  'skan_postback',
-  'aak_postback',
-])
 
 const BLOCKED_PROP_KEYS = /^(email|e_?mail|phone|password|token|authorization|cookie|image|photo|frame|base64|gps|lat|lng|longitude|latitude|ssn|name|full.?name)$/i
 const MAX_PROP_KEYS = 24
@@ -416,8 +364,8 @@ export function mountTelemetryRoutes(app: Express) {
     void (async () => {
       const body = (req.body ?? {}) as Record<string, unknown>
       const event = typeof body.event === 'string' ? body.event.trim() : ''
-      if (!event || !TELEMETRY_EVENT_ALLOWLIST.has(event)) {
-        res.status(400).json({ error: 'unknown_or_missing_event', allowlist: [...TELEMETRY_EVENT_ALLOWLIST].sort() })
+      if (!event) {
+        res.status(400).json({ error: 'missing_event' })
         return
       }
       const anon =
