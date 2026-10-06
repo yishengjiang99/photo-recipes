@@ -176,10 +176,11 @@ jobs:
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             MARKETING_VERSION="${{ inputs.marketing_version }}" \
             APPSFLYER_DEV_KEY="${APPSFLYER_DEV_KEY:-}" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="Grepawk Photos App Store" \
             archive
+          # Signing (Manual + Grepawk Photos App Store) lives on the PhotoRecipes
+          # Release config in ios/project.yml only. Do not pass
+          # PROVISIONING_PROFILE_SPECIFIER / CODE_SIGN_STYLE on this CLI — Facebook
+          # SPM resource targets inherit them and fail ("does not support provisioning profiles").
           test -d "$ARCHIVE_PATH"
 
       - name: Export IPA

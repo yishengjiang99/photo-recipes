@@ -74,6 +74,13 @@ targets:
           CODE_SIGN_ENTITLEMENTS: PhotoRecipes/PhotoRecipes.entitlements
         Release:
           CODE_SIGN_ENTITLEMENTS: PhotoRecipes/PhotoRecipesRelease.entitlements
+          # Manual Distribution signing must live on the APP target only.
+          # Passing PROVISIONING_PROFILE_SPECIFIER on the xcodebuild CLI applies it to
+          # SPM resource bundles (Facebook_FacebookCore / Facebook_FacebookAEM), which
+          # then fail with "does not support provisioning profiles" (ITMS archive).
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "Grepawk Photos App Store"
   PhotoRecipesTests:
     type: bundle.unit-test
     platform: iOS
