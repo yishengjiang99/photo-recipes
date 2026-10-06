@@ -2,19 +2,59 @@
  * MySQL-backed devices + push_tokens (dual-write with push-prefs.json).
  * Soft no-op when MYSQL_* unset or pool unavailable — never throw to callers.
  */
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { getMysqlPool } from './mysql.ts'
 import type { ApnsDeviceToken, ApnsEnvironment } from './pushPrefs.ts'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const MIGRATION_PATH = path.join(
-  __dirname,
-  'migrations',
-  '002_devices_push_tokens.sql',
-)
+/**
+ * DDL inlined (mirrors server/migrations/002_devices_push_tokens.sql).
+ * Prod runs the esbuild bundle from server-dist/, which never shipped the
+ * migrations/ folder → ENOENT at boot and the MySQL dual-write never ran.
+ * Keep in sync with the .sql file (pushDevices.test.ts asserts parity).
+ */
+export const PUSH_DEVICES_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS devices (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  guest_id VARCHAR(64) NOT NULL,
+  platform VARCHAR(16) NOT NULL DEFAULT 'ios',
+  bundle_id VARCHAR(128) NULL,
+  app_version VARCHAR(32) NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_devices_guest_platform (guest_id, platform),
+  KEY idx_devices_guest (guest_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS push_tokens (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  device_id BIGINT UNSIGNED NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  environment ENUM('sandbox', 'production') NOT NULL,
+  app_version VARCHAR(32) NULL,
+  last_seen_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_push_tokens_token (token),
+  KEY idx_push_tokens_device (device_id),
+  KEY idx_push_tokens_env (environment),
+  CONSTRAINT fk_push_tokens_device
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+]
+
+/**
+ * Split a .sql migration into statements: drop `--` comment lines first
+ * (the old filter dropped any chunk that *started* with a comment, which
+ * silently skipped CREATE TABLE devices).
+ */
+export function splitSqlStatements(sql: string): string[] {
+  return sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+    .split(/;\s*(?:\n|$)/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
 
 let schemaReady: Promise<boolean> | null = null
 
@@ -22,13 +62,7 @@ async function ensureSchema(pool: Pool): Promise<boolean> {
   if (!schemaReady) {
     schemaReady = (async () => {
       try {
-        const sql = fs.readFileSync(MIGRATION_PATH, 'utf8')
-        // mysql2 does not run multi-statements by default — split on ;\n
-        const stmts = sql
-          .split(/;\s*\n/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0 && !s.startsWith('--'))
-        for (const stmt of stmts) {
+        for (const stmt of PUSH_DEVICES_DDL) {
           await pool.query(stmt)
         }
         return true
@@ -148,6 +182,50 @@ export async function listPushTokensForGuest(
       err instanceof Error ? err.message : err,
     )
     return []
+  }
+}
+
+/** Remove one token (only if it belongs to this guest). Soft-fail → false. */
+export async function deletePushTokenForGuest(
+  guestId: string,
+  token: string,
+): Promise<boolean> {
+  const pool = getMysqlPool()
+  if (!pool) return false
+  if (!(await ensureSchema(pool))) return false
+  try {
+    await pool.query<ResultSetHeader>(
+      `DELETE t FROM push_tokens t
+       INNER JOIN devices d ON d.id = t.device_id
+       WHERE d.guest_id = ? AND t.token = ?`,
+      [guestId, token.trim().toLowerCase()],
+    )
+    return true
+  } catch (err) {
+    console.warn(
+      '[pushDevices] delete failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return false
+  }
+}
+
+/** Remove a token everywhere (APNs said BadDeviceToken / Unregistered). */
+export async function deletePushTokenEverywhere(token: string): Promise<boolean> {
+  const pool = getMysqlPool()
+  if (!pool) return false
+  if (!(await ensureSchema(pool))) return false
+  try {
+    await pool.query<ResultSetHeader>(`DELETE FROM push_tokens WHERE token = ?`, [
+      token.trim().toLowerCase(),
+    ])
+    return true
+  } catch (err) {
+    console.warn(
+      '[pushDevices] delete-all failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return false
   }
 }
 

@@ -166,7 +166,11 @@ else
     dist/ \
     "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/dist/"
 
+  # server-dist/data/ holds live state (entitlements, push-prefs, ops overrides,
+  # push-events). --delete used to wipe it on every deploy — protect it.
   rsync "${RSYNC_FLAGS[@]}" \
+    --filter 'P /data/' \
+    --exclude '/data/' \
     -e "$RSYNC_SSH" \
     server-dist/ \
     "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/server-dist/"
@@ -291,6 +295,14 @@ ENVSTUB
   sudo chmod 640 /etc/photo-recipes.env
   sudo chown root:www-data /etc/photo-recipes.env
 fi
+
+echo '--> Installing push tick cron (every 10 min → /api/push/tick)…'
+sudo chmod 755 "\${DEPLOY_PATH}/deploy/push-tick.sh"
+TMP_CRON=\$(mktemp)
+sed -e "s|DEPLOY_PATH_PLACEHOLDER|\${DEPLOY_PATH}|g" \\
+  "\${DEPLOY_PATH}/deploy/photo-recipes-push-tick.cron" > "\$TMP_CRON"
+sudo install -m 644 -o root -g root "\$TMP_CRON" /etc/cron.d/photo-recipes-push-tick
+rm -f "\$TMP_CRON"
 
 echo '--> Enable & restart services…'
 sudo systemctl daemon-reload

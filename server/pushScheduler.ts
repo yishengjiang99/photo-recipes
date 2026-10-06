@@ -17,9 +17,11 @@ import {
   pruneSentThisWeek,
   recordBriefSent,
   recordNudgeSent,
+  removeApnsTokenEverywhere,
   type PushPrefs,
 } from './pushPrefs.ts'
 import {
+  deletePushTokenEverywhere,
   listPushTokensForGuest,
   mergeApnsTokens,
 } from './pushDevices.ts'
@@ -30,6 +32,19 @@ import {
 } from './entitlements.ts'
 
 export const DEEP_LINK = 'photo-recipes://auto-optimize'
+
+/** APNs 410 / Unregistered → the token is permanently dead; stop sending to it. */
+export function isUnregisteredApnsError(r: { ok: boolean; error?: string; status?: number }): boolean {
+  if (r.ok) return false
+  if (r.status === 410) return true
+  return /Unregistered/.test(r.error ?? '')
+}
+
+async function pruneDeadToken(token: string): Promise<void> {
+  removeApnsTokenEverywhere(token)
+  await deletePushTokenEverywhere(token)
+  console.info(JSON.stringify({ event: 'push_token_pruned', reason: 'unregistered', tokenHint: token.slice(0, 8) }))
+}
 
 export type EntitlementTier = 'free' | 'trial' | 'pro'
 
@@ -468,6 +483,7 @@ export async function runComeShootNudgeTick(
             guestId,
             error: 'error' in r ? r.error : 'send_failed',
           })
+          if (isUnregisteredApnsError(r)) await pruneDeadToken(device.token)
         }
       }
 

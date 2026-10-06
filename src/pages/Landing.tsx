@@ -1,6 +1,7 @@
 import { Camera, Check, ChevronDown, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AppStoreBadge } from '../components/AppStoreBadge'
 import { CameraCta } from '../components/CameraCta'
 import { LandingDialProof } from '../components/LandingDialProof'
 import { LandingEmailCapture } from '../components/LandingEmailCapture'
@@ -214,10 +215,16 @@ export function Landing() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <CameraCta
-              label="Open Camera"
-              className="!min-h-9 !px-3.5 !py-1.5 !text-sm !shadow-none"
-            />
+            <a
+              href={APP_STORE_URL}
+              onClick={() => {
+                track('landing_cta_appstore', { source: 'header' })
+                track('appstore_badge_click', { source: 'header' })
+              }}
+              className="inline-flex min-h-9 items-center rounded-full bg-accent px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-accent-soft"
+            >
+              Get the iPhone app
+            </a>
             <button
               type="button"
               onClick={startTrial}
@@ -248,7 +255,8 @@ export function Landing() {
         {navOpen ? (
           <div className="border-t border-border px-4 py-3 md:hidden">
             <div className="flex flex-col gap-3 text-sm text-ink-secondary">
-              <CameraCta label="Open Camera" fullWidth onClick={closeNav} />
+              <AppStoreBadge source="mobile_nav" height={48} onClick={closeNav} />
+              <CameraCta fullWidth onClick={closeNav} />
               <Link
                 to="/app/library"
                 onClick={closeNav}
@@ -285,23 +293,8 @@ export function Landing() {
               </p>
               <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
               <div className="mt-7 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center">
-                <CameraCta size="lg" fullWidth className="min-[400px]:!w-auto" />
-                <a
-                  href={APP_STORE_URL}
-                  onClick={() => track('landing_cta_appstore', { source: 'hero' })}
-                  className="inline-flex min-h-11 items-center justify-center min-[400px]:w-auto"
-                  aria-label="Download on the App Store"
-                >
-                  {/* Official Apple badge artwork, unmodified per App Store marketing guidelines (min 40px onscreen). */}
-                  <img
-                    src="/download-on-the-app-store.svg"
-                    alt="Download on the App Store"
-                    width={120}
-                    height={40}
-                    className="h-10 w-auto"
-                    loading="lazy"
-                  />
-                </a>
+                <AppStoreBadge source="hero" height={56} />
+                <CameraCta fullWidth className="min-[400px]:!w-auto" />
                 <a
                   href="#notes"
                   onClick={() => track('landing_cta_waitlist', { source: 'hero' })}
@@ -461,7 +454,8 @@ export function Landing() {
                 </Link>
               ))}
             </div>
-            <div className="mt-8 flex justify-center gap-3">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <AppStoreBadge source="recipes" height={48} />
               <CameraCta />
               <Link
                 to="/app/library"
@@ -577,7 +571,8 @@ export function Landing() {
             <h2 className="font-display text-3xl text-ink sm:text-4xl">Go make the frame.</h2>
             <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-              <CameraCta size="lg" />
+              <AppStoreBadge source="final_cta" height={56} />
+              <CameraCta />
               <button
                 type="button"
                 onClick={startTrial}
@@ -596,7 +591,10 @@ export function Landing() {
 
       {/* Sticky mobile camera CTA */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-bg/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md md:hidden">
-        <CameraCta fullWidth size="lg" />
+        <div className="flex items-center justify-center gap-3">
+          <AppStoreBadge source="sticky_mobile" height={48} />
+          <CameraCta size="md" label="Preview" />
+        </div>
       </div>
 
       <footer className="border-t border-border py-10">

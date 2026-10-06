@@ -115,6 +115,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     setCameraError(null)
     setError(null)
     setCameraStarting(true)
+    track('preview_start', { source: 'field_coach' })
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error(
@@ -137,6 +138,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
     } catch (err) {
       stopCamera()
       const name = err instanceof DOMException ? err.name : ''
+      track('preview_error', { source: 'field_coach', stage: 'camera_start', error_code: name || 'unknown' })
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         track('camera_permission_denied', { source: 'field_coach', error_code: name })
         track('camera_start_fail', { source: 'field_coach', error_code: name })
@@ -367,6 +369,8 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
       tips?: string[]
     }) => {
       if (!data.presetId) {
+        track('preview_error', { source: 'field_coach', stage: 'optimize' })
+      track('preview_error', { source: 'field_coach', stage: 'optimize', error_code: 'no_preset' })
         track('auto_optimize_fail', { source: 'field_coach', error_code: 'no_preset' })
         throw new Error('No preset returned from AI')
       }
@@ -379,6 +383,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         tips: Array.isArray(data.tips) ? data.tips : [],
         fromAsk: true,
       }
+      track('preview_success', { source: 'field_coach' })
       track('auto_optimize_success', {
         source: 'field_coach',
         recipe_id: data.presetId,
@@ -410,6 +415,8 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
           data.error ||
             'Free Peek limit reached. Upgrade for unlimited Ask & Photo Vision.',
         )
+        track('preview_error', { source: 'field_coach', stage: 'optimize' })
+      track('preview_error', { source: 'field_coach', stage: 'optimize', error_code: 'paywall' })
         track('auto_optimize_fail', { source: 'field_coach', error_code: 'paywall' })
         track('paywall_view', { source: 'auto_optimize_limit' })
         openPricing()
@@ -422,7 +429,8 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
       if (!res.ok || !ct.includes('text/event-stream') || !res.body) {
         if (!res.ok) {
           const data = (await res.json().catch(() => ({}))) as { error?: string }
-          track('auto_optimize_fail', {
+          track('preview_error', { source: 'field_coach', stage: 'optimize' })
+      track('auto_optimize_fail', {
             source: 'field_coach',
             error_code: String(res.status),
           })
@@ -489,6 +497,7 @@ export function FieldCoach({ autoStartCamera = false }: FieldCoachProps = {}) {
         throw new Error('Stream ended without a recipe')
       }
     } catch (err) {
+      track('preview_error', { source: 'field_coach', stage: 'optimize' })
       track('auto_optimize_fail', {
         source: 'field_coach',
         error_code: 'exception',

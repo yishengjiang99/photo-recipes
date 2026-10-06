@@ -50,6 +50,7 @@ async function main() {
       bundleId: 'com.ragnus.mvp',
       environment: 'sandbox',
       appVersion: 'smoke-e2e',
+      timezone: 'America/Los_Angeles',
     }),
   })
   if (reg.status !== 200 || !reg.json?.ok) {
@@ -64,6 +65,17 @@ async function main() {
     process.exit(1)
   }
 
+  // Clean up: the fake token must not linger in prod push-prefs / MySQL
+  // (it was the only "token" on file and returned BadDeviceToken on every tick).
+  const del = await api('/api/push/register', {
+    method: 'DELETE',
+    body: JSON.stringify({ token: TOKEN }),
+  })
+  if (del.status !== 200 || !del.json?.ok) {
+    console.error('FAIL cleanup', del)
+    process.exit(1)
+  }
+
   console.log(
     JSON.stringify({
       ok: true,
@@ -71,6 +83,9 @@ async function main() {
       guestId,
       tokenCountBefore: before,
       tokenCountAfter: after,
+      mysql: reg.json?.mysql ?? null,
+      cleanupRemaining: del.json.remaining,
+      cleanupMysql: del.json.mysql ?? null,
     }),
   )
 }

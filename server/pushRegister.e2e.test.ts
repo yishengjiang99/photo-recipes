@@ -111,6 +111,50 @@ describe('push register e2e', () => {
     assert.equal((prefs2.json.prefs as { tokenCount: number }).tokenCount, 1)
   })
 
+  it('register stores device timezone (not UTC) and DELETE removes the token', async () => {
+    const reg = await api('/api/push/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: 'c3'.repeat(32),
+        platform: 'ios',
+        bundleId: 'com.ragnus.mvp',
+        environment: 'production',
+        appVersion: 'ci-e2e',
+        timezone: 'America/Los_Angeles',
+      }),
+    })
+    assert.equal(reg.status, 200, JSON.stringify(reg.json))
+    // No MySQL in CI → soft false, never an error.
+    assert.equal(reg.json.mysql, false)
+    const prefs = await api('/api/push/prefs')
+    const p = prefs.json.prefs as { timezone: string; tokenCount: number }
+    assert.equal(p.timezone, 'America/Los_Angeles')
+    assert.equal(p.tokenCount, 2)
+
+    const bogusTz = await api('/api/push/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: 'c3'.repeat(32),
+        platform: 'ios',
+        bundleId: 'com.ragnus.mvp',
+        environment: 'production',
+        timezone: 'Not/AZone',
+      }),
+    })
+    assert.equal(bogusTz.status, 200)
+    const prefsB = await api('/api/push/prefs')
+    assert.equal((prefsB.json.prefs as { timezone: string }).timezone, 'America/Los_Angeles')
+
+    const del = await api('/api/push/register', {
+      method: 'DELETE',
+      body: JSON.stringify({ token: 'c3'.repeat(32) }),
+    })
+    assert.equal(del.status, 200, JSON.stringify(del.json))
+    assert.equal(del.json.remaining, 1)
+    const prefs2 = await api('/api/push/prefs')
+    assert.equal((prefs2.json.prefs as { tokenCount: number }).tokenCount, 1)
+  })
+
   it('rejects invalid token with 400', async () => {
     const bad = await api('/api/push/register', {
       method: 'POST',

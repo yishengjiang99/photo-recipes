@@ -90,7 +90,7 @@ export function Success() {
           <h1 className="mt-4 font-display text-2xl text-zinc-50">Welcome to Pro</h1>
           <p className="mt-2 text-sm text-zinc-400">{detail}</p>
           <div className="mt-6 flex flex-col items-center gap-3">
-            <CameraCta size="lg" />
+            <CameraCta size="lg" label="Open Camera" variant="primary" />
             <Link
               to="/app/library"
               className="inline-flex rounded-full px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-zinc-700 hover:text-zinc-200"
@@ -107,7 +107,7 @@ export function Success() {
           <h1 className="mt-4 font-display text-2xl text-zinc-50">Couldn’t verify yet</h1>
           <p className="mt-2 text-sm text-zinc-400">{detail}</p>
           <div className="mt-6 flex flex-col items-center gap-3">
-            <CameraCta size="lg" />
+            <CameraCta size="lg" label="Open Camera" variant="primary" />
             <Link
               to="/app/library"
               className="inline-flex rounded-full px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-zinc-700 hover:text-zinc-200"

@@ -24,3 +24,12 @@ Push Exp 1 required a `shootWindow`, but iOS only sent `pushOptIn` + timezone �
 
 ## Cron
 Host must call `POST /api/push/tick` with `X-Push-Cron-Secret` every ~5–15 min while `PUSH_EXP1_ENABLED=true`. Evening window for come-shoot: **16:30–19:00** user local.
+
+`deploy.sh` installs `/etc/cron.d/photo-recipes-push-tick` (every 10 min → `deploy/push-tick.sh` → `http://127.0.0.1:8787/api/push/tick`, secret read from `/etc/photo-recipes.env`). Log: `/var/log/photo-recipes-push-tick.log`.
+
+Push Exp 1 shoot briefs are **retired** (0 sends); the tick only runs come-shoot / D1 unless `PUSH_EXP1_BRIEFS_ENABLED=true`. APNs `410 Unregistered` tokens are pruned from push-prefs.json and MySQL.
+
+## Storage
+- `server-dist/data/push-prefs.json` (+ entitlements, ops overrides) — protected from `rsync --delete` since 2026-10-06 (previously wiped on every deploy).
+- MySQL `devices` + `push_tokens` — DDL is inlined in `server/pushDevices.ts` and created at boot (the bundle never shipped `migrations/`, so boot logged ENOENT and the dual-write never ran). `POST /api/push/register` returns `mysql: true` when the MySQL write succeeded.
+- `scripts/e2e-push-register.mjs` (post-deploy smoke) now deletes its fake token afterwards.

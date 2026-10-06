@@ -234,6 +234,8 @@ export function registerApnsToken(
     bundleId: string
     environment: string
     appVersion?: string
+    /** IANA zone from the device (TimeZone.current) — avoids storing guests as UTC. */
+    timezone?: string
   },
 ): PushPrefs {
   if (input.platform !== 'ios') throw new Error('platform must be "ios"')
@@ -263,8 +265,10 @@ export function registerApnsToken(
     updatedAt: new Date().toISOString(),
   }
   const others = prev.apnsDeviceTokens.filter((t) => t.token !== entry.token)
+  const tz = normalizeTimezone(input.timezone)
   const next: PushPrefs = {
     ...prev,
+    ...(tz ? { timezone: tz } : {}),
     guestId,
     apnsDeviceTokens: [...others, entry],
     // Registering a real device token implies opt-in for Exp1 (iOS also PUTs prefs).
@@ -276,6 +280,53 @@ export function registerApnsToken(
   store.prefs[guestId] = next
   writeStore(store)
   return next
+}
+
+/** Valid IANA zone → trimmed id; anything else → null (keep prior). */
+export function normalizeTimezone(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const tz = raw.trim()
+  if (!tz || tz.length > 64) return null
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date())
+    return tz
+  } catch {
+    return null
+  }
+}
+
+/** Remove a token from one guest (unregister / smoke cleanup). Returns remaining count. */
+export function removeApnsToken(guestId: string, token: string): number {
+  const store = readStore()
+  const prev = store.prefs[guestId]
+  if (!prev) return 0
+  const t = token.trim().toLowerCase()
+  const remaining = prev.apnsDeviceTokens.filter((x) => x.token !== t)
+  if (remaining.length !== prev.apnsDeviceTokens.length) {
+    store.prefs[guestId] = {
+      ...prev,
+      apnsDeviceTokens: remaining,
+      updatedAt: new Date().toISOString(),
+    }
+    writeStore(store)
+  }
+  return remaining.length
+}
+
+/** Drop a dead token from every guest (APNs BadDeviceToken / Unregistered). */
+export function removeApnsTokenEverywhere(token: string): number {
+  const store = readStore()
+  const t = token.trim().toLowerCase()
+  let removed = 0
+  for (const [gid, p] of Object.entries(store.prefs)) {
+    const remaining = p.apnsDeviceTokens.filter((x) => x.token !== t)
+    if (remaining.length !== p.apnsDeviceTokens.length) {
+      removed += p.apnsDeviceTokens.length - remaining.length
+      store.prefs[gid] = { ...p, apnsDeviceTokens: remaining, updatedAt: new Date().toISOString() }
+    }
+  }
+  if (removed) writeStore(store)
+  return removed
 }
 
 /** UTC ISO week key YYYY-Www */

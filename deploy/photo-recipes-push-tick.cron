@@ -1,0 +1,4 @@
+# Photo Recipes push nudges (come-shoot / D1). Installed by deploy.sh — do not edit on host.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/10 * * * * root DEPLOY_PATH_PLACEHOLDER/deploy/push-tick.sh >> /var/log/photo-recipes-push-tick.log 2>&1

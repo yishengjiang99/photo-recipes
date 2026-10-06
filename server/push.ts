@@ -12,9 +12,10 @@ import {
   listAllPushPrefs,
   publicPrefsView,
   registerApnsToken,
+  removeApnsToken,
   updatePushPrefs,
 } from './pushPrefs.ts'
-import { upsertDeviceAndPushToken } from './pushDevices.ts'
+import { deletePushTokenForGuest, upsertDeviceAndPushToken } from './pushDevices.ts'
 import {
   DEEP_LINK,
   isPushExp1Enabled,
@@ -46,6 +47,11 @@ const EVENT_ALLOWLIST = new Set([
   'apns_token_received',
   'apns_register_failed',
 ])
+
+/** Push Exp 1 shoot briefs retired 2026-10-06 (funnel proposal); explicit opt-in only. */
+export function isPushExp1BriefsEnabled(): boolean {
+  return process.env.PUSH_EXP1_BRIEFS_ENABLED?.trim().toLowerCase() === 'true'
+}
 
 function appendEventLine(line: string) {
   fs.mkdirSync(path.dirname(EVENTS_LOG), { recursive: true })
@@ -80,7 +86,7 @@ export function productionTestSendAllowed(req: Request): boolean {
 
 export function mountPushRoutes(app: Express) {
   /** POST /api/push/register — iOS device token */
-  app.post('/api/push/register', (req: Request, res: Response) => {
+  app.post('/api/push/register', async (req: Request, res: Response) => {
     const guestId = getGuestId(req, res)
     const body = (req.body ?? {}) as Record<string, unknown>
     try {
@@ -96,13 +102,15 @@ export function mountPushRoutes(app: Express) {
         bundleId,
         environment,
         appVersion,
+        timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
       })
       // Dual-write MySQL devices + push_tokens when pool is configured (soft-fail).
+      let mysql = false
       if (
         platform === 'ios' &&
         (environment === 'sandbox' || environment === 'production')
       ) {
-        void upsertDeviceAndPushToken({
+        mysql = await upsertDeviceAndPushToken({
           guestId,
           platform: 'ios',
           bundleId: bundleId.trim() || 'com.ragnus.mvp',
@@ -111,12 +119,30 @@ export function mountPushRoutes(app: Express) {
           appVersion,
         })
       }
-      res.json({ ok: true, guestId })
+      res.json({ ok: true, guestId, mysql })
+      return
     } catch (err) {
       res.status(400).json({
         error: err instanceof Error ? err.message : 'register_failed',
       })
     }
+  })
+
+  /**
+   * DELETE /api/push/register — remove one of *this guest's* tokens
+   * (smoke e2e cleanup; future in-app opt-out). Body: { token }.
+   */
+  app.delete('/api/push/register', async (req: Request, res: Response) => {
+    const guestId = getGuestId(req, res)
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const token = String(body.token ?? '').trim().toLowerCase()
+    if (!/^[0-9a-f]{64,}$/.test(token)) {
+      res.status(400).json({ error: 'token must be hex device token (≥64 chars)' })
+      return
+    }
+    const remaining = removeApnsToken(guestId, token)
+    const mysql = await deletePushTokenForGuest(guestId, token)
+    res.json({ ok: true, remaining, mysql })
   })
 
   /** GET /api/push/prefs */
@@ -235,9 +261,13 @@ export function mountPushRoutes(app: Express) {
     }
     try {
       const now = new Date()
-      // Primary: come-shoot / D1 (no shootWindow). Secondary: Exp1 shoot briefs.
+      // Primary: come-shoot / D1 (no shootWindow). Exp1 shoot briefs are retired
+      // (0 sends — needed a shootWindow iOS never set); opt back in with
+      // PUSH_EXP1_BRIEFS_ENABLED=true.
       const comeShoot = await runComeShootNudgeTick(now)
-      const tick = await runPushExp1Tick(now)
+      const tick = isPushExp1BriefsEnabled()
+        ? await runPushExp1Tick(now)
+        : { retired: true }
       res.json({ ok: true, comeShoot, tick })
     } catch (err) {
       console.error('[push/tick]', err instanceof Error ? err.message : err)

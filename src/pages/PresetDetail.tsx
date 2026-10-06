@@ -81,7 +81,7 @@ export function PresetDetail() {
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <CameraCta size="md" label="Open Camera" />
+          <CameraCta size="md" label="Open Camera" variant="primary" />
           <Link
             to="/app/library"
             className="inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium text-ink-secondary ring-1 ring-border hover:bg-surface hover:text-ink"
