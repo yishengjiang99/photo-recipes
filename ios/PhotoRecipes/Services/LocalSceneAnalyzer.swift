@@ -30,6 +30,7 @@ struct LocalSceneSignals: Equatable {
         var wantsLowAngle: Bool
         var wantsLandscapeDoF: Bool
         var night: Bool
+        var food: Bool
     }
 }
 
@@ -119,13 +120,15 @@ enum LocalSceneAnalyzer {
         let low = matches(s, ["low", "knee", "kneel", "ground", "dog view", "worm", "get down"])
         let landscape = matches(s, ["landscape", "mountain", "horizon", "forest", "depth", "foreground", "hyperfocal", "sharp throughout"])
         let night = matches(s, ["night", "dark", "astro", "milky", "city lights", "neon"])
+        let food = matches(s, ["food", "meal", "dish", "brunch", "dinner", "plate", "coffee", "dessert"])
         return .init(
             wantsMotionBlur: blur,
             wantsPanning: pan,
             wantsHDR: hdr,
             wantsLowAngle: low,
             wantsLandscapeDoF: landscape,
-            night: night
+            night: night,
+            food: food
         )
     }
 

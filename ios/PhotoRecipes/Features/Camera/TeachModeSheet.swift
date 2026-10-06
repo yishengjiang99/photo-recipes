@@ -83,7 +83,7 @@ struct TeachModeSheet: View {
                         Text("Full teach-mode notes are Pro.")
                             .font(AppTheme.caption())
                             .foregroundStyle(AppTheme.inkTertiary)
-                        Button("Upgrade · 7-day trial") { entitlements.showPaywall = true }
+                        Button("Upgrade · 7-day trial") { entitlements.presentHardPaywall(trigger: "teach_upgrade", force: true) }
                             .buttonStyle(PrimaryButtonStyle(filled: true))
                     }
                 }

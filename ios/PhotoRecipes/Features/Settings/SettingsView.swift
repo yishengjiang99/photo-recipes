@@ -25,7 +25,7 @@ struct SettingsView: View {
                         }
                         if !entitlements.isPro {
                             Button("Upgrade to Pro") {
-                                entitlements.showPaywall = true
+                                entitlements.presentHardPaywall(trigger: "settings_upgrade", force: true)
                             }
                         }
                         Button("Restore purchases") {
@@ -75,7 +75,7 @@ struct SettingsView: View {
                             .onChange(of: deepCoachEnabled) { _, on in
                                 AutoOptimizeController.cloudRefineEnabled = on
                             }
-                        Text("On by default. Pass 1 Auto Optimize is always on-device (instant). Pass 2 optionally calls /api/recommend to refine dials within the chosen recipe — never blocks shutter. Uses Ask quota when free; soft-skips on 402/offline.")
+                        Text("Off by default (local-first). Pass 1 Auto Optimize is always on-device (instant). Turn on to let Pass 2 optionally call /api/recommend to refine dials within the chosen recipe — never blocks shutter. Uses Ask quota when free; soft-skips on 402/offline.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

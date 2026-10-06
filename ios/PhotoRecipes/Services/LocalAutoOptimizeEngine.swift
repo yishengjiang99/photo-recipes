@@ -269,19 +269,60 @@ enum LocalAutoOptimizeEngine {
     // MARK: - Look suggest (chip only)
 
     static func suggestLook(signals: LocalSceneSignals) -> CreativeLook? {
-        // Warm golden histogram → goldenHour; cool steel → crispCool; high contrast night → moodyFilm.
-        if signals.warmBias > 0.12 && signals.brightness01 > 0.35 && signals.brightness01 < 0.85 {
-            return CreativeLook(id: "goldenHour", intensity: CreativeLookCatalog.defaultIntensity)
-        }
-        if signals.warmBias < -0.1 && signals.contrast01 > 0.4 {
-            return CreativeLook(id: "crispCool", intensity: CreativeLookCatalog.defaultIntensity)
-        }
-        if signals.brightness01 < 0.25 && signals.contrast01 > 0.45 {
+        // Prefer specific scene → look matches. goldenHour only for clearly warm late light
+        // (was over-suggested: 42/54 telemetry suggestions).
+        let h = signals.sceneNoteHints
+        let note = (signals.senseSummary + " ").lowercased()
+
+        // Night / very dark → moody film (or coolBlue if cool cast).
+        if h.night || signals.brightness01 < 0.22 {
+            if signals.warmBias < -0.05 {
+                return CreativeLook(id: "coolBlue", intensity: 0.5)
+            }
             return CreativeLook(id: "moodyFilm", intensity: CreativeLookCatalog.defaultIntensity)
         }
-        if signals.faceCount > 0 && signals.warmBias > 0.04 {
+
+        // Faces / portrait → warmGlow (skin-friendly), not goldenHour.
+        if signals.faceCount > 0 {
+            if signals.warmBias < -0.08 {
+                return CreativeLook(id: "crispCool", intensity: 0.45)
+            }
             return CreativeLook(id: "warmGlow", intensity: 0.45)
         }
+
+        // Explicit cool / overcast steel.
+        if signals.warmBias < -0.1 && signals.contrast01 > 0.35 {
+            return CreativeLook(id: "crispCool", intensity: CreativeLookCatalog.defaultIntensity)
+        }
+
+        // Landscape / deep scene → tealOrange cinematic, not golden by default.
+        if h.wantsLandscapeDoF || note.contains("landscape") || note.contains("horizon") {
+            if signals.warmBias > 0.18 && signals.brightness01 > 0.4 && signals.brightness01 < 0.75 {
+                return CreativeLook(id: "goldenHour", intensity: 0.5)
+            }
+            return CreativeLook(id: "tealOrange", intensity: 0.5)
+        }
+
+        // Food / color pop cues from note.
+        if h.food || note.contains("food") || note.contains("meal") || note.contains("dish") {
+            return CreativeLook(id: "warmPop", intensity: 0.5)
+        }
+
+        // High contrast daylight → blockbuster / loFi, not golden.
+        if signals.contrast01 > 0.55 && signals.brightness01 > 0.45 {
+            return CreativeLook(id: "blockbuster", intensity: 0.5)
+        }
+
+        // True golden hour: strong warm bias + mid brightness (late light), no faces.
+        if signals.warmBias > 0.18 && signals.brightness01 > 0.38 && signals.brightness01 < 0.72 {
+            return CreativeLook(id: "goldenHour", intensity: CreativeLookCatalog.defaultIntensity)
+        }
+
+        // Mild warm daylight → warmPop; mild cool → softDream skip (nil = no look).
+        if signals.warmBias > 0.08 && signals.brightness01 > 0.4 {
+            return CreativeLook(id: "warmPop", intensity: 0.45)
+        }
+
         return nil
     }
 

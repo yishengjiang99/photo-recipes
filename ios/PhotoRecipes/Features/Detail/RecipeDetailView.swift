@@ -317,7 +317,7 @@ struct RecipeDetailView: View {
                             Spacer()
                         }
                         Button {
-                            entitlements.showPaywall = true
+                            entitlements.presentHardPaywall(trigger: "recipe_locked")
                         } label: {
                             Text("Upgrade · 7-day trial")
                         }
@@ -335,7 +335,7 @@ struct RecipeDetailView: View {
                 }
             } else {
                 Button {
-                    entitlements.showPaywall = true
+                    entitlements.presentHardPaywall(trigger: "recipe_locked")
                 } label: {
                     Text("Upgrade · 7-day trial")
                 }
@@ -348,7 +348,7 @@ struct RecipeDetailView: View {
     private func checklistRow(item: String, checked: Bool, locked: Bool, interactive: Bool = true) -> some View {
         Button {
             guard interactive else {
-                if locked { entitlements.showPaywall = true }
+                if locked { entitlements.presentHardPaywall(trigger: "recipe_locked") }
                 return
             }
             if entitlements.isPro {
@@ -358,7 +358,7 @@ struct RecipeDetailView: View {
                     checked: !checked
                 )
             } else {
-                entitlements.showPaywall = true
+                entitlements.presentHardPaywall(trigger: "recipe_locked")
             }
         } label: {
             HStack(spacing: AppTheme.space3) {

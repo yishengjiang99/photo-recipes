@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=server-dist/index.js",
     "start": "node server-dist/index.js",
-    "test:server": "tsx --test server/entitlementsQuota.test.ts server/iap.test.ts server/imageShrink.test.ts server/opsConfig.test.ts server/phoneTargets.test.ts server/recommendFast.test.ts server/visionPassthrough.test.ts server/apns.test.ts server/attribution.test.ts server/pushTestSend.test.ts server/pushRegister.e2e.test.ts",
+    "test:server": "tsx --test server/entitlementsQuota.test.ts server/iap.test.ts server/imageShrink.test.ts server/opsConfig.test.ts server/phoneTargets.test.ts server/recommendFast.test.ts server/visionPassthrough.test.ts server/apns.test.ts server/attribution.test.ts server/pushTestSend.test.ts server/pushRegister.e2e.test.ts server/comeShootNudge.test.ts",
     "smoke:web": "node scripts/smoke-web.mjs",
     "funnel:report": "node scripts/funnel-report.mjs",
     "e2e:push": "node scripts/e2e-push-register.mjs"

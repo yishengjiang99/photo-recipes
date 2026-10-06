@@ -7,10 +7,19 @@ final class EntitlementsStore: ObservableObject {
     @Published private(set) var loading = false
     @Published var lastError: String?
     @Published var showPaywall = false
+    /// Soft vs hard — soft is a nudge after first AO success; hard is quota gate.
+    @Published var paywallMode: PaywallMode = .hard
+    @Published var paywallTrigger: String = "unknown"
+
+    enum PaywallMode: String {
+        case soft
+        case hard
+    }
 
     private let api: APIClient
     private let favoritesKey = "favorites.recipeIds"
     private let checklistKeyPrefix = "checklist."
+    private let softNudgeShownKey = "paywall.softNudgeShown"
 
     @Published var favoriteIds: Set<String> {
         didSet {
@@ -30,6 +39,63 @@ final class EntitlementsStore: ObservableObject {
     var canApplyDials: Bool {
         if isPro { return true }
         return status.freePhoneTargetsEnabled ?? true
+    }
+
+    var hasFeltOptimizeValue: Bool {
+        UserDefaults.standard.bool(forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey)
+    }
+
+    private var softNudgeShown: Bool {
+        get { UserDefaults.standard.bool(forKey: softNudgeShownKey) }
+        set { UserDefaults.standard.set(newValue, forKey: softNudgeShownKey) }
+    }
+
+    /// Soft nudge once after first successful Auto Optimize (does not block camera).
+    func presentSoftNudgeIfNeeded(trigger: String = "post_first_optimize") {
+        guard !isPro else { return }
+        guard hasFeltOptimizeValue else { return }
+        guard !softNudgeShown else { return }
+        softNudgeShown = true
+        paywallMode = .soft
+        paywallTrigger = trigger
+        Analytics.shared.track("paywall_trigger", props: [
+            "reason": trigger,
+            "mode": "soft",
+        ])
+        // Let the Optimize result land (~2.5s) before the soft sheet.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !self.isPro else { return }
+            self.showPaywall = true
+        }
+    }
+
+    /// Hard paywall — Free Peek quota exhausted. Skip hard gate until they've felt AO value
+    /// unless `force` (explicit Settings / Upgrade taps). Returns true if sheet presented.
+    @discardableResult
+    func presentHardPaywall(trigger: String, force: Bool = false) -> Bool {
+        guard !isPro else { return false }
+        if !force && !hasFeltOptimizeValue {
+            // Don't hard-gate before first successful Optimize — toast/CTA elsewhere.
+            Analytics.shared.track("paywall_trigger", props: [
+                "reason": trigger,
+                "mode": "deferred_no_value",
+            ])
+            return false
+        }
+        paywallMode = .hard
+        paywallTrigger = trigger
+        showPaywall = true
+        Analytics.shared.track("paywall_trigger", props: [
+            "reason": trigger,
+            "mode": "hard",
+        ])
+        if trigger == "free_quota" || trigger.contains("quota") {
+            Analytics.shared.track("free_quota_hit", props: [
+                "trigger": trigger,
+            ])
+        }
+        return true
     }
 
     func refresh() async {

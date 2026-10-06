@@ -1,8 +1,8 @@
 /**
- * Push Experiment 1 — pre-alarm shoot brief scheduler.
- * Given `now`, find opted-in users whose shoot window starts within brief lead
- * time, respect quiet hours / weekly caps / holdout / feature flag, build
- * entitlement-aware payload, stub-send via APNs.
+ * Push schedulers:
+ * 1) Come-shoot / D1 return nudges — no shootWindow required (primary path).
+ * 2) Push Experiment 1 — pre-alarm shoot brief when user set a shoot window.
+ * Both respect quiet hours / weekly caps / feature flag, send via APNs.
  */
 import crypto from 'node:crypto'
 import { sendApns, type ApnsPayload } from './apns.ts'
@@ -16,6 +16,7 @@ import {
   listAllPushPrefs,
   pruneSentThisWeek,
   recordBriefSent,
+  recordNudgeSent,
   type PushPrefs,
 } from './pushPrefs.ts'
 import {
@@ -289,6 +290,198 @@ export async function runPushExp1Tick(now = new Date()): Promise<TickResult> {
             deepLink: DEEP_LINK,
             chipIds: chips.map((c) => c.id),
             untilMinutes: until,
+          }),
+        )
+      }
+    } catch (err) {
+      result.errors.push({
+        guestId,
+        error: err instanceof Error ? err.message : 'tick_error',
+      })
+    }
+  }
+
+  return result
+}
+
+
+
+/** Local minutes for a loose "golden hour / evening shoot" window. */
+export const COME_SHOOT_START_MIN = 16 * 60 + 30 // 16:30
+export const COME_SHOOT_END_MIN = 19 * 60 // 19:00
+/** D1 return: hours since first opt-in. */
+export const D1_MIN_HOURS = 20
+export const D1_MAX_HOURS = 48
+/** Evening window for D1 copy (local). */
+export const D1_EVENING_START_MIN = 17 * 60
+export const D1_EVENING_END_MIN = 21 * 60
+
+function sameUtcDay(a: Date, b: Date): boolean {
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
+  )
+}
+
+function hoursSince(iso: string | null | undefined, now: Date): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return null
+  return (now.getTime() - t) / (60 * 60 * 1000)
+}
+
+function nudgedToday(prefs: PushPrefs, now: Date): boolean {
+  if (!prefs.lastNudgeAt) return false
+  const t = Date.parse(prefs.lastNudgeAt)
+  if (!Number.isFinite(t)) return false
+  return sameUtcDay(new Date(t), now) || now.getTime() - t < 18 * 60 * 60 * 1000
+}
+
+function comeShootCopy(kind: 'd1_return' | 'come_shoot_nudge'): {
+  title: string
+  body: string
+} {
+  if (kind === 'd1_return') {
+    return {
+      title: 'Come shoot tonight',
+      body: 'Golden light is waiting — open ProTune and tap Auto Optimize.',
+    }
+  }
+  return {
+    title: 'Golden hour',
+    body: 'Light is soft right now — open the camera and Auto Optimize a frame.',
+  }
+}
+
+export type NudgeTickResult = {
+  enabled: boolean
+  scanned: number
+  sent: number
+  skipped: Array<{ guestId: string; reason: string }>
+  errors: Array<{ guestId: string; error: string }>
+}
+
+/**
+ * Primary engagement path: D1 return + evening come-shoot.
+ * Does NOT require shootWindow (Exp1's missing piece that caused 0 sends).
+ * Enabled whenever PUSH_EXP1_ENABLED is true (same ops flag / cron).
+ */
+export async function runComeShootNudgeTick(
+  now = new Date(),
+): Promise<NudgeTickResult> {
+  const result: NudgeTickResult = {
+    enabled: isPushExp1Enabled(),
+    scanned: 0,
+    sent: 0,
+    skipped: [],
+    errors: [],
+  }
+  if (!result.enabled) return result
+
+  const all = listAllPushPrefs()
+  result.scanned = all.length
+
+  for (const prefs of all) {
+    const guestId = prefs.guestId
+    try {
+      if (!prefs.pushOptIn) {
+        result.skipped.push({ guestId, reason: 'not_opted_in' })
+        continue
+      }
+      const mysqlTokens = await listPushTokensForGuest(guestId)
+      const tokens = mergeApnsTokens(prefs.apnsDeviceTokens, mysqlTokens)
+      if (!tokens.length) {
+        result.skipped.push({ guestId, reason: 'no_device_token' })
+        continue
+      }
+      if (nudgedToday(prefs, now)) {
+        result.skipped.push({ guestId, reason: 'already_nudged_today' })
+        continue
+      }
+
+      const local = localParts(now, prefs.timezone || 'UTC')
+      if (inQuietHours(local.minutes, prefs.quietHours)) {
+        result.skipped.push({ guestId, reason: 'quiet_hours' })
+        continue
+      }
+
+      const ent = findEntitlementByGuestId(guestId)
+      const tier = tierFromEntitlement(ent)
+      const defaultCap =
+        tier === 'free' ? DEFAULT_WEEKLY_CAP_FREE : DEFAULT_WEEKLY_CAP_PRO
+      const cap = prefs.weeklyCap ?? defaultCap
+      const sentWeek = pruneSentThisWeek(prefs, now)
+      if (sentWeek.length >= cap) {
+        result.skipped.push({ guestId, reason: 'weekly_cap' })
+        continue
+      }
+
+      const hours = hoursSince(prefs.optedInAt ?? prefs.updatedAt, now)
+      let kind: 'd1_return' | 'come_shoot_nudge' | null = null
+
+      // D1 return: 20–48h after opt-in, evening local window.
+      if (
+        hours !== null &&
+        hours >= D1_MIN_HOURS &&
+        hours <= D1_MAX_HOURS &&
+        local.minutes >= D1_EVENING_START_MIN &&
+        local.minutes < D1_EVENING_END_MIN &&
+        !prefs.lastNudgeAt
+      ) {
+        kind = 'd1_return'
+      } else if (
+        local.minutes >= COME_SHOOT_START_MIN &&
+        local.minutes < COME_SHOOT_END_MIN
+      ) {
+        // Evening golden-hour come-shoot for anyone opted in with a token.
+        kind = 'come_shoot_nudge'
+      }
+
+      if (!kind) {
+        result.skipped.push({ guestId, reason: 'outside_nudge_window' })
+        continue
+      }
+
+      const copy = comeShootCopy(kind)
+      const chips = pickRecipeChips(guestId, 3)
+      const payload: ApnsPayload = {
+        aps: {
+          alert: { title: copy.title, body: copy.body },
+          sound: 'default',
+        },
+        type: kind,
+        deepLink: DEEP_LINK,
+        recipeChips: chips,
+        entitlementTier: tier,
+        experiment: kind === 'd1_return' ? 'd1_return' : 'come_shoot',
+      }
+
+      let anyOk = false
+      for (const device of tokens) {
+        const r = await sendApns(device.token, payload, {
+          environment: device.environment,
+        })
+        if (r.ok) anyOk = true
+        else {
+          result.errors.push({
+            guestId,
+            error: 'error' in r ? r.error : 'send_failed',
+          })
+        }
+      }
+
+      if (anyOk) {
+        recordNudgeSent(guestId, now)
+        result.sent += 1
+        console.info(
+          JSON.stringify({
+            event: 'push_sent',
+            type: kind,
+            stage: kind === 'd1_return' ? 'activation' : 'habit',
+            guestId,
+            tier,
+            deepLink: DEEP_LINK,
           }),
         )
       }

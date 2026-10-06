@@ -95,7 +95,7 @@ struct ManualDialsSheet: View {
                             if mode == .auto { session.unlockExposure() }
                             optimizer.markDirty()
                         } else {
-                            entitlements.showPaywall = true
+                            entitlements.presentHardPaywall(trigger: "dials_locked")
                         }
                     } label: {
                         Text(mode.shortLabel)
@@ -118,7 +118,7 @@ struct ManualDialsSheet: View {
         dialScroller(title: "SHUTTER", value: RecipeCameraMapper.formatShutter(session.exposureSeconds), locked: !canApplyDials) {
             ForEach(shutterStops, id: \.self) { s in
                 Button {
-                    guard canApplyDials else { entitlements.showPaywall = true; return }
+                    guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                     session.setShutter(s)
                     optimizer.markDirty()
                 } label: {
@@ -137,7 +137,7 @@ struct ManualDialsSheet: View {
         dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !canApplyDials) {
             ForEach(isoStops, id: \.self) { v in
                 Button {
-                    guard canApplyDials else { entitlements.showPaywall = true; return }
+                    guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                     session.setISO(v)
                     optimizer.markDirty()
                 } label: {
@@ -170,7 +170,7 @@ struct ManualDialsSheet: View {
                 value: Binding(
                     get: { Double(session.evBias) },
                     set: { newVal in
-                        guard canApplyDials else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         session.setEV(Float(newVal))
                         optimizer.markDirty()
                     }

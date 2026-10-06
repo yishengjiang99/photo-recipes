@@ -129,7 +129,7 @@ struct ControlsSheet: View {
             }
             Spacer()
             Button("Reset to Auto") {
-                guard canApplyDials else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                 session.unlockExposure()
                 session.unlockFocus()
                 session.captureMode = .auto
@@ -140,7 +140,7 @@ struct ControlsSheet: View {
             .font(AppTheme.bodySmMedium())
             .foregroundStyle(AppTheme.accent)
             if !canApplyDials {
-                Button("Unlock") { entitlements.showPaywall = true }
+                Button("Unlock") { entitlements.presentHardPaywall(trigger: "dials_locked") }
                     .font(AppTheme.bodySmMedium())
                     .foregroundStyle(AppTheme.tip)
             }
@@ -183,7 +183,7 @@ struct ControlsSheet: View {
             dialScroller(title: "SHUTTER", value: RecipeCameraMapper.formatShutter(session.exposureSeconds), locked: !canApplyDials) {
                 ForEach(shutterStops, id: \.self) { s in
                     dialChip(RecipeCameraMapper.formatShutter(s)) {
-                        guard canApplyDials else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         session.setShutter(s); optimizer.markDirty()
                     }
                 }
@@ -191,7 +191,7 @@ struct ControlsSheet: View {
             dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !canApplyDials) {
                 ForEach(isoStops, id: \.self) { v in
                     dialChip("\(Int(v))") {
-                        guard canApplyDials else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         session.setISO(v); optimizer.markDirty()
                     }
                 }
@@ -220,7 +220,7 @@ struct ControlsSheet: View {
                             session.captureMode = mode
                             if mode == .auto { session.unlockExposure() }
                             optimizer.markDirty()
-                        } else { entitlements.showPaywall = true }
+                        } else { entitlements.presentHardPaywall(trigger: "dials_locked") }
                     } label: {
                         Text(mode.shortLabel)
                             .font(AppTheme.monoSm())
@@ -251,7 +251,7 @@ struct ControlsSheet: View {
                 value: Binding(
                     get: { Double(session.evBias) },
                     set: { newVal in
-                        guard canApplyDials else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         session.setEV(Float(newVal)); optimizer.markDirty()
                     }
                 ),
@@ -279,7 +279,7 @@ struct ControlsSheet: View {
                 Text(session.focusLocked ? "Locked" : "Cont.")
                     .font(AppTheme.monoSm()).foregroundStyle(AppTheme.ink)
                 Button(session.focusLocked ? "Unlock" : "Lock center") {
-                    guard canApplyDials else { entitlements.showPaywall = true; return }
+                    guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                     if session.focusLocked { session.unlockFocus() }
                     else { session.focus(at: CGPoint(x: 0.5, y: 0.5), lock: true) }
                     optimizer.markDirty()
@@ -295,7 +295,7 @@ struct ControlsSheet: View {
             HStack(spacing: 8) {
                 ForEach([1.0, 2.0, 3.0], id: \.self) { z in
                     dialChip(String(format: "%.0f×", z)) {
-                        guard canApplyDials else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         session.setZoomFactor(z); optimizer.markDirty()
                     }
                 }
@@ -337,7 +337,7 @@ struct ControlsSheet: View {
                 available: session.supportsTorch,
                 unavailable: "Not available on this camera"
             ) { on in
-                guard canApplyDials else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                 session.setTorch(on)
                 optimizer.markDirty()
             }
@@ -348,7 +348,7 @@ struct ControlsSheet: View {
                 available: session.supportsLowLightBoost,
                 unavailable: "Not available on this camera"
             ) { on in
-                guard canApplyDials else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                 session.setLowLightBoost(on)
                 optimizer.markDirty()
             }
@@ -382,7 +382,7 @@ struct ControlsSheet: View {
                 ForEach(CameraSession.LensChoice.allCases) { lens in
                     let available = session.supportsLens(lens)
                     Button {
-                        guard canApplyDials else { entitlements.showPaywall = true; return }
+                        guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         guard available else { return }
                         session.selectLens(lens)
                         optimizer.markDirty()
@@ -420,7 +420,7 @@ struct ControlsSheet: View {
                         value: Binding(
                             get: { session.lensPosition },
                             set: { v in
-                                guard canApplyDials else { entitlements.showPaywall = true; return }
+                                guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                                 session.setLensPosition(v)
                                 optimizer.markDirty()
                             }
@@ -457,7 +457,7 @@ struct ControlsSheet: View {
                 available: session.supportsVideoHDR,
                 unavailable: "Not available on this camera"
             ) { on in
-                guard canApplyDials else { entitlements.showPaywall = true; return }
+                guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                 session.setVideoHDR(on)
                 optimizer.markDirty()
             }
@@ -469,7 +469,7 @@ struct ControlsSheet: View {
                     HStack(spacing: 8) {
                         ForEach([24.0, 30.0, 60.0], id: \.self) { fps in
                             dialChip(String(format: "%.0f fps", fps)) {
-                                guard canApplyDials else { entitlements.showPaywall = true; return }
+                                guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                                 session.setPreferredFrameRate(fps)
                                 optimizer.markDirty()
                             }
@@ -565,7 +565,7 @@ struct ControlsSheet: View {
         let isSuggested = optimizer.suggestedLook?.id == look.id
         let isActive = session.activeCreativeLook?.id == look.id
         return Button {
-            guard canApplyDials else { entitlements.showPaywall = true; return }
+            guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
             let applied = CreativeLook(id: look.id, intensity: lookIntensity)
             session.setActiveLook(applied)
             optimizer.dismissSuggestedLook()

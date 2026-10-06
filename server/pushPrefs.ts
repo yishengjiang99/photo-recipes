@@ -64,6 +64,10 @@ export type PushPrefs = {
   sentThisWeek: string[]
   /** Last Exp1 brief send ISO (dedupe same window) */
   lastBriefAt: string | null
+  /** ISO when pushOptIn first became true (D1 / come-shoot timing) */
+  optedInAt: string | null
+  /** Last come-shoot / D1 nudge ISO (daily dedupe) */
+  lastNudgeAt: string | null
   updatedAt: string
 }
 
@@ -111,6 +115,8 @@ function defaultPrefs(guestId: string): PushPrefs {
     timezone: 'UTC',
     sentThisWeek: [],
     lastBriefAt: null,
+    optedInAt: null,
+    lastNudgeAt: null,
     updatedAt: now,
   }
 }
@@ -192,7 +198,12 @@ export function updatePushPrefs(
     }
   }
 
-  if (typeof patch.pushOptIn === 'boolean') next.pushOptIn = patch.pushOptIn
+  if (typeof patch.pushOptIn === 'boolean') {
+    if (patch.pushOptIn && !prev.pushOptIn && !prev.optedInAt) {
+      next.optedInAt = new Date().toISOString()
+    }
+    next.pushOptIn = patch.pushOptIn
+  }
   if (typeof patch.experimentHoldout === 'boolean') {
     next.experimentHoldout = patch.experimentHoldout
   }
@@ -258,6 +269,8 @@ export function registerApnsToken(
     apnsDeviceTokens: [...others, entry],
     // Registering a real device token implies opt-in for Exp1 (iOS also PUTs prefs).
     pushOptIn: true,
+    optedInAt: prev.optedInAt ?? new Date().toISOString(),
+    lastNudgeAt: prev.lastNudgeAt ?? null,
     updatedAt: new Date().toISOString(),
   }
   store.prefs[guestId] = next
@@ -303,6 +316,25 @@ export function recordBriefSent(guestId: string, at = new Date()): PushPrefs {
   return next
 }
 
+/** Record a come-shoot / D1 nudge (counts toward weekly cap + daily dedupe). */
+export function recordNudgeSent(guestId: string, at = new Date()): PushPrefs {
+  const store = readStore()
+  const prev = store.prefs[guestId] ?? defaultPrefs(guestId)
+  const iso = at.toISOString()
+  const sentThisWeek = [...pruneSentThisWeek(prev, at), iso]
+  const next: PushPrefs = {
+    ...prev,
+    guestId,
+    sentThisWeek,
+    lastNudgeAt: iso,
+    lastBriefAt: prev.lastBriefAt,
+    updatedAt: iso,
+  }
+  store.prefs[guestId] = next
+  writeStore(store)
+  return next
+}
+
 export function publicPrefsView(p: PushPrefs) {
   return {
     guestId: p.guestId,
@@ -315,6 +347,8 @@ export function publicPrefsView(p: PushPrefs) {
     tokenCount: p.apnsDeviceTokens.length,
     sentThisWeekCount: pruneSentThisWeek(p).length,
     lastBriefAt: p.lastBriefAt,
+    optedInAt: p.optedInAt ?? null,
+    lastNudgeAt: p.lastNudgeAt ?? null,
     updatedAt: p.updatedAt,
   }
 }

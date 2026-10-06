@@ -12,7 +12,9 @@ struct PaywallView: View {
                 AppTheme.overlay.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: AppTheme.space5) {
-                        Text("Soft upgrade · browse stays free")
+                        Text(entitlements.paywallMode == .soft
+                              ? "Nice shot — keep going?"
+                              : "Free Peek limit reached")
                             .font(AppTheme.caption())
                             .foregroundStyle(AppTheme.inkSecondary)
                             .padding(.horizontal, 12)
@@ -24,7 +26,9 @@ struct PaywallView: View {
                             .foregroundStyle(AppTheme.ink)
                             .multilineTextAlignment(.center)
 
-                        Text("Free Peek browses recipes. Pro unlocks interactive checklists and unlimited Field Coach.")
+                        Text(entitlements.paywallMode == .soft
+                              ? "You felt the Optimize pop. Pro unlocks unlimited Auto Optimize every day."
+                              : "You've used today's free Optimizes. Pro unlocks unlimited Auto Optimize.")
                             .font(AppTheme.bodySm())
                             .foregroundStyle(AppTheme.inkSecondary)
                             .multilineTextAlignment(.center)

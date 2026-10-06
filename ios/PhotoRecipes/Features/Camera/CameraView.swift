@@ -294,7 +294,7 @@ struct CameraView: View {
                 },
                 onUpgrade: {
                     showRecommendResult = false
-                    entitlements.showPaywall = true
+                    entitlements.presentHardPaywall(trigger: "recommend_upgrade", force: true)
                 }
             )
             .environmentObject(entitlements)
@@ -1076,10 +1076,11 @@ struct CameraView: View {
         // Quota exhausted (not Pro/unlimited): paywall + visible error/toast — never silent.
         guard canOptimize else {
             print("[AO] tap → paywall (quota exhausted)")
-            entitlements.showPaywall = true
+            entitlements.presentHardPaywall(trigger: "free_quota", force: true)
             optimizer.phase = .error("Free Peek limit reached — upgrade for more")
             presentChromeToast("Free Peek limit — see Pro")
             Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "path": "camera_tap"])
+            Analytics.shared.track("free_quota_hit", props: ["path": "camera_tap"])
             return
         }
         if optimizer.phase.isRunning {
@@ -1098,6 +1099,11 @@ struct CameraView: View {
         if case .ready = optimizer.phase {
             let title = optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle ?? "recipe"
             print("[AO] ready recipe=\(title) diffs=\(optimizer.coreDiffs.count)")
+            // Soft Pro nudge once after first success — never blocks the result.
+            entitlements.presentSoftNudgeIfNeeded(trigger: "post_first_optimize")
+            if session.activeCreativeLook != nil {
+                presentLookToastIfNeeded()
+            }
         } else if case .error(let msg) = optimizer.phase {
             print("[AO] error \(msg)")
         }
@@ -1216,7 +1222,7 @@ struct CameraView: View {
             return
         } catch let APIError.paywall(payload) {
             recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
-            entitlements.showPaywall = true
+            entitlements.presentHardPaywall(trigger: "recommend_quota", force: true)
             showRecommendResult = true
             await entitlements.refresh()
         } catch let APIError.missingKey(msg) {
@@ -1256,7 +1262,7 @@ struct CameraView: View {
                 return
             } catch let APIError.paywall(payload) {
                 recommendError = payload.error ?? "Free Peek limit reached. Upgrade to Pro."
-                entitlements.showPaywall = true
+                entitlements.presentHardPaywall(trigger: "recommend_quota", force: true)
                 showRecommendResult = true
                 await entitlements.refresh()
             } catch let APIError.missingKey(msg) {

@@ -88,7 +88,8 @@ final class AutoOptimizeController: ObservableObject {
     static let deepCoachDefaultsKey = cloudRefineDefaultsKey
     static var cloudRefineEnabled: Bool {
         get {
-            if UserDefaults.standard.object(forKey: cloudRefineDefaultsKey) == nil { return true }
+            // Local-first: Pass 1 on-device is the happy path. Pass 2 cloud refine opt-in.
+            if UserDefaults.standard.object(forKey: cloudRefineDefaultsKey) == nil { return false }
             return UserDefaults.standard.bool(forKey: cloudRefineDefaultsKey)
         }
         set { UserDefaults.standard.set(newValue, forKey: cloudRefineDefaultsKey) }
@@ -345,14 +346,17 @@ final class AutoOptimizeController: ObservableObject {
         }
 
         if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
-            var suggested = look
-            if suggested.intensity == nil {
-                suggested.intensity = CreativeLookCatalog.defaultIntensity
+            var applied = look
+            if applied.intensity == nil {
+                applied.intensity = CreativeLookCatalog.defaultIntensity
             }
-            phase = .applying("Suggesting look: \(suggested.displayName)…")
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            suggestedLook = suggested
-            Analytics.shared.track("look_suggested", props: ["look_id": suggested.id, "source": "local"])
+            phase = .applying("Applying look: \(applied.displayName)…")
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            // Auto-apply top look; LookChip active × clears (undo). No silent-suggest chip.
+            session.setActiveLook(applied)
+            suggestedLook = nil
+            Analytics.shared.track("look_suggested", props: ["look_id": applied.id, "source": "local_auto"])
+            Analytics.shared.track("look_applied", props: ["look_id": applied.id, "source": "local_auto"])
         }
 
         session.optimizeReason = teachOneLiner ?? reasonNote
@@ -523,14 +527,16 @@ final class AutoOptimizeController: ObservableObject {
                 if entitlements.canApplyDials {
                     _ = session.applyPhoneTargets(targets)
                 }
-                // Look chip: recipes remain source of truth; look is optional intensity on phoneTargets.
-                if let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
-                    var suggested = look
-                    if suggested.intensity == nil {
-                        suggested.intensity = CreativeLookCatalog.defaultIntensity
+                // Look: auto-apply when Pass 1 left none; otherwise keep Pass 1 look.
+                if session.activeCreativeLook == nil,
+                   let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
+                    var applied = look
+                    if applied.intensity == nil {
+                        applied.intensity = CreativeLookCatalog.defaultIntensity
                     }
-                    self.suggestedLook = suggested
-                    Analytics.shared.track("look_suggested", props: ["look_id": suggested.id, "source": "cloud_refine"])
+                    session.setActiveLook(applied)
+                    self.suggestedLook = nil
+                    Analytics.shared.track("look_applied", props: ["look_id": applied.id, "source": "cloud_refine_auto"])
                 }
                 session.optimizeReason = self.teachOneLiner ?? self.reasonNote
                 self.advancedDiffs = self.buildAdvancedDiffs(

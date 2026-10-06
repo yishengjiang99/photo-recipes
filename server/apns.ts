@@ -7,17 +7,24 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http2 from 'node:http2'
 
+export type ApnsPushType =
+  | 'pre_alarm_shoot_brief'
+  | 'come_shoot_nudge'
+  | 'd1_return'
+
+export type ApnsExperiment = 'push_exp1' | 'come_shoot' | 'd1_return'
+
 export type ApnsPayload = {
   aps: {
     alert: { title: string; body: string }
     sound?: string
     'mutable-content'?: number
   }
-  type: 'pre_alarm_shoot_brief'
+  type: ApnsPushType
   deepLink: string
   recipeChips: Array<{ id: string; title: string }>
   entitlementTier: 'free' | 'trial' | 'pro'
-  experiment: 'push_exp1'
+  experiment: ApnsExperiment
 }
 
 export type ApnsSendResult =

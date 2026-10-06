@@ -136,6 +136,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
             UserDefaults.standard.set(true, forKey: Self.didAskPushPermissionKey)
             forceRegisterAfterAllow = true
             syncPushOptIn(true)
+            scheduleEngagementLocalNotifications()
             requestAPNsDeviceToken(reason: "already_authorized")
             return
         }
@@ -156,6 +157,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
                 analytics.track(.pushPermissionAccepted)
                 forceRegisterAfterAllow = true
                 syncPushOptIn(true)
+                scheduleEngagementLocalNotifications()
                 // Critical path: Allow → APNs token → POST /api/push/register.
                 requestAPNsDeviceToken(reason: "permission_accepted")
             } else {
@@ -268,6 +270,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
             forceRegisterAfterAllow = false
             print("[Push] /api/push/register ok env=\(Self.apnsEnvironment)")
             syncPushOptIn(true)
+            scheduleEngagementLocalNotifications()
         } catch {
             defaults.set(false, forKey: lastServerRegisterOkKey)
             print("[Push] /api/push/register fail: \(error.localizedDescription)")
@@ -298,6 +301,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
                     forceRegisterAfterAllow = false
                     print("[Push] /api/push/register ok (backoff) env=\(Self.apnsEnvironment)")
                     syncPushOptIn(true)
+                    scheduleEngagementLocalNotifications()
                     return
                 } catch {
                     print("[Push] /api/push/register backoff fail: \(error.localizedDescription)")
@@ -342,6 +346,80 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "\(short) (\(build))"
+    }
+
+    // MARK: - Local engagement (D1 / come-shoot)
+    // Works without server cron. Remote come-shoot still runs when tick fires.
+
+    private static let localD1Id = "protune.local.d1_return"
+    private static let localGoldenId = "protune.local.golden_hour"
+    private static let didScheduleLocalsKey = "push.didScheduleEngagementLocals"
+
+    /// Schedule D1 evening + daily golden-hour locals after Allow.
+    /// Idempotent: replaces pending requests with the same ids.
+    func scheduleEngagementLocalNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional else { return }
+            Task { @MainActor in
+                await self.installEngagementLocals(center: center)
+            }
+        }
+    }
+
+    private func installEngagementLocals(center: UNUserNotificationCenter) async {
+        center.removePendingNotificationRequests(withIdentifiers: [
+            Self.localD1Id,
+            Self.localGoldenId,
+        ])
+
+        // D1: tomorrow at 18:00 local — "Come shoot tonight"
+        var d1 = DateComponents()
+        d1.hour = 18
+        d1.minute = 0
+        let d1Content = UNMutableNotificationContent()
+        d1Content.title = "Come shoot tonight"
+        d1Content.body = "Golden light is waiting — open ProTune and tap Auto Optimize."
+        d1Content.sound = .default
+        d1Content.userInfo = [
+            "type": "d1_return",
+            "deepLink": "photo-recipes://auto-optimize",
+        ]
+        // Fire once ~24–36h out: next 18:00 if >12h away, else day after.
+        let cal = Calendar.current
+        let now = Date()
+        var fire = cal.date(bySettingHour: 18, minute: 0, second: 0, of: now) ?? now
+        if fire.timeIntervalSince(now) < 12 * 3600 {
+            fire = cal.date(byAdding: .day, value: 1, to: fire) ?? fire
+        }
+        let d1Trigger = UNCalendarNotificationTrigger(
+            dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fire),
+            repeats: false
+        )
+        try? await center.add(UNNotificationRequest(identifier: Self.localD1Id, content: d1Content, trigger: d1Trigger))
+
+        // Daily golden-hour soft nudge at 17:30 (user can clear in Settings).
+        var gh = DateComponents()
+        gh.hour = 17
+        gh.minute = 30
+        let ghContent = UNMutableNotificationContent()
+        ghContent.title = "Golden hour"
+        ghContent.body = "Light is soft right now — open the camera and Auto Optimize a frame."
+        ghContent.sound = .default
+        ghContent.userInfo = [
+            "type": "come_shoot_nudge",
+            "deepLink": "photo-recipes://auto-optimize",
+        ]
+        let ghTrigger = UNCalendarNotificationTrigger(dateMatching: gh, repeats: true)
+        try? await center.add(UNNotificationRequest(identifier: Self.localGoldenId, content: ghContent, trigger: ghTrigger))
+
+        UserDefaults.standard.set(true, forKey: Self.didScheduleLocalsKey)
+        print("[Push] scheduled local D1 + golden-hour engagement")
+        Analytics.shared.track("push_local_scheduled", props: [
+            "d1": "1",
+            "golden": "1",
+        ])
     }
 
     // MARK: - Deep link / open

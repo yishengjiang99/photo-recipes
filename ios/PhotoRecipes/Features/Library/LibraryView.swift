@@ -68,7 +68,7 @@ struct LibraryView: View {
             EntitlementBadge(isPro: entitlements.isPro)
             if !entitlements.isPro {
                 Button {
-                    entitlements.showPaywall = true
+                    entitlements.presentHardPaywall(trigger: "library_upgrade", force: true)
                 } label: {
                     Text("Upgrade")
                         .font(AppTheme.caption())

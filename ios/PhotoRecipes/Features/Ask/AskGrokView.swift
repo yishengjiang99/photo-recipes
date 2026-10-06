@@ -389,7 +389,7 @@ struct FieldCoachPanel: View {
                 .foregroundStyle(AppTheme.inkSecondary)
             if showPaywallFromQuota || text.lowercased().contains("limit") || text.lowercased().contains("upgrade") {
                 Button("Upgrade · 7-day trial") {
-                    entitlements.showPaywall = true
+                    entitlements.presentHardPaywall(trigger: "ask_quota", force: true)
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
             }
@@ -526,7 +526,7 @@ struct FieldCoachPanel: View {
         } catch let APIError.paywall(payload) {
             errorText = payload.error
             showPaywallFromQuota = true
-            entitlements.showPaywall = true
+            entitlements.presentHardPaywall(trigger: "ask_quota", force: true)
             await entitlements.refresh()
         } catch let APIError.missingKey(msg) {
             errorText = msg
@@ -549,7 +549,7 @@ struct FieldCoachPanel: View {
             } catch let APIError.paywall(payload) {
                 errorText = payload.error
                 showPaywallFromQuota = true
-                entitlements.showPaywall = true
+                entitlements.presentHardPaywall(trigger: "ask_quota", force: true)
                 await entitlements.refresh()
             } catch let APIError.missingKey(msg) {
                 errorText = msg

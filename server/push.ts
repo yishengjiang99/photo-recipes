@@ -18,6 +18,7 @@ import { upsertDeviceAndPushToken } from './pushDevices.ts'
 import {
   DEEP_LINK,
   isPushExp1Enabled,
+  runComeShootNudgeTick,
   runPushExp1Tick,
   tierFromEntitlement,
 } from './pushScheduler.ts'
@@ -233,8 +234,11 @@ export function mountPushRoutes(app: Express) {
       return
     }
     try {
-      const tick = await runPushExp1Tick(new Date())
-      res.json({ ok: true, tick })
+      const now = new Date()
+      // Primary: come-shoot / D1 (no shootWindow). Secondary: Exp1 shoot briefs.
+      const comeShoot = await runComeShootNudgeTick(now)
+      const tick = await runPushExp1Tick(now)
+      res.json({ ok: true, comeShoot, tick })
     } catch (err) {
       console.error('[push/tick]', err instanceof Error ? err.message : err)
       res.status(500).json({ error: 'tick_failed' })
@@ -265,11 +269,11 @@ export function mountPushRoutes(app: Express) {
     const title =
       typeof body.title === 'string' && body.title.trim()
         ? body.title.trim()
-        : 'Shoot brief ready'
+        : 'Come shoot'
     const alertBody =
       typeof body.body === 'string' && body.body.trim()
         ? body.body.trim()
-        : 'Test send — open Auto Optimize when ready.'
+        : 'Test nudge — open Auto Optimize when ready.'
 
     type Tok = { token: string; environment: 'sandbox' | 'production' }
     let targets: Tok[] = []
@@ -316,11 +320,11 @@ export function mountPushRoutes(app: Express) {
         alert: { title, body: alertBody },
         sound: 'default',
       },
-      type: 'pre_alarm_shoot_brief',
+      type: 'come_shoot_nudge',
       deepLink: DEEP_LINK,
       recipeChips: chips,
       entitlementTier: tier,
-      experiment: 'push_exp1',
+      experiment: 'come_shoot',
     }
 
     try {
