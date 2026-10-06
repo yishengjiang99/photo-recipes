@@ -37,6 +37,9 @@ targets:
       - path: PhotoRecipes
         excludes:
           - "**/*.md"
+          - "Resources/Assets.xcassets"
+          - "Resources/Products.storekit"
+          - "Resources/PrivacyInfo.xcprivacy"
     resources:
       - path: PhotoRecipes/Resources/Assets.xcassets
       - path: PhotoRecipes/Resources/Products.storekit
@@ -53,7 +56,7 @@ targets:
         PRODUCT_NAME: ProTune AI Camera
         PRODUCT_MODULE_NAME: PhotoRecipes
         MARKETING_VERSION: "1.2"
-        CURRENT_PROJECT_VERSION: "48"
+        CURRENT_PROJECT_VERSION: "49"
         GENERATE_INFOPLIST_FILE: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_EMIT_LOC_STRINGS: YES

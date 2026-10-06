@@ -13,6 +13,8 @@ Restart=on-failure
 RestartSec=3
 User=www-data
 Group=www-data
+# /var/lib/photo-recipes (STATE_DIRECTORY) — e.g. attribution-postbacks.jsonl
+StateDirectory=photo-recipes
 # Hardening
 NoNewPrivileges=true
 PrivateTmp=true

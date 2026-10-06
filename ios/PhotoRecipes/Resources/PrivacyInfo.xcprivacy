@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  ProTune AI Camera app privacy manifest (1.2). Covers the app's own code.
+
+  AppsFlyerLib and FacebookCore ship their own PrivacyInfo.xcprivacy; Xcode merges
+  them into the privacy report. Apple ITMS-91064 / TN3181 require:
+    - NSPrivacyTracking=true when NSPrivacyTrackingDomains is non-empty
+    - NSPrivacyTracking=true must not ship with an empty domains array
+  So this app manifest declares tracking=true and lists the ATT-gated domains used
+  by AppsFlyer + Meta App Events (even if a given build omits the AppsFlyer dev
+  key at runtime — the SDKs remain linked and their manifests still ship).
+
+  Keep in sync with docs/asc/app-privacy-1.2.md and /privacy.
+-->
+<dict>
+	<key>NSPrivacyTracking</key>
+	<true/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array>
+		<!-- AppsFlyer ATT-gated tracking domains (from AppsFlyerLib PrivacyInfo) -->
+		<string>att.attr.appsflyersdk.com</string>
+		<string>att.launches.appsflyersdk.com</string>
+		<string>att.conversions.appsflyersdk.com</string>
+		<string>att.dlsdk.appsflyersdk.com</string>
+		<string>att.attr.whappsflyer.com</string>
+		<string>att.launches.whappsflyer.com</string>
+		<string>att.conversions.whappsflyer.com</string>
+		<string>att.dlsdk.whappsflyer.com</string>
+		<string>att.attr.appsflyer-cn.com</string>
+		<string>att.launches.appsflyer-cn.com</string>
+		<string>att.conversions.appsflyer-cn.com</string>
+		<string>att.dlsdk.appsflyer-cn.com</string>
+		<string>att.attr.hevents.appsflyer-cn.com</string>
+		<string>att.launches.hevents.appsflyer-cn.com</string>
+		<string>att.conversions.hevents.appsflyer-cn.com</string>
+		<string>att.dlsdk.hevents.appsflyer-cn.com</string>
+		<!-- Meta / Facebook App Events -->
+		<string>ep1.facebook.com</string>
+	</array>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<!-- AppsFlyer + Meta attribution events (install, first Auto Optimize, trial / subscribe) -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+				<string>NSPrivacyCollectedDataTypePurposeDeveloperAdvertising</string>
+			</array>
+		</dict>
+		<!-- af_start_trial / af_subscribe / Meta StartTrial + purchase (product, price, currency) -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePurchaseHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+				<string>NSPrivacyCollectedDataTypePurposeDeveloperAdvertising</string>
+			</array>
+		</dict>
+		<!-- IDFA (only if ATT allowed), IDFV, AppsFlyer ID, Meta anon id; app guest / anon id and APNs token -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+				<string>NSPrivacyCollectedDataTypePurposeDeveloperAdvertising</string>
+				<string>NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising</string>
+			</array>
+		</dict>
+		<!-- AppsFlyer maps the request IP to country / region -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCoarseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+				<string>NSPrivacyCollectedDataTypePurposeDeveloperAdvertising</string>
+			</array>
+		</dict>
+		<!-- Recommend / Auto Optimize vision frames, sent per request only -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- Cloud speech-to-text fallback for scene dictation -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeAudioData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- In-house error events (api_error / optimize_error) -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

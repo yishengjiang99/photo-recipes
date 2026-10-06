@@ -81,6 +81,7 @@ final class StoreKitManager: ObservableObject {
                 )
                 await transaction.finish()
                 purchasedProductIDs.insert(product.id)
+                Attribution.shared.notePurchase(product: product, transaction: transaction)
                 MetaEvents.logSubscriptionPurchase(
                     productId: product.id,
                     price: product.price,

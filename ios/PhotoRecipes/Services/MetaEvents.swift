@@ -18,9 +18,10 @@ import UIKit
 ///
 /// PRIVACY NOTE: this integration shows an App Tracking Transparency prompt
 /// (see `requestTrackingIfNeeded`) and sends install/purchase events to Meta.
-/// The real Facebook App ID is not configured yet — Info.plist still carries
-/// the `FB_APP_ID_PLACEHOLDER` placeholder, and while it does, `configure`
-/// skips SDK init entirely (no events, no ATT prompt).
+/// `configure` still no-ops if Info.plist has `FB_APP_ID_PLACEHOLDER`; the
+/// shipping Info.plist carries the real Facebook App ID, so the SDK is active.
+/// AppsFlyer attribution (when a build has `AppsFlyerDevKey`) is separate — see
+/// `Attribution.swift`.
 @MainActor
 enum MetaEvents {
     /// True once `configure` has initialized the SDK with a real App ID.

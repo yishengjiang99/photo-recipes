@@ -52,6 +52,10 @@ export const TELEMETRY_EVENT_ALLOWLIST = new Set([
   // Server-side / opaque API failures (also inserted by logApiError)
   'api_error',
   'optimize_error',
+  // Ad attribution (1.2+): ATT prompt outcome + server-side postback copies
+  'att_prompt_result',
+  'skan_postback',
+  'aak_postback',
 ])
 
 const BLOCKED_PROP_KEYS = /^(email|e_?mail|phone|password|token|authorization|cookie|image|photo|frame|base64|gps|lat|lng|longitude|latitude|ssn|name|full.?name)$/i

@@ -51,6 +51,9 @@ final class Analytics {
     }
 
     func track(_ event: String, props: [String: String] = [:]) {
+        if event == "auto_optimize_success" {
+            Attribution.shared.noteAutoOptimizeSuccess()
+        }
         var cleaned: [String: String] = [:]
         for (k, v) in props {
             if k.range(of: "email|phone|image|photo|base64|gps|lat|lng|token|password", options: .regularExpression) != nil {
