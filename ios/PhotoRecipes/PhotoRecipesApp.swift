@@ -61,6 +61,13 @@ final class AppModel: ObservableObject {
     let push = PushNotificationManager.shared
 
     init() {
+        // Before Analytics mints an anon id: installs that already have one (or finished
+        // onboarding) predate the welcome window and keep the standard daily pool.
+        let d = UserDefaults.standard
+        FreeOptimizeQuota().ensureInstallDate(
+            existingUser: d.string(forKey: "telemetry.anonId") != nil
+                || d.bool(forKey: OnboardingStore.completedKey)
+        )
         Analytics.shared.bootstrap()
         let ents = EntitlementsStore(api: APIClient.shared)
         self.entitlements = ents

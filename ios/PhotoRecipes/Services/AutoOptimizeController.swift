@@ -79,6 +79,13 @@ final class AutoOptimizeController: ObservableObject {
     @Published var suggestedLook: CreativeLook?
     /// Bumps when Pass 1 / Pass 2 successfully writes dials — CameraView shows on-finder apply burst.
     @Published var applyFeedbackToken: Int = 0
+    /// Look id auto-applied by the last run (for look_undone telemetry).
+    @Published var autoAppliedLookId: String?
+    /// Trigger of the last run: manual / auto_first_capture / subject_change / voice / deep_link / teach.
+    private(set) var lastTrigger: String = "manual"
+
+    /// Set when the user undoes an Auto Optimize — never auto-run again for this install.
+    static let userUndidKey = "autoOptimize.userUndid"
 
     private let log = Logger(subsystem: "com.ragnus.mvp", category: "AutoOptimize")
 
@@ -123,44 +130,37 @@ final class AutoOptimizeController: ObservableObject {
     var coreDiffs: [DiffLine] { diffs.filter { $0.tier == .core } }
 
     private let api: APIClient
-    /// Shared Free Peek Optimize pool (aligned with server FREE_DAILY_LIMIT default 5). One charge per AO tap.
-    private let freeKey = "autoOptimize.freeUses.day"
-    private let freeDateKey = "autoOptimize.freeUses.date"
     /// Fallback when subscription-status has not loaded (matches server FREE_DAILY_LIMIT default from #71).
-    static let freeDailyLimit = 5
+    static let freeDailyLimit = FreeOptimizeQuota.defaultDailyLimit
 
     init(api: APIClient = .shared) { self.api = api }
 
-    /// Shared Free Peek daily pool (same default as server FREE_DAILY_LIMIT = 5).
-    /// One Auto Optimize tap = one unit; Pass 2 refine does not charge again.
+    /// Successful-output quota (welcome window: 10 in first 24h, then daily limit).
+    var quota: FreeOptimizeQuota { FreeOptimizeQuota() }
+
     var freeRemainingToday: Int {
-        refreshDay()
-        return max(0, Self.freeDailyLimit - UserDefaults.standard.integer(forKey: freeKey))
+        quota.remaining(serverDailyLimit: nil)
     }
 
+    /// Local AO quota counts successful optimizes on device (local AO never hits the server,
+    /// so server `asksRemaining` — the Ask/Recommend pool — is not used here).
     func freeRemainingToday(entitlements: EntitlementsStore) -> Int {
-        if let remaining = entitlements.status.asksRemaining {
-            return max(0, remaining)
-        }
-        let limit = entitlements.status.freeDailyLimit ?? Self.freeDailyLimit
-        refreshDay()
-        return max(0, limit - UserDefaults.standard.integer(forKey: freeKey))
+        quota.remaining(serverDailyLimit: entitlements.status.freeDailyLimit)
     }
 
     func canRun(isPro: Bool) -> Bool {
         isPro || freeRemainingToday > 0
     }
 
-    /// Pro / unlimited allowlist / asksLimit == nil → unlimited. Else shared free daily pool.
+    /// Pro / unlimited allowlist / asksLimit == nil → unlimited. Else free successful-output pool.
     func canRun(entitlements: EntitlementsStore) -> Bool {
         if isUnlimitedAsk(entitlements) { return true }
         return freeRemainingToday(entitlements: entitlements) > 0
     }
 
+    /// Called only on optimize success — failures, timeouts and cancels never consume.
     private func consumeSharedFreeIfNeeded(_ entitlements: EntitlementsStore) {
-        guard !isUnlimitedAsk(entitlements) else { return }
-        refreshDay()
-        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: freeKey) + 1, forKey: freeKey)
+        quota.recordSuccess(countsAgainstFree: !isUnlimitedAsk(entitlements))
         objectWillChange.send()
     }
 
@@ -169,15 +169,6 @@ final class AutoOptimizeController: ObservableObject {
         entitlements.isPro
             || entitlements.status.unlimited == true
             || entitlements.status.asksLimit == nil
-    }
-
-    private func refreshDay() {
-        let f = DateFormatter(); f.calendar = Calendar.current; f.dateFormat = "yyyy-MM-dd"
-        let today = f.string(from: Date())
-        if UserDefaults.standard.string(forKey: freeDateKey) != today {
-            UserDefaults.standard.set(today, forKey: freeDateKey)
-            UserDefaults.standard.set(0, forKey: freeKey)
-        }
     }
 
     func resetToAgent(session: CameraSession) {
@@ -199,9 +190,30 @@ final class AutoOptimizeController: ObservableObject {
         suggestedLook = nil
     }
 
+    /// Persistent Undo: restore the pre-optimize camera (auto exposure / focus, no look / LUT).
+    func undo(session: CameraSession) {
+        let lookId = session.activeCreativeLook?.id
+        Analytics.shared.track("optimize_undone", props: [
+            "recipe_id": chosenRecipeId ?? "",
+            "trigger": lastTrigger,
+            "had_look": lookId == nil ? "0" : "1",
+        ])
+        if let lookId, lookId == autoAppliedLookId {
+            Analytics.shared.track("look_undone", props: [
+                "look_id": lookId,
+                "auto_applied": "1",
+                "rank": "1",
+                "source": "undo",
+            ])
+        }
+        UserDefaults.standard.set(true, forKey: Self.userUndidKey)
+        session.clearRecipe()
+        clear()
+    }
+
     func applySuggestedLook(session: CameraSession) {
         guard let look = suggestedLook else { return }
-        Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "suggested"])
+        Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "suggested", "rank": "1", "auto_applied": "0"])
         session.setActiveLook(look)
         suggestedLook = nil
         phase = .ready
@@ -218,6 +230,7 @@ final class AutoOptimizeController: ObservableObject {
         verifyWarning = nil; agentBaseline = nil; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
+        autoAppliedLookId = nil
         applyFeedbackToken = 0
     }
 
@@ -227,7 +240,8 @@ final class AutoOptimizeController: ObservableObject {
         entitlements: EntitlementsStore,
         preferStagedRecipeId: String?,
         sceneNote: String = "",
-        devicePitchDegrees: Double? = nil
+        devicePitchDegrees: Double? = nil,
+        trigger: String = "manual"
     ) async {
         guard !phase.isRunning else {
             log.info("run skipped — already running")
@@ -235,7 +249,7 @@ final class AutoOptimizeController: ObservableObject {
         }
         guard canRun(entitlements: entitlements) else {
             phase = .error("Free Peek limit reached — try again tomorrow or go Pro")
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "path": "local"])
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "error_class": "quota", "path": "local", "trigger": trigger])
             log.info("run blocked — quota")
             return
         }
@@ -244,9 +258,32 @@ final class AutoOptimizeController: ObservableObject {
         isCloudRefining = false
         runGeneration &+= 1
         let generation = runGeneration
+        lastTrigger = trigger
+        let startedAt = Date()
+        let isFirstSuccessPending = !UserDefaults.standard.bool(
+            forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
+        )
+        // Event contract: trigger (auto/manual), path (local/cloud), latency, first-run flag.
+        let runProps: [String: String] = [
+            "trigger": trigger,
+            "path": "local",
+            "is_first": isFirstSuccessPending ? "1" : "0",
+        ]
+        func latencyProps() -> [String: String] {
+            runProps.merging(["latency_ms": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"]) { _, new in new }
+        }
+        /// Stop tapped (clear() bumps runGeneration) → abandon without consuming quota.
+        func wasCancelled(stage: String) -> Bool {
+            guard runGeneration != generation else { return false }
+            Analytics.shared.track("auto_optimize_cancel", props: latencyProps().merging(["stage": stage]) { _, new in new })
+            return true
+        }
+        // First win stays local — never route it (or an auto run) through the cloud.
+        let allowCloudRefine = !isFirstSuccessPending && trigger != "auto_first_capture"
 
         PushAnalytics.shared.track(.autoOptimizeStarted)
-        Analytics.shared.track("auto_optimize_start", props: ["source": "ios_hybrid_pass1"])
+        Analytics.shared.track("auto_optimize_start", props: runProps.merging(["source": "ios_hybrid_pass1"]) { _, new in new })
+        autoAppliedLookId = nil
         verifyWarning = nil; diffs = []; advancedDiffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
@@ -305,6 +342,7 @@ final class AutoOptimizeController: ObservableObject {
             sceneNote: sceneNote,
             pitchDegrees: devicePitchDegrees
         )
+        if wasCancelled(stage: "sense") { return }
         senseSummary = signals.senseSummary
 
         phase = .reasoning("Matching a recipe…")
@@ -317,7 +355,7 @@ final class AutoOptimizeController: ObservableObject {
         )
 
         guard let recipe = BundledPresets.recipe(id: local.recipeId) else {
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "no_recipe", "path": "local"])
+            Analytics.shared.track("auto_optimize_fail", props: latencyProps().merging(["error_code": "no_recipe", "error_class": "no_recipe"]) { _, new in new })
             phase = .error("Couldn’t match a recipe — try again")
             return
         }
@@ -332,6 +370,7 @@ final class AutoOptimizeController: ObservableObject {
 
         phase = .applying("Applying shutter & ISO…")
         try? await Task.sleep(nanoseconds: 120_000_000)
+        if wasCancelled(stage: "apply") { return }
 
         let notesBefore = session.applyNotes
         let applied = session.apply(recipe: recipe)
@@ -346,17 +385,35 @@ final class AutoOptimizeController: ObservableObject {
         }
 
         if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
-            var applied = look
-            if applied.intensity == nil {
-                applied.intensity = CreativeLookCatalog.defaultIntensity
+            var top = look
+            if top.intensity == nil {
+                top.intensity = CreativeLookCatalog.defaultIntensity
             }
-            phase = .applying("Applying look: \(applied.displayName)…")
-            try? await Task.sleep(nanoseconds: 80_000_000)
-            // Auto-apply top look; LookChip active × clears (undo). No silent-suggest chip.
-            session.setActiveLook(applied)
-            suggestedLook = nil
-            Analytics.shared.track("look_suggested", props: ["look_id": applied.id, "source": "local_auto"])
-            Analytics.shared.track("look_applied", props: ["look_id": applied.id, "source": "local_auto"])
+            let confidence = String(format: "%.2f", local.lookConfidence)
+            if local.lookConfidence >= LocalAutoOptimizeEngine.lookAutoApplyThreshold {
+                phase = .applying("Applying look: \(top.displayName)…")
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                // Auto-apply only the top *confident* look; unstyled optimize stays underneath
+                // (LookChip × / Undo).
+                session.setActiveLook(top)
+                suggestedLook = nil
+                autoAppliedLookId = top.id
+                Analytics.shared.track("look_suggested", props: [
+                    "look_id": top.id, "source": "local_auto", "rank": "1",
+                    "auto_applied": "1", "confidence": confidence,
+                ])
+                Analytics.shared.track("look_applied", props: [
+                    "look_id": top.id, "source": "local_auto", "rank": "1",
+                    "auto_applied": "1", "confidence": confidence,
+                ])
+            } else {
+                // Low confidence → suggestion chip (Apply / Dismiss), no auto-apply.
+                suggestedLook = top
+                Analytics.shared.track("look_suggested", props: [
+                    "look_id": top.id, "source": "local", "rank": "1",
+                    "auto_applied": "0", "confidence": confidence,
+                ])
+            }
         }
 
         session.optimizeReason = teachOneLiner ?? reasonNote
@@ -369,13 +426,17 @@ final class AutoOptimizeController: ObservableObject {
             phase = .ready
             // Always bump so CameraView can show burst/toast — never silent Ready.
             applyFeedbackToken &+= 1
-            Analytics.shared.track("auto_optimize_success", props: [
+            Analytics.shared.track("auto_optimize_success", props: latencyProps().merging([
                 "recipe_id": recipe.id,
                 "coach_only": "true",
-                "path": "local",
-            ])
+                "look_id": session.activeCreativeLook?.id ?? "",
+            ]) { _, new in new })
             consumeSharedFreeIfNeeded(entitlements)
             PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
+            guard allowCloudRefine else {
+                Analytics.shared.track("cloud_refine_skipped", props: ["reason": "first_win_local", "recipe_id": recipe.id])
+                return
+            }
             schedulePass2CloudRefine(
                 session: session,
                 entitlements: entitlements,
@@ -400,16 +461,21 @@ final class AutoOptimizeController: ObservableObject {
             phase = .verifying("Motion risk — holding shutter speed")
             try? await Task.sleep(nanoseconds: 120_000_000)
         }
+        if wasCancelled(stage: "verify") { return }
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
         log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets)")
-        Analytics.shared.track("auto_optimize_success", props: [
+        Analytics.shared.track("auto_optimize_success", props: latencyProps().merging([
             "recipe_id": recipe.id,
-            "path": "local",
-        ])
+            "look_id": session.activeCreativeLook?.id ?? "",
+        ]) { _, new in new })
         consumeSharedFreeIfNeeded(entitlements)
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
+        guard allowCloudRefine else {
+            Analytics.shared.track("cloud_refine_skipped", props: ["reason": "first_win_local", "recipe_id": recipe.id])
+            return
+        }
         schedulePass2CloudRefine(
             session: session,
             entitlements: entitlements,

@@ -14,8 +14,13 @@ enum LocalAutoOptimizeEngine {
         var panCue: PanCue?
         var coachOnly: CoachOnly?
         var suggestedLook: CreativeLook?
+        /// 0–1 — auto-apply only at/above `lookAutoApplyThreshold`; below → chip suggestion.
+        var lookConfidence: Double = 0
         var senseSummary: String
     }
+
+    /// Below this, show the look as a suggestion (Apply / Dismiss) instead of auto-applying.
+    static let lookAutoApplyThreshold = 0.6
 
     static func recommend(
         signals: LocalSceneSignals,
@@ -26,7 +31,8 @@ enum LocalAutoOptimizeEngine {
             ?? chooseRecipeId(signals)
         let recipe = BundledPresets.recipe(id: recipeId) ?? BundledPresets.sharpFrontToBack
         let targets = buildPhoneTargets(recipeId: recipe.id, signals: signals, capabilities: capabilities)
-        let look = suggestLook(signals: signals)
+        let scored = scoredLook(signals: signals)
+        let look = scored?.look
         let (reason, teach) = copy(for: recipe.id, signals: signals)
         let pan = panCue(for: recipe.id)
         let coach = coachOnly(for: recipe.id, signals: signals)
@@ -48,6 +54,7 @@ enum LocalAutoOptimizeEngine {
             panCue: pan,
             coachOnly: coach,
             suggestedLook: look,
+            lookConfidence: scored?.confidence ?? 0,
             senseSummary: signals.senseSummary
         )
     }
@@ -269,58 +276,66 @@ enum LocalAutoOptimizeEngine {
     // MARK: - Look suggest (chip only)
 
     static func suggestLook(signals: LocalSceneSignals) -> CreativeLook? {
-        // Prefer specific scene → look matches. goldenHour only for clearly warm late light
-        // (was over-suggested: 42/54 telemetry suggestions).
+        scoredLook(signals: signals)?.look
+    }
+
+    /// Look + confidence. Strong, specific evidence (explicit night / food note, faces) scores
+    /// high and is auto-applied; generic fallbacks (contrast-only, mild warmth, landscape
+    /// styling) score low and are only suggested. goldenHour needs strong warm late light
+    /// (was 42/54 telemetry suggestions).
+    static func scoredLook(signals: LocalSceneSignals) -> (look: CreativeLook, confidence: Double)? {
         let h = signals.sceneNoteHints
         let note = (signals.senseSummary + " ").lowercased()
 
         // Night / very dark → moody film (or coolBlue if cool cast).
         if h.night || signals.brightness01 < 0.22 {
+            let conf = h.night ? 0.8 : 0.65
             if signals.warmBias < -0.05 {
-                return CreativeLook(id: "coolBlue", intensity: 0.5)
+                return (CreativeLook(id: "coolBlue", intensity: 0.5), conf)
             }
-            return CreativeLook(id: "moodyFilm", intensity: CreativeLookCatalog.defaultIntensity)
+            return (CreativeLook(id: "moodyFilm", intensity: CreativeLookCatalog.defaultIntensity), conf)
         }
 
         // Faces / portrait → warmGlow (skin-friendly), not goldenHour.
         if signals.faceCount > 0 {
             if signals.warmBias < -0.08 {
-                return CreativeLook(id: "crispCool", intensity: 0.45)
+                return (CreativeLook(id: "crispCool", intensity: 0.45), 0.7)
             }
-            return CreativeLook(id: "warmGlow", intensity: 0.45)
+            return (CreativeLook(id: "warmGlow", intensity: 0.45), 0.75)
         }
 
         // Explicit cool / overcast steel.
         if signals.warmBias < -0.1 && signals.contrast01 > 0.35 {
-            return CreativeLook(id: "crispCool", intensity: CreativeLookCatalog.defaultIntensity)
+            return (CreativeLook(id: "crispCool", intensity: CreativeLookCatalog.defaultIntensity), 0.6)
         }
 
         // Landscape / deep scene → tealOrange cinematic, not golden by default.
         if h.wantsLandscapeDoF || note.contains("landscape") || note.contains("horizon") {
             if signals.warmBias > 0.18 && signals.brightness01 > 0.4 && signals.brightness01 < 0.75 {
-                return CreativeLook(id: "goldenHour", intensity: 0.5)
+                return (CreativeLook(id: "goldenHour", intensity: 0.5), 0.7)
             }
-            return CreativeLook(id: "tealOrange", intensity: 0.5)
+            // Stylistic choice, not scene evidence → suggest only.
+            return (CreativeLook(id: "tealOrange", intensity: 0.5), 0.5)
         }
 
         // Food / color pop cues from note.
         if h.food || note.contains("food") || note.contains("meal") || note.contains("dish") {
-            return CreativeLook(id: "warmPop", intensity: 0.5)
+            return (CreativeLook(id: "warmPop", intensity: 0.5), h.food ? 0.8 : 0.7)
         }
 
-        // High contrast daylight → blockbuster / loFi, not golden.
+        // High contrast daylight → blockbuster, suggest only (contrast alone is weak evidence).
         if signals.contrast01 > 0.55 && signals.brightness01 > 0.45 {
-            return CreativeLook(id: "blockbuster", intensity: 0.5)
+            return (CreativeLook(id: "blockbuster", intensity: 0.5), 0.45)
         }
 
         // True golden hour: strong warm bias + mid brightness (late light), no faces.
         if signals.warmBias > 0.18 && signals.brightness01 > 0.38 && signals.brightness01 < 0.72 {
-            return CreativeLook(id: "goldenHour", intensity: CreativeLookCatalog.defaultIntensity)
+            return (CreativeLook(id: "goldenHour", intensity: CreativeLookCatalog.defaultIntensity), 0.62)
         }
 
-        // Mild warm daylight → warmPop; mild cool → softDream skip (nil = no look).
+        // Mild warm daylight → warmPop suggestion only.
         if signals.warmBias > 0.08 && signals.brightness01 > 0.4 {
-            return CreativeLook(id: "warmPop", intensity: 0.45)
+            return (CreativeLook(id: "warmPop", intensity: 0.45), 0.4)
         }
 
         return nil

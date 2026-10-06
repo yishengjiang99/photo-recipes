@@ -39,6 +39,14 @@ final class Analytics {
         return sid ?? UUID().uuidString
     }
 
+    static let baseProps: [String: String] = {
+        let info = Bundle.main.infoDictionary
+        return [
+            "app_version": info?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "build": info?["CFBundleVersion"] as? String ?? "unknown",
+        ]
+    }()
+
     func bootstrap() {
         guard !didBoot else { return }
         didBoot = true
@@ -55,8 +63,18 @@ final class Analytics {
             Attribution.shared.noteAutoOptimizeSuccess()
         }
         var cleaned: [String: String] = [:]
-        for (k, v) in props {
-            if k.range(of: "email|phone|image|photo|base64|gps|lat|lng|token|password", options: .regularExpression) != nil {
+        // Event contract: every event carries app_version + build (+ install age) so
+        // journeys reconstruct by version. Explicit props win.
+        var merged = Self.baseProps
+        let quota = FreeOptimizeQuota()
+        merged["hours_since_install"] = "\(quota.hoursSinceInstall)"
+        merged["is_new_user"] = quota.inWelcomeWindow ? "1" : "0"
+        for (k, v) in props { merged[k] = v }
+        for (k, v) in merged {
+            // Coordinates are matched as whole keys only — the old substring "lat" also
+            // dropped latency_ms and platform.
+            if k.range(of: "email|phone|image|photo|base64|gps|token|password", options: .regularExpression) != nil
+                || k.range(of: "^(lat|lng|lon|latitude|longitude)$", options: .regularExpression) != nil {
                 continue
             }
             if v.hasPrefix("data:image") || v.count > 200 { continue }

@@ -91,11 +91,31 @@ final class EntitlementsStore: ObservableObject {
             "mode": "hard",
         ])
         if trigger == "free_quota" || trigger.contains("quota") {
+            let q = FreeOptimizeQuota()
             Analytics.shared.track("free_quota_hit", props: [
                 "trigger": trigger,
+                "quota_limit": "\(q.limit(serverDailyLimit: status.freeDailyLimit))",
+                "quota_remaining": "\(q.remaining(serverDailyLimit: status.freeDailyLimit))",
+                "successful_uses": "\(q.successfulUsesTotal)",
+                "day_index": "\(q.dayIndex)",
+                "welcome_window": q.inWelcomeWindow ? "1" : "0",
             ])
         }
         return true
+    }
+
+    /// paywall_view context (event contract): trigger, mode, had_success, quota state.
+    var paywallViewProps: [String: String] {
+        let q = FreeOptimizeQuota()
+        return [
+            "source": "ios_sheet",
+            "paywall_trigger": paywallTrigger,
+            "mode": paywallMode.rawValue,
+            "had_success": hasFeltOptimizeValue ? "1" : "0",
+            "quota_limit": "\(q.limit(serverDailyLimit: status.freeDailyLimit))",
+            "quota_remaining": isPro ? "unlimited" : "\(q.remaining(serverDailyLimit: status.freeDailyLimit))",
+            "successful_uses": "\(q.successfulUsesTotal)",
+        ]
     }
 
     func refresh() async {

@@ -37,6 +37,9 @@ struct MainTabView: View {
                 .environmentObject(entitlements)
                 .environmentObject(storeKit)
                 .environmentObject(api)
+                // Soft (post-success) sheet opens at half height so the optimized
+                // viewfinder stays visible behind it; hard gate is full height.
+                .presentationDetents(entitlements.paywallMode == .soft ? [.medium, .large] : [.large])
         }
     }
 }

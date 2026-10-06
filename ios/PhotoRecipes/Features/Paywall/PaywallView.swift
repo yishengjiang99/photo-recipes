@@ -13,7 +13,7 @@ struct PaywallView: View {
                 ScrollView {
                     VStack(spacing: AppTheme.space5) {
                         Text(entitlements.paywallMode == .soft
-                              ? "Nice shot — keep going?"
+                              ? "Your photo is optimized"
                               : "Free Peek limit reached")
                             .font(AppTheme.caption())
                             .foregroundStyle(AppTheme.inkSecondary)
@@ -27,8 +27,8 @@ struct PaywallView: View {
                             .multilineTextAlignment(.center)
 
                         Text(entitlements.paywallMode == .soft
-                              ? "You felt the Optimize pop. Pro unlocks unlimited Auto Optimize every day."
-                              : "You've used today's free Optimizes. Pro unlocks unlimited Auto Optimize.")
+                              ? "Keep the momentum — go Pro for unlimited Auto Optimize and Coach. Free keeps working."
+                              : "You've used your free Optimizes for now. Pro unlocks unlimited Auto Optimize.")
                             .font(AppTheme.bodySm())
                             .foregroundStyle(AppTheme.inkSecondary)
                             .multilineTextAlignment(.center)
@@ -99,10 +99,18 @@ struct PaywallView: View {
             }
             .navigationTitle("Upgrade")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { Analytics.shared.track("paywall_view", props: ["source": "ios_sheet"]) }
+            .onAppear { Analytics.shared.track("paywall_view", props: entitlements.paywallViewProps) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    // Soft (post-success) sheet: "Keep using free" stays visible at every detent.
+                    Button(entitlements.paywallMode == .soft ? "Keep using free" : "Close") {
+                        Analytics.shared.track("paywall_dismiss", props: [
+                            "mode": entitlements.paywallMode.rawValue,
+                            "paywall_trigger": entitlements.paywallTrigger,
+                            "action": entitlements.paywallMode == .soft ? "keep_free" : "close",
+                        ])
+                        dismiss()
+                    }
                         .foregroundStyle(AppTheme.inkSecondary)
                         .frame(minHeight: AppTheme.touchMin)
                 }

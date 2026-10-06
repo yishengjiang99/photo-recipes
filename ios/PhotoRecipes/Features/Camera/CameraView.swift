@@ -63,6 +63,11 @@ struct CameraView: View {
     @State private var recommendStreamStatus: String?
     @State private var recommendStreamPhase: String?
 
+    /// Press-and-hold compare: preview shows the unstyled original while true.
+    @State private var comparingOriginal = false
+    /// Post-save celebration ("Try another photo" + reminder offer).
+    @State private var postSaveCard: PostSaveCard.Model?
+
     var body: some View {
         ZStack {
             AppTheme.bg.ignoresSafeArea()
@@ -141,7 +146,7 @@ struct CameraView: View {
         .onChange(of: session.subjectAreaChangeToken) { _, token in
             guard token > 0, canOptimize else { return }
             // monitorSubjectAreaChange → debounced re-run of Auto Optimize (same apply path).
-            Task { await runOptimize() }
+            Task { await runOptimize(trigger: "subject_change") }
         }
 
         .onChange(of: voice.phase) { _, phase in
@@ -216,7 +221,7 @@ struct CameraView: View {
                 activeLook: session.activeCreativeLook,
                 onReoptimizeSubject: {
                     showTeach = false
-                    Task { await runOptimize() }
+                    Task { await runOptimize(trigger: "teach") }
                 },
                 onDone: { showTeach = false }
             )
@@ -318,8 +323,8 @@ struct CameraView: View {
             ZStack {
                 CameraPreviewView(
                     session: session.session,
-                    previewLUTId: session.previewLUTId,
-                    creativeLook: session.activeCreativeLook
+                    previewLUTId: comparingOriginal ? nil : session.previewLUTId,
+                    creativeLook: comparingOriginal ? nil : session.activeCreativeLook
                 )
                     .ignoresSafeArea()
                     .simultaneousGesture(
@@ -434,6 +439,24 @@ struct CameraView: View {
                     .transition(.opacity)
                     .zIndex(20)
                 }
+
+                if let card = postSaveCard {
+                    ZStack {
+                        Color.black.opacity(0.55)
+                            .ignoresSafeArea()
+                            .onTapGesture { dismissPostSaveCard(action: "backdrop") }
+                        PostSaveCard(
+                            model: card,
+                            onNext: { dismissPostSaveCard(action: "try_another") },
+                            onRemind: {
+                                dismissPostSaveCard(action: "remind")
+                                Task { await PushNotificationManager.shared.requestReminderPermission(source: "post_save_card") }
+                            }
+                        )
+                    }
+                    .transition(.opacity)
+                    .zIndex(95)
+                }
             }
             .onChange(of: optimizer.applyFeedbackToken) { _, token in
                 guard token > 0 else { return }
@@ -484,6 +507,28 @@ struct CameraView: View {
         guard case .ready = optimizer.phase else { return false }
         guard !showApplyBurst, !isRecommending else { return false }
         return !optimizer.coreDiffs.isEmpty
+    }
+
+    /// "Try Auto Optimize" after a failure (original is preserved; no paywall on failure).
+    private func aoButtonTitle(compact: Bool) -> String {
+        if case .error = optimizer.phase, canOptimize {
+            return compact ? "Try Optimize" : "Try Auto Optimize"
+        }
+        return compact ? "Optimize" : "Auto Optimize"
+    }
+
+    /// One line of benefit copy until the first successful optimize.
+    private var showsAOBenefitLine: Bool {
+        guard !PushNotificationManager.shared.hasCompletedFirstAutoOptimize else { return false }
+        guard !isStatusBusy, keyboardHeight == 0 else { return false }
+        if case .ready = optimizer.phase { return false }
+        return true
+    }
+
+    /// Undo (+ hold-to-compare when a look/LUT is on) stays visible while the result is live.
+    private var showsResultRow: Bool {
+        guard case .ready = optimizer.phase else { return false }
+        return !isStatusBusy && keyboardHeight == 0
     }
 
     /// Hide pan-edge chrome while Recommend/AO status is the primary surface.
@@ -603,7 +648,7 @@ struct CameraView: View {
 
     private func bottomOverlay(compact: Bool, width: CGFloat, scrimHeight: CGFloat, bottomSafeInset: CGFloat) -> some View {
         let hPad: CGFloat = width <= 320 ? 8 : (compact ? 12 : 16)
-        let ctaH: CGFloat = compact ? 40 : 44
+        let aoH: CGFloat = compact ? 46 : 54
 
         return VStack(spacing: compact ? 6 : 8) {
             if let clamp = actionableClampMessage, !isStatusBusy {
@@ -647,7 +692,19 @@ struct CameraView: View {
                         }
                         optimizer.dismissSuggestedLook()
                     },
-                    onClear: { session.clearActiveLook() },
+                    onClear: {
+                        if let look = session.activeCreativeLook {
+                            let auto = look.id == optimizer.autoAppliedLookId
+                            Analytics.shared.track("look_undone", props: [
+                                "look_id": look.id,
+                                "auto_applied": auto ? "1" : "0",
+                                "rank": "1",
+                                "source": "chip",
+                            ])
+                            if auto { optimizer.autoAppliedLookId = nil }
+                        }
+                        session.clearActiveLook()
+                    },
                     onOpenLooks: {
                         controlsTab = .looks
                         showDials = true
@@ -670,26 +727,44 @@ struct CameraView: View {
 
             // Always enabled + full yellow when camera chrome is shown (auth OK).
             // Over Free Peek Optimize quota → tap presents Pro paywall (not grayed-out).
+            // Large thumb-zone primary action, visible before capture and every session.
             Button {
-                Task { await runOptimize() }
+                Task { await runOptimize(trigger: "manual") }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     if optimizer.phase.isRunning {
-                        ProgressView().tint(AppTheme.accentOnAccent).scaleEffect(0.85)
+                        ProgressView().tint(AppTheme.accentOnAccent).scaleEffect(0.9)
                         Text("Optimizing…")
                     } else {
                         Image(systemName: "bolt.fill")
-                        Text(compact ? "Optimize" : "Auto Optimize")
+                        Text(aoButtonTitle(compact: compact))
                     }
                 }
-                .font(AppTheme.bodySmMedium())
+                .font(compact ? AppTheme.bodySmMedium() : AppTheme.bodyMedium())
                 .foregroundStyle(AppTheme.accentOnAccent)
-                .padding(.horizontal, 18)
-                .frame(height: ctaH)
+                .padding(.horizontal, 24)
+                .frame(minWidth: compact ? 200 : 240)
+                .frame(height: aoH)
                 .background(Capsule().fill(AppTheme.accent))
             }
             .disabled(optimizer.phase.isRunning)
-            .accessibilityLabel("Auto Optimize")
+            .accessibilityLabel(aoButtonTitle(compact: false))
+
+            if showsAOBenefitLine {
+                Text("One tap · better light, color & focus — on device")
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.inkSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+
+            if showsResultRow {
+                OptimizeResultRow(
+                    canCompare: session.activeCreativeLook != nil || session.previewLUTId != nil,
+                    comparing: $comparingOriginal,
+                    onUndo: { undoOptimize() }
+                )
+            }
 
             if showsBeforeAfterChip {
                 BeforeAfterChip(
@@ -1011,7 +1086,7 @@ struct CameraView: View {
             voiceIntentTask = Task { await runRecommend(messageOverride: utterance) }
         case .optimize:
             // Default mic path: Auto Optimize → applyPhoneTargets (PR #11); AO Pass 2 keeps autoApplyLook false.
-            voiceIntentTask = Task { await runOptimize() }
+            voiceIntentTask = Task { await runOptimize(trigger: "voice") }
         }
     }
 
@@ -1071,16 +1146,18 @@ struct CameraView: View {
         await task.value
     }
 
-    private func runOptimize() async {
+    private func runOptimize(trigger: String = "manual") async {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // Quota exhausted (not Pro/unlimited): paywall + visible error/toast — never silent.
+        // Quota counts successful optimizes only; free_quota_hit is tracked by presentHardPaywall.
         guard canOptimize else {
+            // Automatic runs never surface the hard gate.
+            guard trigger == "manual" || trigger == "voice" || trigger == "deep_link" else { return }
             print("[AO] tap → paywall (quota exhausted)")
             entitlements.presentHardPaywall(trigger: "free_quota", force: true)
             optimizer.phase = .error("Free Peek limit reached — upgrade for more")
             presentChromeToast("Free Peek limit — see Pro")
-            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "path": "camera_tap"])
-            Analytics.shared.track("free_quota_hit", props: ["path": "camera_tap"])
+            Analytics.shared.track("auto_optimize_fail", props: ["error_code": "quota", "error_class": "quota", "path": "camera_tap", "trigger": trigger])
             return
         }
         if optimizer.phase.isRunning {
@@ -1093,7 +1170,8 @@ struct CameraView: View {
             entitlements: entitlements,
             preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId,
             sceneNote: sceneNote,
-            devicePitchDegrees: horizon.isAvailable ? horizon.pitchDegrees : nil
+            devicePitchDegrees: horizon.isAvailable ? horizon.pitchDegrees : nil,
+            trigger: trigger
         )
         // applyFeedbackToken / phase drive burst, toast, or error pill — never silent.
         if case .ready = optimizer.phase {
@@ -1105,8 +1183,30 @@ struct CameraView: View {
                 presentLookToastIfNeeded()
             }
         } else if case .error(let msg) = optimizer.phase {
+            // Failure: original preserved, button reads "Try Auto Optimize", no paywall.
             print("[AO] error \(msg)")
         }
+    }
+
+    private func undoOptimize() {
+        comparingOriginal = false
+        optimizer.undo(session: session)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        presentChromeToast("Original restored")
+    }
+
+    /// Guided first win: the first capture in a new install auto-runs the local optimizer once
+    /// (not on camera open). Skipped after a prior undo / opt-out or while anything is running.
+    private func maybeAutoRunFirstOptimize(isFirstCapture: Bool) async {
+        guard isFirstCapture, FirstWinAutoRun.isEligible else { return }
+        guard !optimizer.phase.isRunning, !isRecommending, canOptimize, session.isRunning else { return }
+        FirstWinAutoRun.markAttempted()
+        await runOptimize(trigger: "auto_first_capture")
+    }
+
+    private func dismissPostSaveCard(action: String) {
+        withAnimation(.easeOut(duration: 0.18)) { postSaveCard = nil }
+        Analytics.shared.track("post_save_card_action", props: ["action": action])
     }
 
     /// Live chrome copy while Recommend SSE is in flight (nil when idle).
@@ -1389,18 +1489,44 @@ struct CameraView: View {
             // Unmissable viewfinder flash + freeze on every successful capture return
             // (do NOT wait for Photos library write).
             playCaptureFeedback(jpeg: data)
-            // Push permission after first successful shutter — never during onboarding.
+            let isFirstCapture = !PushNotificationManager.shared.hasCompletedFirstCapture
+            // Flags first capture + re-registers an existing grant (no prompt here).
             PushNotificationManager.shared.noteFirstSuccessfulCapture()
+            let optimizedAtCapture: Bool = {
+                if case .ready = optimizer.phase { return true }
+                return false
+            }()
 
             do {
                 try await PhotoLibrarySaver.saveJPEG(data)
-                Analytics.shared.track("capture_success", props: ["source": "camera"])
+                Analytics.shared.track("capture_success", props: [
+                    "source": "camera",
+                    "is_first_capture": isFirstCapture ? "1" : "0",
+                    "permission_state": "authorized",
+                    "optimized": optimizedAtCapture ? "1" : "0",
+                ])
                 presentSavedChip()
+                if optimizedAtCapture, PostSaveCelebration.shouldShow {
+                    PostSaveCelebration.markShown()
+                    let offer = !PushNotificationManager.shared.didAskPushPermission
+                    postSaveCard = PostSaveCard.Model(
+                        image: UIImage(data: data),
+                        recipeTitle: Recipe.chromeTitle(
+                            forStoredTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
+                            id: optimizer.chosenRecipeId ?? session.appliedRecipeId
+                        ),
+                        settingsCount: optimizer.coreDiffs.count,
+                        lookName: session.activeCreativeLook?.displayName,
+                        offerReminder: offer
+                    )
+                    Analytics.shared.track("post_save_card_view", props: ["offer_reminder": offer ? "1" : "0"])
+                }
             } catch {
                 // Capture already succeeded — keep flash/freeze; surface save error only.
                 captureError = error.localizedDescription
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
+            await maybeAutoRunFirstOptimize(isFirstCapture: isFirstCapture)
         } catch {
             isCapturing = false
             withAnimation(.easeOut(duration: 0.15)) { shutterPressScale = 1.0 }
@@ -1466,7 +1592,7 @@ struct CameraView: View {
             await session.start()
             horizon.start()
         }
-        await runOptimize()
+        await runOptimize(trigger: "deep_link")
     }
 
     private func applyStagingIfNeeded() {

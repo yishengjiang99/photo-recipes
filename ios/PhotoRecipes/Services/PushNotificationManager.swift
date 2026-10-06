@@ -58,6 +58,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
     /// Called from AppDelegate.didFinishLaunching and scenePhase.active.
     func noteAppLaunchReady(reason: String) {
         appLaunchReady = true
+        cancelD1IfUserReturned()
         let pending = pendingRegisterReason
         pendingRegisterReason = nil
         Task {
@@ -94,12 +95,10 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let defaults = UserDefaults.standard
         let wasFirst = !defaults.bool(forKey: Self.hasCompletedFirstAutoOptimizeKey)
         defaults.set(true, forKey: Self.hasCompletedFirstAutoOptimizeKey)
-        if wasFirst {
-            Task { await maybeAskPushPermission(reason: "first_auto_optimize") }
-        } else {
-            // Later AOs: if Allow already happened but server never got a token, keep trying.
-            Task { await ensureRemoteNotificationRegistration(reason: "post_ao_reregister") }
-        }
+        // Funnel proposal: no system prompt here — the reminder is *offered* after the first
+        // saved optimized photo (PostSaveCard → requestReminderPermission).
+        // If Allow already happened but server never got a token, keep trying.
+        Task { await ensureRemoteNotificationRegistration(reason: wasFirst ? "first_ao_reregister" : "post_ao_reregister") }
     }
 
     /// Call after a successful shutter / `capturePhoto` return (Build 26+ product lock).
@@ -108,14 +107,17 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let defaults = UserDefaults.standard
         let wasFirst = !defaults.bool(forKey: Self.hasCompletedFirstCaptureKey)
         defaults.set(true, forKey: Self.hasCompletedFirstCaptureKey)
-        if wasFirst {
-            Task { await maybeAskPushPermission(reason: "first_capture") }
-        } else {
-            Task { await ensureRemoteNotificationRegistration(reason: "post_capture_reregister") }
-        }
+        Task { await ensureRemoteNotificationRegistration(reason: wasFirst ? "first_capture_reregister" : "post_capture_reregister") }
     }
 
     // MARK: - Permission (not on install/launch / onboarding)
+
+    /// User tapped "Remind me tomorrow" after a saved optimized photo — the only place
+    /// the system notification prompt is shown (ask after value, with a concrete benefit).
+    func requestReminderPermission(source: String) async {
+        Analytics.shared.track("reminder_offer_accept", props: ["source": source])
+        await maybeAskPushPermission(reason: source)
+    }
 
     /// Ask only after first successful capture (or AO), once per install (flag).
     func maybeAskPermissionAfterFirstOptimize() async {
@@ -263,7 +265,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
             try await api.registerPushToken(
                 token: hex,
                 environment: Self.apnsEnvironment,
-                appVersion: Self.appVersion
+                appVersion: Self.appVersion,
+                timezone: TimeZone.current.identifier
             )
             defaults.set(hex, forKey: lastRegisteredTokenKey)
             defaults.set(true, forKey: lastServerRegisterOkKey)
@@ -294,7 +297,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
                     try await api.registerPushToken(
                         token: hex,
                         environment: Self.apnsEnvironment,
-                        appVersion: Self.appVersion
+                        appVersion: Self.appVersion,
+                        timezone: TimeZone.current.identifier
                     )
                     UserDefaults.standard.set(hex, forKey: lastRegisteredTokenKey)
                     UserDefaults.standard.set(true, forKey: lastServerRegisterOkKey)
@@ -354,9 +358,12 @@ final class PushNotificationManager: NSObject, ObservableObject {
     private static let localD1Id = "protune.local.d1_return"
     private static let localGoldenId = "protune.local.golden_hour"
     private static let didScheduleLocalsKey = "push.didScheduleEngagementLocals"
+    /// D1 reminder is sent once per install; this records when it was scheduled.
+    private static let localD1ScheduledAtKey = "push.localD1ScheduledAt"
+    private static let localD1EverScheduledKey = "push.localD1EverScheduled"
 
     /// Schedule D1 evening + daily golden-hour locals after Allow.
-    /// Idempotent: replaces pending requests with the same ids.
+    /// Idempotent: replaces pending requests with the same ids. D1 is scheduled once per install.
     func scheduleEngagementLocalNotifications() {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in
@@ -369,35 +376,47 @@ final class PushNotificationManager: NSObject, ObservableObject {
     }
 
     private func installEngagementLocals(center: UNUserNotificationCenter) async {
-        center.removePendingNotificationRequests(withIdentifiers: [
-            Self.localD1Id,
-            Self.localGoldenId,
-        ])
+        let defaults = UserDefaults.standard
+        center.removePendingNotificationRequests(withIdentifiers: [Self.localGoldenId])
 
-        // D1: tomorrow at 18:00 local — "Come shoot tonight"
-        var d1 = DateComponents()
-        d1.hour = 18
-        d1.minute = 0
-        let d1Content = UNMutableNotificationContent()
-        d1Content.title = "Come shoot tonight"
-        d1Content.body = "Golden light is waiting — open ProTune and tap Auto Optimize."
-        d1Content.sound = .default
-        d1Content.userInfo = [
-            "type": "d1_return",
-            "deepLink": "photo-recipes://auto-optimize",
-        ]
-        // Fire once ~24–36h out: next 18:00 if >12h away, else day after.
         let cal = Calendar.current
         let now = Date()
-        var fire = cal.date(bySettingHour: 18, minute: 0, second: 0, of: now) ?? now
-        if fire.timeIntervalSince(now) < 12 * 3600 {
-            fire = cal.date(byAdding: .day, value: 1, to: fire) ?? fire
+        var scheduledD1 = false
+        if !defaults.bool(forKey: Self.localD1EverScheduledKey) {
+            center.removePendingNotificationRequests(withIdentifiers: [Self.localD1Id])
+            // D1: one useful prompt, deep-linked to Camera (no golden-light promise).
+            let d1Content = UNMutableNotificationContent()
+            d1Content.title = "Ready for another quick polish?"
+            d1Content.body = "Open Camera and get an optimized result in one tap."
+            d1Content.sound = .default
+            d1Content.userInfo = [
+                "type": "d1_return",
+                "deepLink": "photo-recipes://auto-optimize",
+            ]
+            // Fire once ~24–36h out: next 18:00 if >12h away, else day after.
+            var fire = cal.date(bySettingHour: 18, minute: 0, second: 0, of: now) ?? now
+            if fire.timeIntervalSince(now) < 12 * 3600 {
+                fire = cal.date(byAdding: .day, value: 1, to: fire) ?? fire
+            }
+            let d1Trigger = UNCalendarNotificationTrigger(
+                dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fire),
+                repeats: false
+            )
+            do {
+                try await center.add(UNNotificationRequest(identifier: Self.localD1Id, content: d1Content, trigger: d1Trigger))
+                defaults.set(true, forKey: Self.localD1EverScheduledKey)
+                defaults.set(now, forKey: Self.localD1ScheduledAtKey)
+                scheduledD1 = true
+                let hours = Int(fire.timeIntervalSince(now) / 3600)
+                Analytics.shared.track("notification_scheduled", props: [
+                    "campaign_id": "d1_return",
+                    "delay_bucket": hours < 24 ? "12-24h" : "24-36h",
+                    "delay_hours": "\(hours)",
+                ])
+            } catch {
+                print("[Push] D1 local schedule failed: \(error.localizedDescription)")
+            }
         }
-        let d1Trigger = UNCalendarNotificationTrigger(
-            dateMatching: cal.dateComponents([.year, .month, .day, .hour, .minute], from: fire),
-            repeats: false
-        )
-        try? await center.add(UNNotificationRequest(identifier: Self.localD1Id, content: d1Content, trigger: d1Trigger))
 
         // Daily golden-hour soft nudge at 17:30 (user can clear in Settings).
         var gh = DateComponents()
@@ -414,12 +433,40 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let ghTrigger = UNCalendarNotificationTrigger(dateMatching: gh, repeats: true)
         try? await center.add(UNNotificationRequest(identifier: Self.localGoldenId, content: ghContent, trigger: ghTrigger))
 
-        UserDefaults.standard.set(true, forKey: Self.didScheduleLocalsKey)
-        print("[Push] scheduled local D1 + golden-hour engagement")
+        let firstGolden = !defaults.bool(forKey: Self.didScheduleLocalsKey)
+        defaults.set(true, forKey: Self.didScheduleLocalsKey)
+        print("[Push] scheduled local engagement d1=\(scheduledD1) golden=1")
+        if firstGolden {
+            Analytics.shared.track("notification_scheduled", props: [
+                "campaign_id": "golden_hour_daily",
+                "delay_bucket": "daily_1730",
+            ])
+        }
         Analytics.shared.track("push_local_scheduled", props: [
-            "d1": "1",
+            "d1": scheduledD1 ? "1" : "0",
             "golden": "1",
         ])
+    }
+
+    /// "Cancel if the user returns first": the app came back to the foreground ≥3h after the
+    /// D1 reminder was scheduled and before it fired → drop it (once-per-install, not re-armed).
+    func cancelD1IfUserReturned() {
+        let defaults = UserDefaults.standard
+        guard let at = defaults.object(forKey: Self.localD1ScheduledAtKey) as? Date else { return }
+        guard Date().timeIntervalSince(at) >= 3 * 3600 else { return }
+        defaults.removeObject(forKey: Self.localD1ScheduledAtKey)
+        let id = Self.localD1Id
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            guard requests.contains(where: { $0.identifier == id }) else { return }
+            center.removePendingNotificationRequests(withIdentifiers: [id])
+            Task { @MainActor in
+                Analytics.shared.track("notification_cancelled", props: [
+                    "campaign_id": "d1_return",
+                    "reason": "user_returned",
+                ])
+            }
+        }
     }
 
     // MARK: - Deep link / open
@@ -433,8 +480,11 @@ final class PushNotificationManager: NSObject, ObservableObject {
         }
     }
 
-    func openAutoOptimize(fromPush: Bool) {
+    func openAutoOptimize(fromPush: Bool, campaign: String? = nil) {
         if fromPush {
+            Analytics.shared.track("notification_opened", props: [
+                "campaign_id": campaign ?? "unknown",
+            ])
             analytics.track(.pushOpened, properties: ["deepLink": "auto-optimize"])
             Analytics.shared.track("push_opened", props: ["deepLink": "auto-optimize"])
         }
@@ -456,8 +506,9 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let campaign = response.notification.request.content.userInfo["type"] as? String
         Task { @MainActor in
-            Self.shared.openAutoOptimize(fromPush: true)
+            Self.shared.openAutoOptimize(fromPush: true, campaign: campaign)
             completionHandler()
         }
     }

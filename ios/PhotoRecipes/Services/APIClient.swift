@@ -407,6 +407,8 @@ final class APIClient: ObservableObject {
         var bundleId: String
         var environment: String
         var appVersion: String
+        /// IANA zone so the server schedules evening nudges in local time (not UTC).
+        var timezone: String
     }
 
     struct PushRegisterResponse: Decodable {
@@ -416,7 +418,12 @@ final class APIClient: ObservableObject {
     }
 
     /// Register APNs device token. Soft-fails on 404/503 (server may not ship yet).
-    func registerPushToken(token: String, environment: String, appVersion: String) async throws {
+    func registerPushToken(
+        token: String,
+        environment: String,
+        appVersion: String,
+        timezone: String = TimeZone.current.identifier
+    ) async throws {
         var req = URLRequest(url: try url("/api/push/register"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -425,7 +432,8 @@ final class APIClient: ObservableObject {
             platform: "ios",
             bundleId: "com.ragnus.mvp",
             environment: environment,
-            appVersion: appVersion
+            appVersion: appVersion,
+            timezone: timezone
         )
         req.httpBody = try encoder.encode(body)
         let (data, response) = try await perform(req)

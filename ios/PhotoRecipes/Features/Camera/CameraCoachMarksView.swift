@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// First-run coach marks ≤3 (AO → chips → ···). Replay via Settings → Show camera tips.
+/// Camera tips ≤3 (AO → chips → ···). Shown only on replay via Settings → Show camera tips.
 struct CameraCoachMarksView: View {
     @Binding var step: Int
     var onFinished: () -> Void
@@ -81,14 +81,10 @@ enum CameraCoachMarksStore {
     static let seenKey = "camera.coachMarks.seen"
     static let replayKey = "camera.coachMarks.replay"
 
+    /// Funnel proposal: camera lands ready — no mandatory first-run coach marks.
+    /// Tips only appear when replayed from Settings → Show camera tips.
     static var shouldShow: Bool {
-        if UserDefaults.standard.bool(forKey: replayKey) { return true }
-        if UserDefaults.standard.bool(forKey: seenKey) { return false }
-        // Optional heuristic: skip if already optimized once.
-        if UserDefaults.standard.bool(forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey) {
-            return false
-        }
-        return true
+        UserDefaults.standard.bool(forKey: replayKey)
     }
 
     static func markSeen() {
