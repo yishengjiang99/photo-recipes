@@ -96,7 +96,7 @@ enum MetaEvents {
             )
         } else {
             AppEvents.shared.logPurchase(
-                amount,
+                amount: amount,
                 currency: currency,
                 parameters: [AppEvents.ParameterName(rawValue: "product_id"): productId]
             )
