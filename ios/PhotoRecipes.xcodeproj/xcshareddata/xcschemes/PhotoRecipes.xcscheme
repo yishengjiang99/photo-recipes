@@ -4,8 +4,7 @@
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES"
-      runPostActionsOnFailure = "NO">
+      buildImplicitDependencies = "YES">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -15,8 +14,8 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "648C214C573EF62D3B37D59A"
-               BuildableName = "PhotoRecipes.app"
+               BlueprintIdentifier = "85D59AD1DAD74D348F7957D5"
+               BuildableName = "AI Camera - Auto Recipes.app"
                BlueprintName = "PhotoRecipes"
                ReferencedContainer = "container:PhotoRecipes.xcodeproj">
             </BuildableReference>
@@ -26,10 +25,10 @@
             buildForRunning = "NO"
             buildForProfiling = "NO"
             buildForArchiving = "NO"
-            buildForAnalyzing = "NO">
+            buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F203898824AD0B6069F88998"
+               BlueprintIdentifier = "E1F2A3B4C5D60105TESTTG01"
                BuildableName = "PhotoRecipesTests.xctest"
                BlueprintName = "PhotoRecipesTests"
                ReferencedContainer = "container:PhotoRecipes.xcodeproj">
@@ -42,31 +41,20 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
-      onlyGenerateCoverageForSpecifiedTargets = "NO">
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "648C214C573EF62D3B37D59A"
-            BuildableName = "PhotoRecipes.app"
-            BlueprintName = "PhotoRecipes"
-            ReferencedContainer = "container:PhotoRecipes.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
+      shouldAutocreateTestPlan = "YES">
       <Testables>
          <TestableReference
             skipped = "NO"
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F203898824AD0B6069F88998"
+               BlueprintIdentifier = "E1F2A3B4C5D60105TESTTG01"
                BuildableName = "PhotoRecipesTests.xctest"
                BlueprintName = "PhotoRecipesTests"
                ReferencedContainer = "container:PhotoRecipes.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -82,8 +70,8 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "648C214C573EF62D3B37D59A"
-            BuildableName = "PhotoRecipes.app"
+            BlueprintIdentifier = "85D59AD1DAD74D348F7957D5"
+            BuildableName = "AI Camera - Auto Recipes.app"
             BlueprintName = "PhotoRecipes"
             ReferencedContainer = "container:PhotoRecipes.xcodeproj">
          </BuildableReference>
@@ -99,8 +87,8 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "648C214C573EF62D3B37D59A"
-            BuildableName = "PhotoRecipes.app"
+            BlueprintIdentifier = "85D59AD1DAD74D348F7957D5"
+            BuildableName = "AI Camera - Auto Recipes.app"
             BlueprintName = "PhotoRecipes"
             ReferencedContainer = "container:PhotoRecipes.xcodeproj">
          </BuildableReference>

@@ -234,48 +234,6 @@ if [[ -d "/etc/letsencrypt/live/\${SERVER_NAME}" ]] && command -v certbot >/dev/
     echo "WARNING: certbot reinstall failed; HTTPS may need manual fix"
 fi
 
-# grepawk.com (finalcut site) must also route Apple attribution postbacks to this API:
-# Apple ignores subdomains, so SKAN / AdAttributionKit copies hit grepawk.com.
-GREPAWK_SITE=/etc/nginx/sites-available/finalcut
-if [[ -f "\$GREPAWK_SITE" ]]; then
-  echo '--> Ensuring Apple attribution postback routes on grepawk.com…'
-  GREPAWK_BAK="/root/finalcut.nginx.bak-\$(date +%Y%m%d-%H%M%S)-attribution"
-  sudo cp -p "\$GREPAWK_SITE" "\$GREPAWK_BAK"
-  sudo python3 - "\$GREPAWK_SITE" "\${DEPLOY_PATH}/deploy/nginx-attribution-postbacks.conf" <<'PYNGX'
-import re, sys
-site, snip_path = sys.argv[1], sys.argv[2]
-s = open(site).read()
-snip = open(snip_path).read().rstrip('\n') + '\n'
-begin = '    # BEGIN photo-recipes apple-attribution-postbacks'
-end = '    # END photo-recipes apple-attribution-postbacks\n'
-if begin in s:
-    i = s.index(begin); j = s.index(end, i) + len(end)
-    new = s[:i] + snip + s[j:]
-else:
-    m = re.search(r'listen 443[^\n]*\n(?:[^\n]*\n)*?\s*server_name grepawk\.com[^\n]*\n', s)
-    if not m:
-        sys.exit('grepawk.com 443 server block not found')
-    k = s.find('    index index.html;\n', m.end())
-    if k < 0:
-        sys.exit('index line not found in grepawk.com 443 block')
-    k += len('    index index.html;\n')
-    new = s[:k] + '\n' + snip + s[k:]
-if new != s:
-    open(site, 'w').write(new)
-    print('grepawk.com attribution block written')
-else:
-    print('grepawk.com attribution block unchanged')
-PYNGX
-  if ! sudo nginx -t; then
-    echo 'ERROR: nginx -t failed after grepawk.com attribution edit; restoring backup' >&2
-    sudo cp -p "\$GREPAWK_BAK" "\$GREPAWK_SITE"
-    sudo nginx -t
-    exit 1
-  fi
-else
-  echo "WARNING: \$GREPAWK_SITE missing — grepawk.com attribution postbacks not routed"
-fi
-
 echo '--> Permissions for www-data…'
 sudo chown -R www-data:www-data "\${DEPLOY_PATH}"
 sudo chmod -R u=rwX,g=rX,o=rX "\${DEPLOY_PATH}"
@@ -350,18 +308,6 @@ for asset in "${ASSET_URLS[@]}"; do
     exit 1
   fi
   echo "    ${asset} → 200"
-done
-
-echo "--> Apple attribution postback endpoints (GET liveness)"
-for url in "https://grepawk.com/.well-known/skadnetwork/report-attribution/" \
-           "https://grepawk.com/.well-known/appattribution/report-attribution/" \
-           "${SMOKE_BASE}/.well-known/skadnetwork/report-attribution/"; do
-  body="$(curl -fsS -m 15 "$url" || true)"
-  if ! echo "$body" | grep -q '"ok":true'; then
-    echo "SMOKE FAIL: ${url} → ${body:-'(error)'}" >&2
-    exit 1
-  fi
-  echo "    ${url} → ok"
 done
 
 echo "--> TLS"

@@ -26,6 +26,9 @@ packages:
   AppsFlyerLib:
     url: https://github.com/AppsFlyerSDK/AppsFlyerFramework-Static
     exactVersion: "7.0.2"
+  FacebookSDK:
+    url: https://github.com/facebook/facebook-ios-sdk
+    from: "18.1.1"
 targets:
   PhotoRecipes:
     type: application
@@ -41,6 +44,8 @@ targets:
     dependencies:
       - package: AppsFlyerLib
         product: AppsFlyerLib-Static
+      - package: FacebookSDK
+        product: FacebookCore
     settings:
       base:
         INFOPLIST_FILE: PhotoRecipes/Resources/Info.plist

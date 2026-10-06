@@ -73,7 +73,23 @@
 				<string>photo-recipes</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.ragnus.mvp.facebook</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+<!-- Facebook App ID configured for ProTune AI Camera -->
+				<string>fb1895534071416482</string>
+			</array>
+		</dict>
 	</array>
+<!-- Meta App Events: FacebookAppID / FacebookClientToken -->
+	<key>FacebookAppID</key>
+	<string>1895534071416482</string>
+	<key>FacebookClientToken</key>
+	<string>da0e07881bc13ff0de9efe8ffa2b7a9f</string>
+	<key>FacebookDisplayName</key>
+	<string>ProTune AI Camera</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>

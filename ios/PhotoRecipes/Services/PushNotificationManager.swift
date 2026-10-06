@@ -395,8 +395,7 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
         // Sync on main — UIApplicationDelegate is already main-thread.
         MainActor.assumeIsolated {
             PushNotificationManager.shared.noteAppLaunchReady(reason: "did_finish_launching")
-            // SKAN install registration + AppsFlyer (only if this build has a dev key).
-            Attribution.shared.configure()
+            MetaEvents.configure(application: application, launchOptions: launchOptions)
         }
         return true
     }
@@ -423,6 +422,8 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         MainActor.assumeIsolated {
             PushNotificationManager.shared.noteAppLaunchReady(reason: "become_active")
+            MetaEvents.activateApp()
+            MetaEvents.requestTrackingIfNeeded()
         }
     }
 }

@@ -81,7 +81,7 @@ Recipes come from classic field technique — panning, motion control, HDR, focu
 
 ## What's New
 ```
-Auto Optimize now reads the scene straight from the live viewfinder, with no shutter sound or flash, and your typed scene notes are never overwritten. The Get Down Low recipe is now called Low Angle. Camera memory and stability fixes for longer shoots.
+AI Auto Optimize now writes shutter, ISO, EV, white balance, focus, zoom and torch straight to your iPhone's capture dials — real settings, not filters. Teach Mode explains every dial move, and field looks grade the shot live in the viewfinder. Set the shot. Then take it.
 ```
 
 ## Support URL

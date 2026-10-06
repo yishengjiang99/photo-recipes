@@ -43,7 +43,6 @@ import {
   telemetryHealthSnippet,
 } from './telemetry.ts'
 import { mountAdminRoutes } from './admin.ts'
-import { mountAttributionRoutes } from './attribution.ts'
 import { getMysqlPool } from './mysql.ts'
 import { ensurePushDevicesSchema } from './pushDevices.ts'
 
@@ -64,8 +63,6 @@ app.use(cookieParser())
 
 // Stripe webhook needs raw body — mount before express.json()
 mountStripeWebhook(app)
-// Apple SKAdNetwork / AdAttributionKit postback copies (any content type) — before express.json()
-mountAttributionRoutes(app)
 
 // JSON body: text asks or base64 vision frames (phone JPEG as data URL).
 // 100mb matches nginx client_max_body_size + MAX_IMAGE_BYTES (~100MB binary).
