@@ -12,7 +12,7 @@ on:
         description: App Store versionString (marketing version)
         required: false
         type: string
-        default: "1.1"
+        default: "1.2"
       sync_listing:
         description: First sync the listing from the repo (docs/asc/metadata/en-US/*.txt, docs/asc/screenshots/en-US/*.png), attach the build, clear export compliance
         type: boolean

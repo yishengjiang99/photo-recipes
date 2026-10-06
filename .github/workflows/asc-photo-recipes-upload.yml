@@ -12,7 +12,7 @@ on:
         description: App Store version to sync (created as PREPARE_FOR_SUBMISSION if missing)
         required: true
         type: string
-        default: "1.1"
+        default: "1.2"
       build_number:
         description: CFBundleVersion to attach to the version (export compliance cleared too)
         required: true
