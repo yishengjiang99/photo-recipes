@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 20
+          fetch-depth: 0
 
       # Source of truth is the repo: same script as asc-photo-recipes-upload.yml (never submits).
       - name: Sync listing from repo (metadata, URLs, screenshots, build, export compliance)
