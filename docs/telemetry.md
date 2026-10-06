@@ -1,6 +1,6 @@
 # In-house telemetry (MySQL)
 
-Privacy-first product / funnel analytics. **No third-party analytics SDKs** for this pipeline. Clients POST allowlisted events to `POST /api/telemetry`. (Separately, the iOS app 1.2+ embeds the AppsFlyer SDK for ad install attribution only; see [Ad attribution](#ad-attribution-ios-12) below.) Persistence requires MySQL; without `MYSQL_*` the API still returns `202` and drops rows (`stored: false`).
+Privacy-first product / funnel analytics. **No third-party analytics SDKs** for this pipeline. Clients POST allowlisted events to `POST /api/telemetry`. (Separately, the iOS app 1.2+ embeds Meta App Events for ad install attribution; see [Ad attribution](#ad-attribution-ios-12) below.) Persistence requires MySQL; without `MYSQL_*` the API still returns `202` and drops rows (`stored: false`).
 
 ## Privacy rules
 
@@ -49,12 +49,11 @@ Added for X App Install ads. Everything below is in addition to (not part of) th
 | Piece | Where | What it sends / stores |
 |-------|-------|------------------------|
 | SKAdNetwork 4 install registration | `ios/.../Services/Attribution.swift` | First launch only: `updatePostbackConversionValue(0, coarseValue: .low, lockWindow: false)`. Apple applies it to AdAttributionKit too. No identifiers. |
-| `SKAdNetworkItems` | `Info.plist` | X (`9yg77x724h`, `n66cz3y3bx`) + AppsFlyer's SKAN partner list (152 IDs, from AppsFlyer's published sheet). Only matters if the app ever shows ads; harmless otherwise. |
+| `SKAdNetworkItems` | `Info.plist` | X (`9yg77x724h`, `n66cz3y3bx`) + common SKAN partner IDs. Harmless if unused. |
 | Postback copies | `Info.plist` `NSAdvertisingAttributionReportEndpoint` + `AdAttributionKit.AttributionCopyEndpoint` = `https://photo.grepawk.com` | Apple uses the registrable domain, so devices POST to `https://grepawk.com/.well-known/skadnetwork/report-attribution/` and `/.well-known/appattribution/report-attribution/`. |
 | Postback receiver | `server/attribution.ts` (nginx block injected into the grepawk.com site by `deploy.sh`, also on photo.grepawk.com) | Logs one line to journald (`[attribution] postback …`), appends the raw body (incl. Apple signature) to `/var/lib/photo-recipes/attribution-postbacks.jsonl`, and inserts a `skan_postback` / `aak_postback` row in `telemetry_events` (summary fields only). Signatures are not verified yet. |
 | Meta App Events | `ios/.../Services/MetaEvents.swift` | Install/session via `activateApp`; `StartTrial` / `fb_mobile_purchase` on subscription; ATT-gated advertiser tracking. Real Facebook App ID in Info.plist. |
-| AppsFlyer SDK | SPM `AppsFlyerFramework-Static` **7.0.2** (exact) | Only when the build has a dev key (`APPSFLYER_DEV_KEY` GitHub secret → build setting → `Info.plist` `AppsFlyerDevKey`). Install + launches, `first_auto_optimize` (once), `af_start_trial` (product, price, currency), `af_subscribe` (product, revenue, currency). Device IDs: IDFA only if ATT allowed, IDFV, AppsFlyer ID; IP → coarse location. |
-| ATT prompt | `PhotoRecipesApp.swift` → `Attribution.requestTrackingAuthorizationAfter` | ~1 s after onboarding finishes (≈3 s after launch for users who onboarded earlier). Never on the first frame, never without a dev key. AppsFlyer `start()` waits up to 60 s for the answer (AppsFlyer 7 deprecated `waitForATTUserAuthorization`; same contract, done in the session-ready listener). Outcome → in-house event `att_prompt_result` (`status`). |
+| ATT prompt | `MetaEvents.requestTrackingIfNeeded` (becomeActive, after onboarding) | System shows the prompt once while status is `.notDetermined`. Never on the first frame / during onboarding. |
 
 Ops:
 

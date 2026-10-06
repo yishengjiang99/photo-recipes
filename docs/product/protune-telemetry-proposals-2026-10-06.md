@@ -131,7 +131,7 @@ Target build after WIP land (post build 51 attribution restore). Internal first.
 
 **Out of TF scope this cycle:** paid UA scale-up, Recipe/Teach expansion (#10), web App Store CTA (#6) unless bundled in same deploy.
 
-**Hold App Store submit** until G2–G5 pass on internal + App Privacy filled from `docs/asc/app-privacy-1.2.md`. AppsFlyer Dev Key still missing on build 51 — cut a follow-up build when key lands if install ads need AppsFlyer.
+**Hold App Store submit** until G2–G5 pass on internal + App Privacy filled from `docs/asc/app-privacy-1.2.md`. AppsFlyer removed from the product (Meta + SKAN remain).
 
 ---
 
@@ -140,7 +140,7 @@ Target build after WIP land (post build 51 attribution restore). Internal first.
 | Date (PT) | Decision |
 |---|---|
 | 2026-10-06 | Telemetry review → ship #3, #5, #7 + push fix; hold #1 as next candidate after TF |
-| 2026-10-06 | 1.2 path: restore attribution + Meta (build 51); AppsFlyer runtime off until Dev Key |
+| 2026-10-06 | 1.2 path: restore attribution + Meta (build 51); later removed AppsFlyer entirely |
 | 2026-10-06 | User selected fix pack: push, paywall gate, #5, #7 |
 
 ---

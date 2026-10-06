@@ -15,11 +15,10 @@ iOS-first; tip `673bc87`. App display name / ASC name is **ProTune AI Camera** (
 - [ ] Review PR #138 (iOS distribution SDKs + CPI research) — Chief of Staff
 
 ## Blocked / waiting on user
-- [ ] Merge `b5a7fcf` (Meta SDK) removed the 1.2 attribution work that landed in `590d024`/`072ce13`/`c0dbdd9`: `PrivacyInfo.xcprivacy`, `Attribution.swift`, `server/attribution.ts` + tests, `deploy/nginx-attribution-postbacks.conf`, `scripts/asc/prepare_version.py`, `docs/asc/app-privacy-1.2.md`, and the AppsFlyer disclosure in the privacy policy. `ios/project.yml` still lists the deleted manifest. Decide: restore those files alongside Meta SDK, or ship 1.2 without them — User
-- [ ] AppsFlyer Dev Key (`APPSFLYER_DEV_KEY` secret not set; App Store ID 6813991381) — User
 - [ ] Resubmit 1.2 via the submit workflow once a fixed build is VALID — User
 
 ## Done (recent)
+- [x] Remove AppsFlyer entirely (SDK, secret gates, privacy disclosure); keep Meta + SKAN — 2026-10-06
 - [x] Ads: ProTune 9:16 slider promo + selfie Reels v13–v16 (v16 Midwestern VO, -14 LUFS) in `docs/ads/` — `b11998a`, `0f90c77`, `41c20d6`, `cf39b2d`, `ecbb454` — 2026-10-05
 - [x] Meta App Events SDK (FB App ID 1895534071416482; FB SDK 18.x) merged to main; iOS unit tests green — `7f217d9`…`f293263`, merge `b5a7fcf` — 2026-10-05
 - [x] Submit workflow: full-history fetch for submit script extraction — `673bc87` — 2026-10-06

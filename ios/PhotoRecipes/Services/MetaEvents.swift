@@ -20,8 +20,7 @@ import UIKit
 /// (see `requestTrackingIfNeeded`) and sends install/purchase events to Meta.
 /// `configure` still no-ops if Info.plist has `FB_APP_ID_PLACEHOLDER`; the
 /// shipping Info.plist carries the real Facebook App ID, so the SDK is active.
-/// AppsFlyer attribution (when a build has `AppsFlyerDevKey`) is separate — see
-/// `Attribution.swift`.
+/// SKAdNetwork install registration is separate — see `Attribution.swift`.
 @MainActor
 enum MetaEvents {
     /// True once `configure` has initialized the SDK with a real App ID.

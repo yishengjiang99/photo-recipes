@@ -32,10 +32,10 @@ export function Privacy() {
       <p>
         We design the Service to be privacy-first: photos you capture stay on your device unless
         you choose to send a frame for Recommend / Apply look / Auto Optimize vision; our own
-        analytics use anonymous guest IDs. Starting with iOS app version 1.2, the app includes third-party SDKs for ad attribution: <strong className="text-ink">AppsFlyer</strong> and
-        <strong className="text-ink">Meta (Facebook) App Events</strong>, used only to measure which
-        of our ads lead to installs and subscriptions (see “Ad attribution” below). We do not show
-        ads in the app.
+        analytics use anonymous guest IDs. Starting with iOS app version 1.2, the app includes
+        <strong className="text-ink">Meta (Facebook) App Events</strong> for ad attribution, used
+        only to measure which of our ads lead to installs and subscriptions (see “Ad attribution”
+        below). We do not show ads in the app.
       </p>
 
       <Section title="1. Who we are">
@@ -123,7 +123,7 @@ export function Privacy() {
           <code className="text-ink">POST /api/telemetry</code>. Events use an anonymous{' '}
           <code className="text-ink">anon_id</code> / guest id and short-lived{' '}
           <code className="text-ink">session_id</code>. We do <em>not</em> send photos, camera
-          frames, GPS, names, emails, or tokens in telemetry props. Apart from AppsFlyer and Meta App Events for ad
+          frames, GPS, names, emails, or tokens in telemetry props. Apart from Meta App Events for ad
           attribution (below), we do <em>not</em> use third-party analytics/crash SDKs (no
           TelemetryDeck, Sentry, or session replay). The server may store an optional salted IP hash
           for abuse resistance.
@@ -131,42 +131,29 @@ export function Privacy() {
         <p>
           <strong className="text-ink">Ad attribution (iOS app 1.2 and later).</strong> We advertise
           the app (for example with App Install ads on X or Meta) and use{' '}
-          <strong className="text-ink">AppsFlyer</strong>, a mobile measurement provider, and{' '}
           <strong className="text-ink">Meta App Events</strong> to learn which ads lead to installs,
-          free trials, and subscriptions. The AppsFlyer SDK in the app sends AppsFlyer:
+          free trials, and subscriptions. The Meta SDK in the app may send:
         </p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
             <strong className="text-ink">Device identifiers:</strong> Apple’s advertising
             identifier (IDFA) <em>only if you allow tracking</em> in Apple’s “Allow … to track your
-            activity” prompt; the identifier for vendor (IDFV); and an install ID that AppsFlyer
-            assigns.
+            activity” prompt, plus Meta’s anonymous app-instance identifier.
           </li>
           <li>
-            <strong className="text-ink">Device and network details:</strong> device model, iOS
-            version, language, time zone, app version, and IP address (used by AppsFlyer to derive
-            an approximate country / region and to detect ad fraud).
-          </li>
-          <li>
-            <strong className="text-ink">Usage events:</strong> install and app opens, your first
-            Auto Optimize, and when you start a free trial or buy a subscription (product, price,
-            and currency — never payment details).
-          </li>
-          <li>
-            <strong className="text-ink">Attribution data:</strong> which ad, campaign, and network
-            (e.g. X) led to the install.
+            <strong className="text-ink">Usage events:</strong> install / session signals
+            (<code className="text-ink">activateApp</code>), and when you start a free trial or buy
+            a subscription (product, price, and currency — never payment details).
           </li>
         </ul>
         <p>
           We use this only for advertising measurement: counting installs and subscriptions per ad
-          campaign, deciding where to spend on ads, and fraud prevention. AppsFlyer may share
-          attribution results with the ad networks we advertise on (such as X) so they can report
-          and optimize our campaigns; device-level data is shared only if you allow tracking. We
-          never send your photos, voice, or scene text to AppsFlyer or ad networks. AppsFlyer
-          processes this data under its{' '}
+          campaign and deciding where to spend on ads. Device-level data is shared with Meta only if
+          you allow tracking. We never send your photos, voice, or scene text to Meta or ad networks.
+          Meta processes this data under its{' '}
           <a
             className="text-accent-soft hover:underline"
-            href="https://www.appsflyer.com/legal/privacy-policy/"
+            href="https://www.facebook.com/privacy/policy/"
             target="_blank"
             rel="noreferrer"
           >
@@ -177,12 +164,11 @@ export function Privacy() {
         <p>
           <strong className="text-ink">Your choices:</strong> you can decline the tracking prompt,
           or turn tracking off later in iOS Settings → Privacy &amp; Security → Tracking; the app
-          works the same either way. When tracking is off, the IDFA is not available to us or
-          AppsFlyer. The app also uses Apple’s SKAdNetwork / AdAttributionKit, which report
-          installs to ad networks without any device identifier; we receive copies of those
-          Apple-signed reports at grepawk.com and keep them for campaign measurement. To ask us to
-          delete attribution data tied to your device, email us (see Contact) and we will pass the
-          request to AppsFlyer.
+          works the same either way. When tracking is off, the IDFA is not available to us or Meta.
+          The app also uses Apple’s SKAdNetwork / AdAttributionKit, which report installs to ad
+          networks without any device identifier; we receive copies of those Apple-signed reports at
+          grepawk.com and keep them for campaign measurement. To ask us to delete attribution data
+          tied to your device, email us (see Contact).
         </p>
         <p>
           <strong className="text-ink">Technical logs.</strong> Our servers and host may automatically
@@ -229,19 +215,14 @@ export function Privacy() {
             notes
           </li>
           <li>
-            <strong className="text-ink">AppsFlyer</strong> — ad attribution in the iOS app (1.2+):
-            device identifiers (IDFA only if you allow tracking), device / network details, and the
-            usage and purchase events listed above
-          </li>
-          <li>
             <strong className="text-ink">Meta (Facebook)</strong> — App Events for ad attribution in
             the iOS app (1.2+): install / session signals and trial / purchase events (product, price,
             currency); IDFA only if you allow tracking
           </li>
           <li>
             <strong className="text-ink">Ad networks we advertise on (e.g. X)</strong> — attribution
-            results for our campaigns via AppsFlyer and Apple SKAdNetwork; device-level only if you
-            allow tracking
+            results for our campaigns via Apple SKAdNetwork / AdAttributionKit and Meta; device-level
+            only if you allow tracking
           </li>
           <li>
             Hosting / infrastructure providers that process data under our instruction to serve the

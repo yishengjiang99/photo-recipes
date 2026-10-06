@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		089FEA715317D1912246FDBB /* CameraRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129BADA94E12448D42002B17 /* CameraRouter.swift */; };
-		0E490FFC11E1EDA099B30387 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4821EAB91DB9266A7531A19F /* PrivacyInfo.xcprivacy */; };
 		10F16AAA9399E4EF75D64F9E /* EntitlementsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C310F864BE31E5820DF0E18 /* EntitlementsStore.swift */; };
 		182398E7E96E53EC8349DC4C /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D1B6A59C9B7FB261F7FEE3 /* LibraryView.swift */; };
 		1895543C2D3CB191DD1DDC95 /* SubscriptionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2D3217B3FD561DB93525B2 /* SubscriptionStatus.swift */; };
@@ -16,6 +15,7 @@
 		21CA4DBFD77E7ACC2C0148E9 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 881131F2D5F98177E96BBA4B /* SettingsView.swift */; };
 		243D7084BD1512208737E86C /* Attribution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C930970AF4FCB7FC47C932 /* Attribution.swift */; };
 		2514692EB175921537B0E712 /* CreativeLookEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CF9F912BE23B99169DCD5B /* CreativeLookEngine.swift */; };
+		3437EF09E792194B9BEDBB69 /* FreeOptimizeQuotaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B65F97E6FB4D1A0FE2C4FD /* FreeOptimizeQuotaTests.swift */; };
 		373A1AD38F38FA85098FCF8D /* ManualDialsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A9993A6957ED48D293C7DC /* ManualDialsSheet.swift */; };
 		44BD3E2DCA671E59713AA7D2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7D784D76B246BB971209B9 /* ContentView.swift */; };
 		4730352250594F82C5432443 /* ApplyFiltersIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62158163611D375F0D7E9012 /* ApplyFiltersIntentTests.swift */; };
@@ -33,7 +33,7 @@
 		750484EA864BDD0AF03D1DBB /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99FB2543A4A6DE81B27C049A /* Theme.swift */; };
 		7E83DC84D48478D313CABA6E /* InferenceApplyPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BFA977AFAC5C24EF5053F8A /* InferenceApplyPathTests.swift */; };
 		81C529261B3A75FEE91F8381 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B10D8D706FDBA39AF08B08A /* MainTabView.swift */; };
-		82742D8081323FF4FE5C6D69 /* AppsFlyerLib-Static in Frameworks */ = {isa = PBXBuildFile; productRef = E917D4F01D75A69455B0665B /* AppsFlyerLib-Static */; };
+		82742D8081323FF4FE5C6D69 /* FacebookCore in Frameworks */ = {isa = PBXBuildFile; productRef = 00032B25C47FB0E1DDF83AF1 /* FacebookCore */; };
 		87880DAC8B41AB6C09ED90B9 /* LocalAutoOptimizeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A1CF84E34FDAA1384AC9FB /* LocalAutoOptimizeEngine.swift */; };
 		87D2F64F13E43A8F4607DC2C /* CameraSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68856C2573DED019CD13012D /* CameraSession.swift */; };
 		8AB22AD04313B208C95E94BB /* PhotoRecipesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24C5B7C6610B4BD4AB3BD721 /* PhotoRecipesApp.swift */; };
@@ -42,7 +42,6 @@
 		97B36718F7A6D3B1B20FF22E /* ControlsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F329F8F7D93FFE5E561B78 /* ControlsSheet.swift */; };
 		9AE705FB65257D8838FEB924 /* HorizonMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2939840DE57970321BF1E320 /* HorizonMonitor.swift */; };
 		9B04F242D3E65010DA270198 /* RecommendResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F91AB20A8DA04AB5DC79F5 /* RecommendResponse.swift */; };
-		A1F5535C3D8A57E4CA0A0A42 /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 8A1094897CD65C80369C4A0D /* Products.storekit */; };
 		AF2252746C4131E60D42927C /* AutoOptimizeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DEF3F95329DCFF642588B9D /* AutoOptimizeController.swift */; };
 		AF9B0FCFDDCC2A2D8A4D61B6 /* BeforeAfterChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EF7D29C4506B7043EBAB9E7 /* BeforeAfterChip.swift */; };
 		B2715D6D9237CAC069D990CD /* AskGrokView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6259B1F945FFE8C672F012 /* AskGrokView.swift */; };
@@ -51,11 +50,15 @@
 		C205D20F45ABFC0AE1AA3810 /* AgentStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFADF278941C9E3E019A350F /* AgentStatusPill.swift */; };
 		C42E2D34F8984E30E0CAA6E5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AEA75A45D9F07A35351BAD39 /* Assets.xcassets */; };
 		C812AD45424F1E2499817A80 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFFA50F4D919414612DDA54 /* APIClient.swift */; };
+		CD464A9748675D581205B0B7 /* OptimizeResultRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C92EB40D6D94999CD802CC3 /* OptimizeResultRow.swift */; };
 		CD785427B6460D6084FAB359 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86162858584FF0EEFFCBE347 /* CameraPreviewView.swift */; };
 		CEE4A5F461C16AA99C95DC6F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C79699DDA2F9A2BCCCC193C /* OnboardingView.swift */; };
 		D603C6EEF7801059B527620F /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52FEA7030347C7AF6A461F3 /* StoreKitManager.swift */; };
+		DB9C20FB34209F81B106B91B /* MetaEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 356EAFABF1667D1C92F49523 /* MetaEvents.swift */; };
 		E61FC5B59550E9DB1893AE11 /* TeachModeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3DB4B1EDF56DC1BE8E5DD8 /* TeachModeSheet.swift */; };
+		F703D4AA19A4179CED778AF5 /* FreeOptimizeQuota.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753CC06E877CAB2C473F564E /* FreeOptimizeQuota.swift */; };
 		F774C51085B57DA31C71D1D9 /* VoiceDictateButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A5EB9FBDDF576F97BA2124 /* VoiceDictateButton.swift */; };
+		F98B25A6D237A8C2CFD0C1C4 /* PostSaveCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47F17D59070630EC4C41198 /* PostSaveCard.swift */; };
 		FA80B4A1BA815B1AB0B40106 /* VoiceCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F76DCC1B47FC8B41D8545AF /* VoiceCaptureController.swift */; };
 		FFFE3B479B88267E0BA3863C /* PushAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85650A9B5666E776C40FBCD7 /* PushAnalytics.swift */; };
 /* End PBXBuildFile section */
@@ -84,10 +87,11 @@
 		2BFA977AFAC5C24EF5053F8A /* InferenceApplyPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceApplyPathTests.swift; sourceTree = "<group>"; };
 		2DEF3F95329DCFF642588B9D /* AutoOptimizeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoOptimizeController.swift; sourceTree = "<group>"; };
 		31F329F8F7D93FFE5E561B78 /* ControlsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsSheet.swift; sourceTree = "<group>"; };
+		356EAFABF1667D1C92F49523 /* MetaEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaEvents.swift; sourceTree = "<group>"; };
 		3A6259B1F945FFE8C672F012 /* AskGrokView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskGrokView.swift; sourceTree = "<group>"; };
+		3C92EB40D6D94999CD802CC3 /* OptimizeResultRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimizeResultRow.swift; sourceTree = "<group>"; };
 		43CF9F912BE23B99169DCD5B /* CreativeLookEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLookEngine.swift; sourceTree = "<group>"; };
 		46D1B6A59C9B7FB261F7FEE3 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
-		4821EAB91DB9266A7531A19F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		487FF1EBAEC11A28B295A07F /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		56F91AB20A8DA04AB5DC79F5 /* RecommendResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecommendResponse.swift; sourceTree = "<group>"; };
 		57BFEBB5B826434EEA562754 /* CameraCoachMarksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCoachMarksView.swift; sourceTree = "<group>"; };
@@ -99,6 +103,7 @@
 		68856C2573DED019CD13012D /* CameraSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSession.swift; sourceTree = "<group>"; };
 		68E09BFFDB4299BCD43F0535 /* PhotoRecipes.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoRecipes.entitlements; sourceTree = "<group>"; };
 		6B474B2C37B2E822F28DA2D3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		753CC06E877CAB2C473F564E /* FreeOptimizeQuota.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeOptimizeQuota.swift; sourceTree = "<group>"; };
 		7AF20E7A9B6376260750BB77 /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
 		7B10D8D706FDBA39AF08B08A /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		7DDF48BB54168B67602469F2 /* ViewfinderPanCuesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewfinderPanCuesView.swift; sourceTree = "<group>"; };
@@ -107,7 +112,6 @@
 		85650A9B5666E776C40FBCD7 /* PushAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushAnalytics.swift; sourceTree = "<group>"; };
 		86162858584FF0EEFFCBE347 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		881131F2D5F98177E96BBA4B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		8A1094897CD65C80369C4A0D /* Products.storekit */ = {isa = PBXFileReference; path = Products.storekit; sourceTree = "<group>"; };
 		923FCACB976D06D3DBBCA206 /* LocalSceneAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSceneAnalyzer.swift; sourceTree = "<group>"; };
 		92A1CF84E34FDAA1384AC9FB /* LocalAutoOptimizeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAutoOptimizeEngine.swift; sourceTree = "<group>"; };
 		99FB2543A4A6DE81B27C049A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -124,6 +128,8 @@
 		C671D883C5EEB3B9F023ECCD /* CreativeLook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLook.swift; sourceTree = "<group>"; };
 		C6CDC2104B49296CDA5563AF /* ApplyFiltersIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplyFiltersIntent.swift; sourceTree = "<group>"; };
 		C756F3F2AD876179B3F40CDB /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationManager.swift; sourceTree = "<group>"; };
+		E3B65F97E6FB4D1A0FE2C4FD /* FreeOptimizeQuotaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeOptimizeQuotaTests.swift; sourceTree = "<group>"; };
+		E47F17D59070630EC4C41198 /* PostSaveCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostSaveCard.swift; sourceTree = "<group>"; };
 		EC7D784D76B246BB971209B9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F9C68E4FD642DC25DF69C5D3 /* PhotoRecipesRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoRecipesRelease.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -133,7 +139,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				82742D8081323FF4FE5C6D69 /* AppsFlyerLib-Static in Frameworks */,
+				82742D8081323FF4FE5C6D69 /* FacebookCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -151,9 +157,11 @@
 				68856C2573DED019CD13012D /* CameraSession.swift */,
 				43CF9F912BE23B99169DCD5B /* CreativeLookEngine.swift */,
 				0C310F864BE31E5820DF0E18 /* EntitlementsStore.swift */,
+				753CC06E877CAB2C473F564E /* FreeOptimizeQuota.swift */,
 				2939840DE57970321BF1E320 /* HorizonMonitor.swift */,
 				92A1CF84E34FDAA1384AC9FB /* LocalAutoOptimizeEngine.swift */,
 				923FCACB976D06D3DBBCA206 /* LocalSceneAnalyzer.swift */,
+				356EAFABF1667D1C92F49523 /* MetaEvents.swift */,
 				487FF1EBAEC11A28B295A07F /* PhotoLibrarySaver.swift */,
 				85650A9B5666E776C40FBCD7 /* PushAnalytics.swift */,
 				C756F3F2AD876179B3F40CDB /* PushNotificationManager.swift */,
@@ -210,8 +218,6 @@
 			children = (
 				AEA75A45D9F07A35351BAD39 /* Assets.xcassets */,
 				6B474B2C37B2E822F28DA2D3 /* Info.plist */,
-				4821EAB91DB9266A7531A19F /* PrivacyInfo.xcprivacy */,
-				8A1094897CD65C80369C4A0D /* Products.storekit */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -262,6 +268,7 @@
 			isa = PBXGroup;
 			children = (
 				62158163611D375F0D7E9012 /* ApplyFiltersIntentTests.swift */,
+				E3B65F97E6FB4D1A0FE2C4FD /* FreeOptimizeQuotaTests.swift */,
 				2BFA977AFAC5C24EF5053F8A /* InferenceApplyPathTests.swift */,
 				277DBF13852585A83D56A157 /* ViewfinderPanCueTests.swift */,
 			);
@@ -295,6 +302,8 @@
 				31F329F8F7D93FFE5E561B78 /* ControlsSheet.swift */,
 				A89D09F89BAEE27A93A279AD /* LookChip.swift */,
 				A1A9993A6957ED48D293C7DC /* ManualDialsSheet.swift */,
+				3C92EB40D6D94999CD802CC3 /* OptimizeResultRow.swift */,
+				E47F17D59070630EC4C41198 /* PostSaveCard.swift */,
 				BE3DB4B1EDF56DC1BE8E5DD8 /* TeachModeSheet.swift */,
 				7DDF48BB54168B67602469F2 /* ViewfinderPanCuesView.swift */,
 			);
@@ -346,7 +355,7 @@
 			);
 			name = PhotoRecipes;
 			packageProductDependencies = (
-				E917D4F01D75A69455B0665B /* AppsFlyerLib-Static */,
+				00032B25C47FB0E1DDF83AF1 /* FacebookCore */,
 			);
 			productName = PhotoRecipes;
 			productReference = 2796F066E9579E4D82774E74 /* PhotoRecipes.app */;
@@ -381,7 +390,6 @@
 				TargetAttributes = {
 					648C214C573EF62D3B37D59A = {
 						DevelopmentTeam = 83D36RPMUM;
-						ProvisioningStyle = Automatic;
 					};
 					F203898824AD0B6069F88998 = {
 						DevelopmentTeam = 83D36RPMUM;
@@ -399,7 +407,7 @@
 			mainGroup = 8AF2C7F94C4DA00DEB1E85A3;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				7CFFA9A8757921EEE05010D0 /* XCRemoteSwiftPackageReference "AppsFlyerFramework-Static" */,
+				173C59D3E3F0ADA46883E4ED /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 95AFDAA37D59691F7FF558B2 /* Products */;
@@ -418,8 +426,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				C42E2D34F8984E30E0CAA6E5 /* Assets.xcassets in Resources */,
-				0E490FFC11E1EDA099B30387 /* PrivacyInfo.xcprivacy in Resources */,
-				A1F5535C3D8A57E4CA0A0A42 /* Products.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -431,6 +437,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4730352250594F82C5432443 /* ApplyFiltersIntentTests.swift in Sources */,
+				3437EF09E792194B9BEDBB69 /* FreeOptimizeQuotaTests.swift in Sources */,
 				7E83DC84D48478D313CABA6E /* InferenceApplyPathTests.swift in Sources */,
 				926C481C921AA953BDD5CA83 /* ViewfinderPanCueTests.swift in Sources */,
 			);
@@ -459,6 +466,7 @@
 				61CC1741D35DEE03BA9D8004 /* CreativeLook.swift in Sources */,
 				2514692EB175921537B0E712 /* CreativeLookEngine.swift in Sources */,
 				10F16AAA9399E4EF75D64F9E /* EntitlementsStore.swift in Sources */,
+				F703D4AA19A4179CED778AF5 /* FreeOptimizeQuota.swift in Sources */,
 				9AE705FB65257D8838FEB924 /* HorizonMonitor.swift in Sources */,
 				182398E7E96E53EC8349DC4C /* LibraryView.swift in Sources */,
 				87880DAC8B41AB6C09ED90B9 /* LocalAutoOptimizeEngine.swift in Sources */,
@@ -466,10 +474,13 @@
 				63C4AD8474BE28E09D252E56 /* LookChip.swift in Sources */,
 				81C529261B3A75FEE91F8381 /* MainTabView.swift in Sources */,
 				373A1AD38F38FA85098FCF8D /* ManualDialsSheet.swift in Sources */,
+				DB9C20FB34209F81B106B91B /* MetaEvents.swift in Sources */,
 				CEE4A5F461C16AA99C95DC6F /* OnboardingView.swift in Sources */,
+				CD464A9748675D581205B0B7 /* OptimizeResultRow.swift in Sources */,
 				1AE0B5F431E5D09ED0A0FBF8 /* PaywallView.swift in Sources */,
 				4B2E805A8AC3544C26F0751F /* PhotoLibrarySaver.swift in Sources */,
 				8AB22AD04313B208C95E94BB /* PhotoRecipesApp.swift in Sources */,
+				F98B25A6D237A8C2CFD0C1C4 /* PostSaveCard.swift in Sources */,
 				FFFE3B479B88267E0BA3863C /* PushAnalytics.swift in Sources */,
 				918FCDA67FDF6AD16F119DAE /* PushNotificationManager.swift in Sources */,
 				66B5AFBED21E24D196C0B360 /* Recipe.swift in Sources */,
@@ -501,12 +512,11 @@
 		20ED52F4385D584784A4D82A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APPSFLYER_DEV_KEY = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipes.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 48;
+				CURRENT_PROJECT_VERSION = 49;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -570,12 +580,11 @@
 		90D4C13985CFCC02C81D22FF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APPSFLYER_DEV_KEY = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PhotoRecipes/PhotoRecipesRelease.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 48;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 49;
 				DEVELOPMENT_TEAM = 83D36RPMUM;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -588,6 +597,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.ragnus.mvp;
 				PRODUCT_MODULE_NAME = PhotoRecipes;
 				PRODUCT_NAME = "ProTune AI Camera";
+				PROVISIONING_PROFILE_SPECIFIER = "Grepawk Photos App Store";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -752,21 +762,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		7CFFA9A8757921EEE05010D0 /* XCRemoteSwiftPackageReference "AppsFlyerFramework-Static" */ = {
+		173C59D3E3F0ADA46883E4ED /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/AppsFlyerSDK/AppsFlyerFramework-Static";
+			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
 			requirement = {
-				kind = exactVersion;
-				version = 7.0.2;
+				kind = upToNextMajorVersion;
+				minimumVersion = 18.1.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		E917D4F01D75A69455B0665B /* AppsFlyerLib-Static */ = {
+		00032B25C47FB0E1DDF83AF1 /* FacebookCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7CFFA9A8757921EEE05010D0 /* XCRemoteSwiftPackageReference "AppsFlyerFramework-Static" */;
-			productName = "AppsFlyerLib-Static";
+			package = 173C59D3E3F0ADA46883E4ED /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
+			productName = FacebookCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

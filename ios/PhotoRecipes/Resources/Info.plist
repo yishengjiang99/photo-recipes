@@ -105,8 +105,6 @@
 		<key>AttributionCopyEndpoint</key>
 		<string>https://photo.grepawk.com</string>
 	</dict>
-	<key>AppsFlyerDevKey</key>
-	<string>$(APPSFLYER_DEV_KEY)</string>
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>

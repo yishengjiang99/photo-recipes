@@ -524,7 +524,7 @@ final class PhotoRecipesAppDelegate: NSObject, UIApplicationDelegate {
         // Sync on main — UIApplicationDelegate is already main-thread.
         MainActor.assumeIsolated {
             PushNotificationManager.shared.noteAppLaunchReady(reason: "did_finish_launching")
-            // SKAN install registration + AppsFlyer (only if this build has a dev key).
+            // SKAN install registration (Meta App Events configure follows).
             Attribution.shared.configure()
             MetaEvents.configure(application: application, launchOptions: launchOptions)
         }

@@ -1,9 +1,9 @@
 # App Privacy answers — ProTune AI Camera 1.2 (com.ragnus.mvp, Apple ID 6813991381)
 
-1.2 adds the **AppsFlyer** SDK (`AppsFlyerFramework-Static` 7.0.2) and **Meta App Events** (FacebookCore) for install attribution of X / Meta App
-Install ads, an **App Tracking Transparency** prompt after onboarding, and SKAdNetwork /
-AdAttributionKit postback copies to grepawk.com. The App Store "App Privacy" label must be updated
-**before 1.2 is submitted**.
+1.2 adds **Meta App Events** (FacebookCore) for install attribution of Meta / X App Install
+ads, an **App Tracking Transparency** prompt after onboarding, and SKAdNetwork /
+AdAttributionKit postback copies to grepawk.com. AppsFlyer was removed. The App Store
+"App Privacy" label must be updated **before 1.2 is submitted**.
 
 The public App Store Connect API has no endpoint for App Privacy, and the `iris` endpoint rejected
 our API key when we tried it for Music Reader (and again for this app; see
@@ -11,10 +11,9 @@ our API key when we tried it for Music Reader (and again for this app; see
 
 **App Store Connect → ProTune AI Camera → App Privacy → Edit (Data Types) → answer each type → Publish.**
 
-Sources of truth: `ios/PhotoRecipes/Resources/PrivacyInfo.xcprivacy` (app code), AppsFlyer's bundled
-`PrivacyInfo.xcprivacy`, AppsFlyer's nutrition-label guide
-(https://support.appsflyer.com/hc/en-us/articles/207032086), and the privacy policy at
-https://photo.grepawk.com/privacy (updated 2026-10-05).
+Sources of truth: `ios/PhotoRecipes/Resources/PrivacyInfo.xcprivacy` (app code), FacebookCore's
+bundled `PrivacyInfo.xcprivacy`, and the privacy policy at
+https://photo.grepawk.com/privacy (updated 2026-10-06).
 
 ## Step 1 — "Do you or your third-party partners collect data from this app?"
 
@@ -24,22 +23,19 @@ https://photo.grepawk.com/privacy (updated 2026-10-05).
 
 | Category | Data type | Who collects it |
 |---|---|---|
-| Location | **Coarse Location** | AppsFlyer (country / region derived from IP) |
 | User Content | **Photos or Videos** | Our API + xAI (Recommend / Auto Optimize vision frames, per request) |
 | User Content | **Audio Data** | Our API + xAI (cloud speech-to-text fallback for scene dictation) |
 | User Content | **Other User Content** | Our API + xAI (typed scene notes / Ask text) |
-| Identifiers | **Device ID** | AppsFlyer (IDFA only if ATT allowed, IDFV, AppsFlyer ID); our guest / anon id and APNs token |
-| Purchases | **Purchase History** | AppsFlyer (`af_start_trial`, `af_subscribe`: product, price, currency); our API (StoreKit receipt verification) |
-| Usage Data | **Product Interaction** | AppsFlyer (install, launches, `first_auto_optimize`); our in-house telemetry |
-| Usage Data | **Advertising Data** | AppsFlyer / X (which ad, campaign and network led to the install) |
-| Diagnostics | **Performance Data** | AppsFlyer (launch timing used for fraud detection) |
+| Identifiers | **Device ID** | Meta (IDFA only if ATT allowed, Meta anon id); our guest / anon id and APNs token |
+| Purchases | **Purchase History** | Meta (`StartTrial` / `fb_mobile_purchase`: product, price, currency); our API (StoreKit receipt verification) |
+| Usage Data | **Product Interaction** | Meta (install / session `activateApp`); our in-house telemetry |
 | Diagnostics | **Other Diagnostic Data** | Our API (`api_error` / `optimize_error` events) |
-| Other Data | **Other Data Types** | AppsFlyer (device model, OS version, language, time zone, IP address, user agent) |
 
 Leave everything else unticked: Contact Info (the email waitlist is web-only, not in the app),
-Health & Fitness, Financial Info, Precise Location, Sensitive Info, Contacts, Emails or Text Messages,
-Gameplay Content, Customer Support, Browsing History, Search History, User ID, Credit Info,
-Other Financial Info, Crash Data (no crash SDK), Other Usage Data.
+Health & Fitness, Financial Info, Precise Location, Coarse Location, Sensitive Info, Contacts,
+Emails or Text Messages, Gameplay Content, Customer Support, Browsing History, Search History,
+User ID, Credit Info, Other Financial Info, Crash Data (no crash SDK), Advertising Data,
+Performance Data, Other Usage Data, Other Data Types.
 
 ## Step 3 — Per data type answers
 
@@ -48,43 +44,43 @@ Purposes use Apple's labels: *Third-Party Advertising*, *Developer's Advertising
 
 | Data type | Purposes | Linked to the user's identity? | Used for tracking? |
 |---|---|---|---|
-| Coarse Location | Developer's Advertising or Marketing; Analytics | **Yes** | **Yes** |
 | Photos or Videos | App Functionality | No | No |
 | Audio Data | App Functionality | No | No |
 | Other User Content | App Functionality | No | No |
 | Device ID | Third-Party Advertising; Developer's Advertising or Marketing; Analytics; App Functionality | **Yes** | **Yes** |
 | Purchase History | Developer's Advertising or Marketing; Analytics; App Functionality | **Yes** | **Yes** |
 | Product Interaction | Developer's Advertising or Marketing; Analytics | **Yes** | **Yes** |
-| Advertising Data | Developer's Advertising or Marketing; Analytics | **Yes** | **Yes** |
-| Performance Data | App Functionality | **Yes** | No |
 | Other Diagnostic Data | App Functionality; Analytics | No | No |
-| Other Data Types | Developer's Advertising or Marketing; Analytics; App Functionality | **Yes** | **Yes** |
 
 Notes on the choices:
-- **Tracking = Yes** for everything AppsFlyer sends: when the user allows ATT, AppsFlyer links the
-  IDFA with X's ad data to measure our campaigns, which is "tracking" under Apple's definition. This
-  is also why the app shows the ATT prompt (`NSUserTrackingUsageDescription`).
-- **Third-Party Advertising** on Device ID matches the purpose AppsFlyer declares in its own
-  privacy manifest, so the label agrees with Xcode's generated privacy report. We do not show ads in
-  the app; the measurement purpose is covered by *Developer's Advertising or Marketing*.
-- **Linked = Yes** for AppsFlyer data because it is keyed to device identifiers.
+- **Tracking = Yes** for Device ID / Purchases / Product Interaction that Meta sends: when the user
+  allows ATT, Meta can link the IDFA with ad data to measure our campaigns, which is "tracking"
+  under Apple's definition. This is also why the app shows the ATT prompt
+  (`NSUserTrackingUsageDescription`).
+- **Third-Party Advertising** on Device ID matches Meta's measurement purpose in the privacy
+  report. We do not show ads in the app; the measurement purpose is also covered by
+  *Developer's Advertising or Marketing*.
+- **Linked = Yes** for Meta data because it is keyed to device / app-instance identifiers.
 - Photos, audio and scene text are sent for a single request and are not stored or tied to an
   identity (unchanged from 1.1).
+- `PrivacyInfo.xcprivacy` declares `NSPrivacyTracking=true` with tracking domain
+  `ep1.facebook.com` only (ITMS-91064).
 
 ## Resulting label (what the product page should show)
 
-- **Data Used to Track You:** Location, Identifiers, Purchases, Usage Data, Other Data
-- **Data Linked to You:** Location, Identifiers, Purchases, Usage Data, Diagnostics, Other Data
+- **Data Used to Track You:** Identifiers, Purchases, Usage Data
+- **Data Linked to You:** Identifiers, Purchases, Usage Data
 - **Data Not Linked to You:** User Content, Diagnostics
 
 ## Also check before submitting 1.2
 
-- Privacy Policy URL stays `https://photo.grepawk.com/privacy` (now discloses AppsFlyer and Meta App Events).
-- App Review notes: mention the ATT prompt appears ~1 s after onboarding (or ~3 s after launch for
-  users who onboarded on 1.1) and only in builds with an AppsFlyer dev key.
-- AppsFlyer dashboard: add app `id6813991381`, enable the X Ads integration (MACT / SKAN
-  interoperation), and set the SKAN conversion-value mode.
+- Privacy Policy URL stays `https://photo.grepawk.com/privacy` (discloses Meta App Events; no AppsFlyer).
+- App Review notes: mention the ATT prompt appears after onboarding via Meta
+  (`MetaEvents.requestTrackingIfNeeded` on becomeActive).
+- SKAdNetwork / AdAttributionKit postback copies still go to grepawk.com (see `Attribution.swift`
+  and `server/attribution.ts`).
 
-## Meta App Events (also in 1.2)
+## Meta App Events (1.2)
 
-Alongside AppsFlyer, the app embeds Meta’s FacebookCore SDK for install/session (`activateApp`) and trial/purchase App Events. ATT-gated; `ep1.facebook.com` is declared as a tracking domain in `PrivacyInfo.xcprivacy`. App Privacy answers above cover Device ID / Purchases / Product Interaction for Developer’s Advertising / Third-Party Advertising the same way.
+The app embeds Meta’s FacebookCore SDK for install/session (`activateApp`) and trial/purchase App
+Events. ATT-gated; `ep1.facebook.com` is declared as a tracking domain in `PrivacyInfo.xcprivacy`.
