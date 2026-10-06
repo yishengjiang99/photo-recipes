@@ -6,6 +6,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F1E2D3C4B5A6METAEVTBLD0001 /* MetaEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6METAEVTREF0001 /* MetaEvents.swift */; };
+		F1E2D3C4B5A6FBSDKFWB00001 /* FacebookCore in Frameworks */ = {isa = PBXBuildFile; productRef = F1E2D3C4B5A6FBSDKPRD00001 /* FacebookCore */; };
 		C2D3E4F5061728394A5B6C7D /* PushNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5061728394A5B6C7D8E /* PushNotificationManager.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* PushAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */; };
 		AF65C954A073AF6004DC26D4 /* VoiceDictateButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */; };
@@ -57,6 +59,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F1E2D3C4B5A6METAEVTREF0001 /* MetaEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaEvents.swift; sourceTree = "<group>"; };
 		D3E4F5061728394A5B6C7D8E /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationManager.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushAnalytics.swift; sourceTree = "<group>"; };
 		2CFF74EC145DB13D42613C83 /* VoiceDictateButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictateButton.swift; sourceTree = "<group>"; };
@@ -222,6 +225,7 @@
 				B1C2D3E4F5061728394A5B6C /* PushAnalytics.swift */,
 				89161FDC75D748C6BE10ABD7 /* EntitlementsStore.swift */,
 				B27E2F87255E44ED9BEA7236 /* StoreKitManager.swift */,
+				F1E2D3C4B5A6METAEVTREF0001 /* MetaEvents.swift */,
 				959973059EE74D68BA9CB789 /* CameraSession.swift */,
 				F9748FD9A4FC4ADA8CD75462 /* RecipeCameraMapper.swift */,
 				F71036156851482B84D96223 /* AutoOptimizeController.swift */,
@@ -309,6 +313,9 @@
 			productName = PhotoRecipes;
 			productReference = 892AA67F63154D80834A869D /* Photo Recipes.app */;
 			productType = "com.apple.product-type.application";
+			packageProductDependencies = (
+				F1E2D3C4B5A6FBSDKPRD00001 /* FacebookCore */,
+			);
 		};
 		E1F2A3B4C5D60105TESTTG01 /* PhotoRecipesTests */ = {
 			isa = PBXNativeTarget;
@@ -329,6 +336,25 @@
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F1E2D3C4B5A6FBSDKPKG00001 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 18.1.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F1E2D3C4B5A6FBSDKPRD00001 /* FacebookCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1E2D3C4B5A6FBSDKPKG00001 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
+			productName = FacebookCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXProject section */
 		AEDBA07E262A453281A8D509 /* Project object */ = {
@@ -352,6 +378,9 @@
 				Base,
 			);
 			mainGroup = D576E3E235054F469D42A01E;
+			packageReferences = (
+				F1E2D3C4B5A6FBSDKPKG00001 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
+			);
 			productRefGroup = B773A201C92B4CDC9993D98E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -386,6 +415,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F1E2D3C4B5A6FBSDKFWB00001 /* FacebookCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -446,6 +476,7 @@
 				E4F5A6B7C8D90182APPLYFILBF /* ApplyFiltersIntent.swift in Sources */,
 				B2C3D4E5F647180ALOOKENGINBF /* CreativeLookEngine.swift in Sources */,
 				C2D3E4F5061728394A5B6C7D /* PushNotificationManager.swift in Sources */,
+				F1E2D3C4B5A6METAEVTBLD0001 /* MetaEvents.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* PushAnalytics.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
