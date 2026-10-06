@@ -87,4 +87,5 @@ jobs:
             -destination "${{ steps.sim.outputs.destination }}" \
             -only-testing:PhotoRecipesTests \
             CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
             test
