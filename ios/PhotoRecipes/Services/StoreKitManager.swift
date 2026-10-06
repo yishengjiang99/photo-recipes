@@ -81,6 +81,12 @@ final class StoreKitManager: ObservableObject {
                 )
                 await transaction.finish()
                 purchasedProductIDs.insert(product.id)
+                MetaEvents.logSubscriptionPurchase(
+                    productId: product.id,
+                    price: product.price,
+                    currencyCode: product.priceFormatStyle.currencyCode,
+                    isTrial: transaction.offerType == .introductory
+                )
                 return true
             case .userCancelled:
                 return false
@@ -120,10 +126,27 @@ final class StoreKitManager: ObservableObject {
                 )
                 await transaction.finish()
                 purchasedProductIDs.insert(transaction.productID)
+                // Refunds/revocations are not purchases — don't log them to Meta.
+                if transaction.revocationDate == nil {
+                    logMetaRenewal(productId: transaction.productID)
+                }
             } catch {
                 // Ignore unverified updates
             }
         }
+    }
+
+    /// Logs subscription renewals (and other out-of-band subscription payments)
+    /// to Meta. Looks up the StoreKit product for price/currency; skips silently
+    /// if the product isn't loaded.
+    private func logMetaRenewal(productId: String) {
+        guard let product = products.first(where: { $0.id == productId }) else { return }
+        MetaEvents.logSubscriptionPurchase(
+            productId: productId,
+            price: product.price,
+            currencyCode: product.priceFormatStyle.currencyCode,
+            isTrial: false
+        )
     }
 
     func refreshEntitlementsFromCurrentEntitlements() async {

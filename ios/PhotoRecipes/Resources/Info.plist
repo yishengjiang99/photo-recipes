@@ -73,7 +73,36 @@
 				<string>photo-recipes</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.ragnus.mvp.facebook</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Replace FB_APP_ID_PLACEHOLDER with the real Facebook App ID -->
+				<string>fbFB_APP_ID_PLACEHOLDER</string>
+			</array>
+		</dict>
 	</array>
+	<!-- Meta App Events: FacebookAppID / FacebookClientToken still need the real values -->
+	<key>FacebookAppID</key>
+	<string>FB_APP_ID_PLACEHOLDER</string>
+	<key>FacebookClientToken</key>
+	<string>FB_APP_ID_PLACEHOLDER</string>
+	<key>FacebookDisplayName</key>
+	<string>ProTune AI Camera</string>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>v9wttpbfk9.skadnetwork</string>
+		</dict>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>n38lu8286q.skadnetwork</string>
+		</dict>
+	</array>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>ProTune uses this to measure which ads help photographers discover the app, so we can keep improving it for you.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>
