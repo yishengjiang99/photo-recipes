@@ -78,16 +78,16 @@
 			<string>com.ragnus.mvp.facebook</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<!-- Replace FB_APP_ID_PLACEHOLDER with the real Facebook App ID -->
-				<string>fbFB_APP_ID_PLACEHOLDER</string>
+<!-- Facebook App ID configured for ProTune AI Camera -->
+				<string>fb1895534071416482</string>
 			</array>
 		</dict>
 	</array>
-	<!-- Meta App Events: FacebookAppID / FacebookClientToken still need the real values -->
+<!-- Meta App Events: FacebookAppID / FacebookClientToken -->
 	<key>FacebookAppID</key>
-	<string>FB_APP_ID_PLACEHOLDER</string>
+	<string>1895534071416482</string>
 	<key>FacebookClientToken</key>
-	<string>FB_APP_ID_PLACEHOLDER</string>
+	<string>da0e07881bc13ff0de9efe8ffa2b7a9f</string>
 	<key>FacebookDisplayName</key>
 	<string>ProTune AI Camera</string>
 	<key>SKAdNetworkItems</key>
