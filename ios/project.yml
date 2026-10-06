@@ -21,6 +21,11 @@ configs:
   Debug: debug
   Release: release
 packages:
+  # AppsFlyer iOS SDK (install attribution for X App Install ads). Static SPM repo per
+  # AppsFlyer docs for >= 6.12; pinned exactly — bump deliberately.
+  AppsFlyerLib:
+    url: https://github.com/AppsFlyerSDK/AppsFlyerFramework-Static
+    exactVersion: "7.0.2"
   FacebookSDK:
     url: https://github.com/facebook/facebook-ios-sdk
     from: "18.1.1"
@@ -35,7 +40,10 @@ targets:
     resources:
       - path: PhotoRecipes/Resources/Assets.xcassets
       - path: PhotoRecipes/Resources/Products.storekit
+      - path: PhotoRecipes/Resources/PrivacyInfo.xcprivacy
     dependencies:
+      - package: AppsFlyerLib
+        product: AppsFlyerLib-Static
       - package: FacebookSDK
         product: FacebookCore
     settings:
@@ -44,14 +52,17 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ragnus.mvp
         PRODUCT_NAME: ProTune AI Camera
         PRODUCT_MODULE_NAME: PhotoRecipes
-        MARKETING_VERSION: "1.1"
-        CURRENT_PROJECT_VERSION: "44"
+        MARKETING_VERSION: "1.2"
+        CURRENT_PROJECT_VERSION: "48"
         GENERATE_INFOPLIST_FILE: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_EMIT_LOC_STRINGS: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 83D36RPMUM
         ENABLE_TESTABILITY: YES
+        # AppsFlyer dev key → Info.plist AppsFlyerDevKey. Empty here (never commit it);
+        # CI passes APPSFLYER_DEV_KEY=<GitHub secret> to xcodebuild. Empty = SDK disabled.
+        APPSFLYER_DEV_KEY: ""
       configs:
         # Debug / local → development APNs; Release / Archive / TestFlight → production.
         # Hardcoding development in a distribution-signed TF build causes

@@ -69,12 +69,19 @@ jobs:
           if not udid:
               sys.exit("No available iPhone simulator")
           print(f"Using simulator {chosen} ({udid})")
-          # macos-15 runners are Apple Silicon; pin arm64 so SwiftPM packages
-          # and the app target agree on architecture (xcodebuild can otherwise
-          # resolve the simulator as x86_64, breaking package module lookup).
+          # macos-15 runners are Apple Silicon; pin arm64 so SwiftPM packages and the app agree.
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"destination=platform=iOS Simulator,id={udid},arch=arm64\n")
           PY
+
+      - name: Generate Xcode project (same as TestFlight)
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          # project.yml is the source of truth (SwiftPM packages, resources, settings).
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -list -project PhotoRecipes.xcodeproj
 
       - name: Run PhotoRecipesTests
         working-directory: ios
@@ -87,5 +94,4 @@ jobs:
             -destination "${{ steps.sim.outputs.destination }}" \
             -only-testing:PhotoRecipesTests \
             CODE_SIGNING_ALLOWED=NO \
-            ARCHS=arm64 \
             test
