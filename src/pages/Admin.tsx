@@ -25,10 +25,19 @@ type Summary = {
     activeByPlatform8h: Record<string, number>
     topEventsByPlatform: Record<string, Array<{ event: string; count: number }>>
     topEvents8hByPlatform: Record<string, Array<{ event: string; count: number }>>
-    dauHistogram?: {
-      days: number
+    hourlyActive?: {
+      hours: number
+      timezone?: string
       definition: string
-      series: Array<{ day: string; dau: number }>
+      series: Array<{ bucket: number; users: number }>
+      error?: string
+    }
+    dailyActive?: {
+      days: number
+      timezone?: string
+      definition: string
+      series: Array<{ bucket: number; day: string; users: number }>
+      error?: string
     }
     error?: string
   }
@@ -204,82 +213,137 @@ function PlatformFilter({
 }
 
 
-function fmtDayLabel(iso: string): string {
-  // iso is YYYY-MM-DD from MySQL calendar day
-  const [, m, d] = iso.split('-')
-  return `${Number(m)}/${Number(d)}`
-}
+const PT = 'America/Los_Angeles'
+const ptHourFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: PT,
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+})
+const ptDayTick = new Intl.DateTimeFormat('en-US', { timeZone: PT, month: 'numeric', day: 'numeric' })
+const ptHour23 = new Intl.DateTimeFormat('en-US', { timeZone: PT, hour: 'numeric', hourCycle: 'h23' })
+// Daily buckets are PT date keys (00:00 UTC of the PT date) → format in UTC.
+const dayKeyFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+})
+const dayKeyTick = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'numeric', day: 'numeric' })
+
+type Bar = { key: number; value: number; tooltip: string; tick?: string; divider?: boolean }
 
 /** CSS bar histogram — no chart library; matches admin card styling. */
-function DauHistogram({
-  series,
+function BarHistogram({
+  title,
+  windowLabel,
   definition,
-  days,
+  error,
+  bars,
+  peakLabel,
+  dense,
 }: {
-  series: Array<{ day: string; dau: number }>
+  title: string
+  windowLabel: string
   definition: string
-  days: number
+  error?: string
+  bars: Bar[]
+  peakLabel?: (b: Bar) => string
+  dense?: boolean
 }) {
-  const max = Math.max(1, ...series.map((p) => p.dau))
+  const max = Math.max(1, ...bars.map((b) => b.value))
+  const peak = bars.reduce<Bar | null>((m, b) => (!m || b.value > m.value ? b : m), null)
   return (
     <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
       <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
-        <div className="text-sm text-[var(--color-ink-secondary)]">
-          Daily active users
-          <span className="ml-2 text-xs text-[var(--color-ink-tertiary)]">
-            last {days} days
-          </span>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-sm text-[var(--color-ink-secondary)]">
+            {title}
+            <span className="ml-2 text-xs text-[var(--color-ink-tertiary)]">{windowLabel}</span>
+          </div>
+          {peak && peak.value > 0 ? (
+            <span className="text-xs text-[var(--color-ink-tertiary)]">
+              peak <span className="font-mono text-[var(--color-tip)]">{peak.value}</span>
+              {peakLabel ? ` · ${peakLabel(peak)}` : ''}
+            </span>
+          ) : null}
         </div>
         <p className="mt-0.5 text-xs text-[var(--color-ink-tertiary)]">{definition}</p>
+        {error ? (
+          <p className="mt-1 text-xs text-[var(--color-danger)]">
+            Query failed ({error}) — bars below are placeholders, not real zeros.
+          </p>
+        ) : null}
       </div>
-      {series.length === 0 ? (
+      {bars.length === 0 ? (
         <p className="px-3 py-6 text-sm text-[var(--color-ink-tertiary)]">No data</p>
       ) : (
         <div className="px-3 pb-2 pt-4">
           <div
-            className="flex h-40 items-end gap-1 sm:gap-1.5"
+            className={`flex h-40 items-end ${dense ? 'gap-px' : 'gap-1'}`}
             role="img"
-            aria-label={`DAU histogram for the last ${days} days`}
+            aria-label={`${title}, ${windowLabel}`}
           >
-            {series.map((p) => {
-              const pct = Math.round((p.dau / max) * 100)
-              return (
+            {bars.map((b) => (
+              <div
+                key={b.key}
+                className={`flex h-full min-w-0 flex-1 flex-col justify-end ${
+                  b.divider ? 'border-l border-[var(--color-border)]' : ''
+                }`}
+                title={b.tooltip}
+              >
                 <div
-                  key={p.day}
-                  className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end"
-                  title={`${p.day}: ${p.dau} DAU`}
-                >
-                  <span className="pointer-events-none absolute -top-0.5 z-10 hidden rounded bg-[var(--color-bg-elevated)] px-1 font-mono text-[10px] text-[var(--color-ink-secondary)] shadow-sm sm:group-hover:block">
-                    {p.dau}
-                  </span>
-                  <div
-                    className="w-full max-w-[28px] rounded-t-[3px] bg-[var(--color-tip)] transition-opacity group-hover:opacity-90"
-                    style={{
-                      height: p.dau <= 0 ? '0%' : `${Math.max(4, pct)}%`,
-                    }}
-                  />
-                </div>
-              )
-            })}
+                  className="w-full rounded-t-[2px] bg-[var(--color-tip)] hover:opacity-80"
+                  style={{
+                    height: b.value <= 0 ? '0%' : `${Math.max(3, Math.round((b.value / max) * 100))}%`,
+                  }}
+                />
+              </div>
+            ))}
           </div>
-          <div className="mt-1 flex gap-1 sm:gap-1.5 border-t border-[var(--color-border)] pt-1">
-            {series.map((p, i) => {
-              const show =
-                i === 0 || i === series.length - 1 || i % Math.ceil(series.length / 6) === 0
-              return (
-                <div
-                  key={p.day}
-                  className="min-w-0 flex-1 text-center text-[9px] leading-tight text-[var(--color-ink-tertiary)] sm:text-[10px]"
-                >
-                  {show ? fmtDayLabel(p.day) : '\u00a0'}
-                </div>
-              )
-            })}
+          <div className={`mt-1 flex border-t border-[var(--color-border)] pt-1 ${dense ? 'gap-px' : 'gap-1'}`}>
+            {bars.map((b) => (
+              <div
+                key={b.key}
+                className="relative min-w-0 flex-1 text-[9px] leading-tight text-[var(--color-ink-tertiary)] sm:text-[10px]"
+              >
+                {b.tick ? <span className="absolute left-0 whitespace-nowrap">{b.tick}</span> : null}
+                {'\u00a0'}
+              </div>
+            ))}
           </div>
         </div>
       )}
     </div>
   )
+}
+
+function hourlyBars(series: Array<{ bucket: number; users: number }>): Bar[] {
+  return series.map((p) => {
+    const d = new Date(p.bucket * 1000)
+    const midnight = ptHour23.format(d) === '0'
+    return {
+      key: p.bucket,
+      value: p.users,
+      tooltip: `${ptHourFmt.format(d)} PT: ${p.users} active`,
+      tick: midnight ? ptDayTick.format(d) : undefined,
+      divider: midnight,
+    }
+  })
+}
+
+function dailyBars(series: Array<{ bucket: number; users: number }>): Bar[] {
+  const every = Math.max(1, Math.ceil(series.length / 6))
+  return series.map((p, i) => {
+    const d = new Date(p.bucket * 1000)
+    return {
+      key: p.bucket,
+      value: p.users,
+      tooltip: `${dayKeyFmt.format(d)} (PT): ${p.users} DAU`,
+      tick: i % every === 0 || i === series.length - 1 ? dayKeyTick.format(d) : undefined,
+    }
+  })
 }
 
 export function Admin() {
@@ -645,11 +709,25 @@ export function Admin() {
                 <Kpi label="DAU" value={summary.telemetry.dau} hint="Distinct anon_id · 24h" />
                 <Kpi label="WAU" value={summary.telemetry.wau} hint="Distinct anon_id · 7d" />
               </div>
-              {summary.telemetry.dauHistogram ? (
-                <DauHistogram
-                  series={summary.telemetry.dauHistogram.series}
-                  definition={summary.telemetry.dauHistogram.definition}
-                  days={summary.telemetry.dauHistogram.days}
+              {summary.telemetry.dailyActive ? (
+                <BarHistogram
+                  title="Daily active users"
+                  windowLabel={`last ${summary.telemetry.dailyActive.days} days · PT calendar days`}
+                  definition={summary.telemetry.dailyActive.definition}
+                  error={summary.telemetry.dailyActive.error}
+                  bars={dailyBars(summary.telemetry.dailyActive.series)}
+                  peakLabel={(b) => dayKeyFmt.format(new Date(b.key * 1000))}
+                />
+              ) : null}
+              {summary.telemetry.hourlyActive ? (
+                <BarHistogram
+                  title="Hourly active users"
+                  windowLabel={`last ${Math.round(summary.telemetry.hourlyActive.hours / 24)} days · ${summary.telemetry.hourlyActive.hours} hours · PT`}
+                  definition={summary.telemetry.hourlyActive.definition}
+                  error={summary.telemetry.hourlyActive.error}
+                  bars={hourlyBars(summary.telemetry.hourlyActive.series)}
+                  peakLabel={(b) => `${ptHourFmt.format(new Date(b.key * 1000))} PT`}
+                  dense
                 />
               ) : null}
               <div className="mt-4 grid gap-4 lg:grid-cols-2">

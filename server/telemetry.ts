@@ -360,78 +360,189 @@ export async function fetchRecentApiErrors(limit = 40): Promise<RecentApiError[]
 }
 
 
-/** Calendar-day DAU series for admin histogram.
- * DAU = COUNT(DISTINCT anon_id) with ≥1 row that MySQL calendar day
- * (DATE(created_at)); same identity as admin DAU/WAU KPIs / funnel activity.
- * Uses idx_telemetry_created via created_at range predicate — not a full table scan.
+/** Hourly active users for the admin histogram.
+ * Active = COUNT(DISTINCT anon_id) with ≥1 telemetry row in that clock hour
+ * (same identity as admin DAU/WAU KPIs). Buckets are integer epoch seconds:
+ *   UNIX_TIMESTAMP(created_at) DIV 3600 * 3600
+ * so JS keys by number (no Date/string key mismatch) and gap-fills by +3600.
+ * created_at is TIMESTAMP(3) on prod; UNIX_TIMESTAMP is session-tz independent.
+ * Hours are tz-neutral; the UI labels them in PT (America/Los_Angeles).
  */
-export type DauDay = { day: string; dau: number }
+export type HourBucket = { bucket: number; users: number }
 
-export async function fetchDauHistogram(days = 30): Promise<{
-  days: number
+export const ACTIVE_HISTOGRAM_TIMEZONE = 'America/Los_Angeles'
+
+/** Epoch-second hour buckets ending at the current hour (oldest first). */
+export function hourBuckets(hours: number, nowMs = Date.now()): number[] {
+  const end = Math.floor(nowMs / 1000 / 3600) * 3600
+  const out: number[] = []
+  for (let b = end - (hours - 1) * 3600; b <= end; b += 3600) out.push(b)
+  return out
+}
+
+/** Gap-fill SQL rows onto the bucket grid; keys are numbers on both sides. */
+export function fillHourBuckets(
+  rows: Array<{ bucket: number | string; users: number | string }>,
+  buckets: number[],
+): HourBucket[] {
+  const byBucket = new Map<number, number>()
+  for (const r of rows) {
+    const b = Number(r.bucket)
+    if (Number.isFinite(b)) byBucket.set(b, Number(r.users) || 0)
+  }
+  return buckets.map((bucket) => ({ bucket, users: byBucket.get(bucket) ?? 0 }))
+}
+
+export async function fetchHourlyActiveUsers(hours = 168): Promise<{
+  hours: number
+  timezone: string
   definition: string
-  series: DauDay[]
+  series: HourBucket[]
+  error?: string
+}> {
+  const windowHours = Math.min(24 * 30, Math.max(1, Math.floor(hours)))
+  const definition =
+    'Active users = distinct anon_id with ≥1 telemetry event in that hour (UNIX_TIMESTAMP(created_at) DIV 3600 * 3600). Same identity as DAU/WAU KPIs. Axis in PT.'
+  const buckets = hourBuckets(windowHours)
+  const base = { hours: windowHours, timezone: ACTIVE_HISTOGRAM_TIMEZONE, definition }
+  const zeros = buckets.map((bucket) => ({ bucket, users: 0 }))
+
+  const pool = getMysqlPool()
+  if (!pool) return { ...base, series: zeros }
+
+  try {
+    // Grouping by the bucket alias is valid under ONLY_FULL_GROUP_BY (prod sql_mode).
+    const [rows] = await pool.query(
+      `SELECT UNIX_TIMESTAMP(created_at) DIV 3600 * 3600 AS bucket,
+              COUNT(DISTINCT anon_id) AS users
+       FROM telemetry_events
+       WHERE created_at >= FROM_UNIXTIME(?)
+       GROUP BY bucket
+       ORDER BY bucket`,
+      [buckets[0]],
+    )
+    return {
+      ...base,
+      series: fillHourBuckets(rows as Array<{ bucket: number; users: number }>, buckets),
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn('[telemetry] hourly active histogram failed:', msg)
+    return { ...base, series: zeros, error: 'query_failed' }
+  }
+}
+
+/** PT (America/Los_Angeles) UTC offset in seconds at epoch `tsSec` (e.g. -25200 PDT). */
+export function ptOffsetSec(tsSec: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ACTIVE_HISTOGRAM_TIMEZONE,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(tsSec * 1000))
+  const v = (k: string) => Number(parts.find((x) => x.type === k)?.value)
+  const wall = Date.UTC(v('year'), v('month') - 1, v('day'), v('hour'), v('minute'), v('second')) / 1000
+  return Math.round((wall - Math.floor(tsSec)) / 60) * 60
+}
+
+/**
+ * Offset regime for [fromSec, toSec]: PT changes offset at most once in ≤90 days.
+ * Returns { switchAt, before, after }; switchAt = first epoch hour using `after`
+ * (0 and before===after when no DST transition in range).
+ */
+export function ptOffsetRegime(fromSec: number, toSec: number) {
+  const before = ptOffsetSec(fromSec)
+  const after = ptOffsetSec(toSec)
+  if (before === after) return { switchAt: 0, before, after }
+  let lo = Math.floor(fromSec / 3600)
+  let hi = Math.ceil(toSec / 3600)
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (ptOffsetSec(mid * 3600) === before) lo = mid
+    else hi = mid
+  }
+  return { switchAt: hi * 3600, before, after }
+}
+
+/** PT calendar date key as epoch seconds of 00:00 UTC on that date (step 86400, no DST gaps). */
+export function ptDayBucket(tsSec: number): number {
+  return Math.floor((tsSec + ptOffsetSec(tsSec)) / 86400) * 86400
+}
+
+export type DayBucket = { bucket: number; day: string; users: number }
+
+export function dayBuckets(days: number, nowMs = Date.now()): number[] {
+  const today = ptDayBucket(Math.floor(nowMs / 1000))
+  const out: number[] = []
+  for (let b = today - (days - 1) * 86400; b <= today; b += 86400) out.push(b)
+  return out
+}
+
+export function fillDayBuckets(
+  rows: Array<{ bucket: number | string; users: number | string }>,
+  buckets: number[],
+): DayBucket[] {
+  const byBucket = new Map<number, number>()
+  for (const r of rows) {
+    const b = Number(r.bucket)
+    if (Number.isFinite(b)) byBucket.set(b, Number(r.users) || 0)
+  }
+  return buckets.map((bucket) => ({
+    bucket,
+    day: new Date(bucket * 1000).toISOString().slice(0, 10),
+    users: byBucket.get(bucket) ?? 0,
+  }))
+}
+
+/** Daily active users by PT calendar day.
+ * bucket = (UNIX_TIMESTAMP(created_at) + pt_offset) DIV 86400 * 86400 → PT date key
+ * (epoch of 00:00 UTC on the PT date). pt_offset is computed in Node (prod MySQL
+ * has no tz tables) and switches at the DST instant if the window crosses one.
+ */
+export async function fetchDailyActiveUsers(days = 30): Promise<{
+  days: number
+  timezone: string
+  definition: string
+  series: DayBucket[]
+  error?: string
 }> {
   const windowDays = Math.min(90, Math.max(1, Math.floor(days)))
   const definition =
-    'DAU = distinct anon_id with ≥1 telemetry event that calendar day (MySQL DATE(created_at)). Same identity as DAU/WAU KPIs.'
-  const emptySeries = (anchorIso: string): DauDay[] => {
-    const out: DauDay[] = []
-    // Parse YYYY-MM-DD as UTC noon to avoid DST edge flips when stepping days.
-    const anchor = new Date(`${anchorIso}T12:00:00Z`)
-    for (let i = windowDays - 1; i >= 0; i--) {
-      const d = new Date(anchor)
-      d.setUTCDate(anchor.getUTCDate() - i)
-      out.push({ day: d.toISOString().slice(0, 10), dau: 0 })
-    }
-    return out
-  }
+    'DAU = distinct anon_id with ≥1 telemetry event that PT calendar day ((UNIX_TIMESTAMP(created_at) + PT offset) DIV 86400). DST-aware. Same identity as DAU/WAU KPIs.'
+  const buckets = dayBuckets(windowDays)
+  const base = { days: windowDays, timezone: ACTIVE_HISTOGRAM_TIMEZONE, definition }
+  const zeros = fillDayBuckets([], buckets)
 
   const pool = getMysqlPool()
-  if (!pool) {
-    const today = new Date().toISOString().slice(0, 10)
-    return { days: windowDays, definition, series: emptySeries(today) }
-  }
+  if (!pool) return { ...base, series: zeros }
 
+  const nowSec = Math.floor(Date.now() / 1000)
+  // PT midnight of the first day ≈ dateKey - offset; pad 1h, extras dropped by the grid.
+  const fromSec = buckets[0]! - ptOffsetSec(buckets[0]!) - 3600
+  const { switchAt, before, after } = ptOffsetRegime(fromSec, nowSec)
   try {
-    const [[todayRow]] = (await pool.query(
-      `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS d`,
-    )) as unknown as [Array<{ d: string }>]
-    const today = todayRow?.d || new Date().toISOString().slice(0, 10)
-    const series = emptySeries(today)
-
-    // Range on created_at uses KEY idx_telemetry_created; distinct count per day.
     const [rows] = await pool.query(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS day,
-              COUNT(DISTINCT anon_id) AS dau
+      `SELECT (UNIX_TIMESTAMP(created_at)
+                + IF(UNIX_TIMESTAMP(created_at) >= ?, ?, ?)) DIV 86400 * 86400 AS bucket,
+              COUNT(DISTINCT anon_id) AS users
        FROM telemetry_events
-       WHERE created_at >= (CURDATE() - INTERVAL ? DAY)
-         AND created_at < (CURDATE() + INTERVAL 1 DAY)
-       GROUP BY DATE(created_at)
-       ORDER BY day ASC`,
-      [windowDays - 1],
+       WHERE created_at >= FROM_UNIXTIME(?)
+       GROUP BY bucket
+       ORDER BY bucket`,
+      [switchAt, after, before, fromSec],
     )
-    const byDay = new Map<string, number>()
-    for (const r of rows as Array<{ day: string | Date; dau: number }>) {
-      const day =
-        typeof r.day === 'string'
-          ? r.day.slice(0, 10)
-          : r.day instanceof Date
-            ? r.day.toISOString().slice(0, 10)
-            : String(r.day).slice(0, 10)
-      byDay.set(day, Number(r.dau) || 0)
+    return {
+      ...base,
+      series: fillDayBuckets(rows as Array<{ bucket: number; users: number }>, buckets),
     }
-    for (const point of series) {
-      point.dau = byDay.get(point.day) ?? 0
-    }
-    return { days: windowDays, definition, series }
   } catch (err) {
-    console.warn(
-      '[telemetry] dau histogram failed:',
-      err instanceof Error ? err.message : err,
-    )
-    const today = new Date().toISOString().slice(0, 10)
-    return { days: windowDays, definition, series: emptySeries(today) }
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn('[telemetry] daily active histogram failed:', msg)
+    return { ...base, series: zeros, error: 'query_failed' }
   }
 }
 

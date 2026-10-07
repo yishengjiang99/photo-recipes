@@ -16,7 +16,11 @@ import {
   listPushTokensForGuest,
   mergeApnsTokens,
 } from './pushDevices.ts'
-import { fetchDauHistogram, fetchRecentApiErrors } from './telemetry.ts'
+import {
+  fetchDailyActiveUsers,
+  fetchHourlyActiveUsers,
+  fetchRecentApiErrors,
+} from './telemetry.ts'
 
 const ADMIN_COOKIE = 'pr_admin'
 const COOKIE_MAX_MS = 7 * 24 * 60 * 60 * 1000
@@ -146,11 +150,19 @@ async function telemetrySummary() {
     activeByPlatform8h: {} as Record<string, number>,
     topEventsByPlatform: {} as Record<string, Array<{ event: string; count: number }>>,
     topEvents8hByPlatform: {} as Record<string, Array<{ event: string; count: number }>>,
-    dauHistogram: {
+    hourlyActive: {
+      hours: 168,
+      timezone: 'America/Los_Angeles',
+      definition: '',
+      series: [] as Array<{ bucket: number; users: number }>,
+      error: undefined as string | undefined,
+    },
+    dailyActive: {
       days: 30,
-      definition:
-        'DAU = distinct anon_id with ≥1 telemetry event that calendar day (MySQL DATE(created_at)). Same identity as DAU/WAU KPIs.',
-      series: [] as Array<{ day: string; dau: number }>,
+      timezone: 'America/Los_Angeles',
+      definition: '',
+      series: [] as Array<{ bucket: number; day: string; users: number }>,
+      error: undefined as string | undefined,
     },
   }
   const pool = getMysqlPool()
@@ -230,7 +242,10 @@ async function telemetrySummary() {
       }
       return grouped
     }
-    const dauHistogram = await fetchDauHistogram(30)
+    const [hourlyActive, dailyActive] = await Promise.all([
+      fetchHourlyActiveUsers(168),
+      fetchDailyActiveUsers(30),
+    ])
 
     return {
       configured: true,
@@ -270,7 +285,8 @@ async function telemetrySummary() {
       topEvents8hByPlatform: topByPlatform(
         topPlatRows8h as Array<{ platform: string; event: string; c: number }>,
       ),
-      dauHistogram,
+      hourlyActive,
+      dailyActive,
     }
   } catch (err) {
     console.warn(
