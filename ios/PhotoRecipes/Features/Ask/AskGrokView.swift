@@ -523,6 +523,10 @@ struct FieldCoachPanel: View {
             result = response
             assertApplyFiltersLook(message: prompt, response: response)
             await entitlements.refresh()
+            // Clear the input after a successful submit so the next
+            // instruction starts from an empty field (typed and voice).
+            message = ""
+            voiceDictationBase = ""
         } catch let APIError.paywall(payload) {
             errorText = payload.error
             showPaywallFromQuota = true
@@ -546,6 +550,10 @@ struct FieldCoachPanel: View {
                 result = response
                 assertApplyFiltersLook(message: prompt, response: response)
                 await entitlements.refresh()
+                // Clear the input after a successful submit so the next
+                // instruction starts from an empty field (typed and voice).
+                message = ""
+                voiceDictationBase = ""
             } catch let APIError.paywall(payload) {
                 errorText = payload.error
                 showPaywallFromQuota = true
