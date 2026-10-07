@@ -16,7 +16,7 @@ import {
   listPushTokensForGuest,
   mergeApnsTokens,
 } from './pushDevices.ts'
-import { fetchRecentApiErrors } from './telemetry.ts'
+import { fetchDauHistogram, fetchRecentApiErrors } from './telemetry.ts'
 
 const ADMIN_COOKIE = 'pr_admin'
 const COOKIE_MAX_MS = 7 * 24 * 60 * 60 * 1000
@@ -146,6 +146,12 @@ async function telemetrySummary() {
     activeByPlatform8h: {} as Record<string, number>,
     topEventsByPlatform: {} as Record<string, Array<{ event: string; count: number }>>,
     topEvents8hByPlatform: {} as Record<string, Array<{ event: string; count: number }>>,
+    dauHistogram: {
+      days: 30,
+      definition:
+        'DAU = distinct anon_id with ≥1 telemetry event that calendar day (MySQL DATE(created_at)). Same identity as DAU/WAU KPIs.',
+      series: [] as Array<{ day: string; dau: number }>,
+    },
   }
   const pool = getMysqlPool()
   if (!pool) return empty
@@ -224,6 +230,8 @@ async function telemetrySummary() {
       }
       return grouped
     }
+    const dauHistogram = await fetchDauHistogram(30)
+
     return {
       configured: true,
       events8h: Number(e8?.n) || 0,
@@ -262,6 +270,7 @@ async function telemetrySummary() {
       topEvents8hByPlatform: topByPlatform(
         topPlatRows8h as Array<{ platform: string; event: string; c: number }>,
       ),
+      dauHistogram,
     }
   } catch (err) {
     console.warn(

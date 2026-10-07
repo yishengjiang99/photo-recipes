@@ -359,6 +359,82 @@ export async function fetchRecentApiErrors(limit = 40): Promise<RecentApiError[]
   }
 }
 
+
+/** Calendar-day DAU series for admin histogram.
+ * DAU = COUNT(DISTINCT anon_id) with ≥1 row that MySQL calendar day
+ * (DATE(created_at)); same identity as admin DAU/WAU KPIs / funnel activity.
+ * Uses idx_telemetry_created via created_at range predicate — not a full table scan.
+ */
+export type DauDay = { day: string; dau: number }
+
+export async function fetchDauHistogram(days = 30): Promise<{
+  days: number
+  definition: string
+  series: DauDay[]
+}> {
+  const windowDays = Math.min(90, Math.max(1, Math.floor(days)))
+  const definition =
+    'DAU = distinct anon_id with ≥1 telemetry event that calendar day (MySQL DATE(created_at)). Same identity as DAU/WAU KPIs.'
+  const emptySeries = (anchorIso: string): DauDay[] => {
+    const out: DauDay[] = []
+    // Parse YYYY-MM-DD as UTC noon to avoid DST edge flips when stepping days.
+    const anchor = new Date(`${anchorIso}T12:00:00Z`)
+    for (let i = windowDays - 1; i >= 0; i--) {
+      const d = new Date(anchor)
+      d.setUTCDate(anchor.getUTCDate() - i)
+      out.push({ day: d.toISOString().slice(0, 10), dau: 0 })
+    }
+    return out
+  }
+
+  const pool = getMysqlPool()
+  if (!pool) {
+    const today = new Date().toISOString().slice(0, 10)
+    return { days: windowDays, definition, series: emptySeries(today) }
+  }
+
+  try {
+    const [[todayRow]] = (await pool.query(
+      `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS d`,
+    )) as unknown as [Array<{ d: string }>]
+    const today = todayRow?.d || new Date().toISOString().slice(0, 10)
+    const series = emptySeries(today)
+
+    // Range on created_at uses KEY idx_telemetry_created; distinct count per day.
+    const [rows] = await pool.query(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS day,
+              COUNT(DISTINCT anon_id) AS dau
+       FROM telemetry_events
+       WHERE created_at >= (CURDATE() - INTERVAL ? DAY)
+         AND created_at < (CURDATE() + INTERVAL 1 DAY)
+       GROUP BY DATE(created_at)
+       ORDER BY day ASC`,
+      [windowDays - 1],
+    )
+    const byDay = new Map<string, number>()
+    for (const r of rows as Array<{ day: string | Date; dau: number }>) {
+      const day =
+        typeof r.day === 'string'
+          ? r.day.slice(0, 10)
+          : r.day instanceof Date
+            ? r.day.toISOString().slice(0, 10)
+            : String(r.day).slice(0, 10)
+      byDay.set(day, Number(r.dau) || 0)
+    }
+    for (const point of series) {
+      point.dau = byDay.get(point.day) ?? 0
+    }
+    return { days: windowDays, definition, series }
+  } catch (err) {
+    console.warn(
+      '[telemetry] dau histogram failed:',
+      err instanceof Error ? err.message : err,
+    )
+    const today = new Date().toISOString().slice(0, 10)
+    return { days: windowDays, definition, series: emptySeries(today) }
+  }
+}
+
 export function mountTelemetryRoutes(app: Express) {
   app.post('/api/telemetry', (req: Request, res: Response) => {
     void (async () => {

@@ -25,6 +25,11 @@ type Summary = {
     activeByPlatform8h: Record<string, number>
     topEventsByPlatform: Record<string, Array<{ event: string; count: number }>>
     topEvents8hByPlatform: Record<string, Array<{ event: string; count: number }>>
+    dauHistogram?: {
+      days: number
+      definition: string
+      series: Array<{ day: string; dau: number }>
+    }
     error?: string
   }
   stripe: {
@@ -194,6 +199,85 @@ function PlatformFilter({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+
+function fmtDayLabel(iso: string): string {
+  // iso is YYYY-MM-DD from MySQL calendar day
+  const [, m, d] = iso.split('-')
+  return `${Number(m)}/${Number(d)}`
+}
+
+/** CSS bar histogram — no chart library; matches admin card styling. */
+function DauHistogram({
+  series,
+  definition,
+  days,
+}: {
+  series: Array<{ day: string; dau: number }>
+  definition: string
+  days: number
+}) {
+  const max = Math.max(1, ...series.map((p) => p.dau))
+  return (
+    <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+      <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+        <div className="text-sm text-[var(--color-ink-secondary)]">
+          Daily active users
+          <span className="ml-2 text-xs text-[var(--color-ink-tertiary)]">
+            last {days} days
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-[var(--color-ink-tertiary)]">{definition}</p>
+      </div>
+      {series.length === 0 ? (
+        <p className="px-3 py-6 text-sm text-[var(--color-ink-tertiary)]">No data</p>
+      ) : (
+        <div className="px-3 pb-2 pt-4">
+          <div
+            className="flex h-40 items-end gap-1 sm:gap-1.5"
+            role="img"
+            aria-label={`DAU histogram for the last ${days} days`}
+          >
+            {series.map((p) => {
+              const pct = Math.round((p.dau / max) * 100)
+              return (
+                <div
+                  key={p.day}
+                  className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end"
+                  title={`${p.day}: ${p.dau} DAU`}
+                >
+                  <span className="pointer-events-none absolute -top-0.5 z-10 hidden rounded bg-[var(--color-bg-elevated)] px-1 font-mono text-[10px] text-[var(--color-ink-secondary)] shadow-sm sm:group-hover:block">
+                    {p.dau}
+                  </span>
+                  <div
+                    className="w-full max-w-[28px] rounded-t-[3px] bg-[var(--color-tip)] transition-opacity group-hover:opacity-90"
+                    style={{
+                      height: p.dau <= 0 ? '0%' : `${Math.max(4, pct)}%`,
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-1 flex gap-1 sm:gap-1.5 border-t border-[var(--color-border)] pt-1">
+            {series.map((p, i) => {
+              const show =
+                i === 0 || i === series.length - 1 || i % Math.ceil(series.length / 6) === 0
+              return (
+                <div
+                  key={p.day}
+                  className="min-w-0 flex-1 text-center text-[9px] leading-tight text-[var(--color-ink-tertiary)] sm:text-[10px]"
+                >
+                  {show ? fmtDayLabel(p.day) : '\u00a0'}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -561,6 +645,13 @@ export function Admin() {
                 <Kpi label="DAU" value={summary.telemetry.dau} hint="Distinct anon_id · 24h" />
                 <Kpi label="WAU" value={summary.telemetry.wau} hint="Distinct anon_id · 7d" />
               </div>
+              {summary.telemetry.dauHistogram ? (
+                <DauHistogram
+                  series={summary.telemetry.dauHistogram.series}
+                  definition={summary.telemetry.dauHistogram.definition}
+                  days={summary.telemetry.dauHistogram.days}
+                />
+              ) : null}
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
                   <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
