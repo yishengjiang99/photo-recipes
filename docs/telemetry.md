@@ -24,7 +24,11 @@ Production: put these in **`/etc/photo-recipes.env`** (systemd `EnvironmentFile=
 
 ```bash
 mysql "$MYSQL_DATABASE" < server/migrations/001_telemetry_events.sql
+mysql "$MYSQL_DATABASE" < server/migrations/003_telemetry_created_index.sql  # idempotent, online
 ```
+
+The API also applies both idempotently at boot (`server/telemetrySchema.ts`): `CREATE TABLE IF NOT EXISTS`
+plus `idx_telemetry_created (created_at)` if missing (`ALGORITHM=INPLACE, LOCK=NONE`). Never drops data.
 
 ## Clients
 

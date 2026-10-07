@@ -46,6 +46,7 @@ import { mountAdminRoutes } from './admin.ts'
 import { mountAttributionRoutes } from './attribution.ts'
 import { getMysqlPool } from './mysql.ts'
 import { ensurePushDevicesSchema } from './pushDevices.ts'
+import { ensureTelemetrySchema } from './telemetrySchema.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -589,6 +590,13 @@ async function start() {
       : 'MySQL: unset — telemetry accepts events but does not persist',
   )
   if (mysqlPool) {
+    void ensureTelemetrySchema().then((r) => {
+      if (r.ok) {
+        console.log(
+          `MySQL: telemetry_events schema ready${r.indexAdded ? ' (added idx_telemetry_created)' : ''}`,
+        )
+      }
+    })
     void ensurePushDevicesSchema().then((ok) => {
       if (ok) console.log('MySQL: devices + push_tokens schema ready')
     })
