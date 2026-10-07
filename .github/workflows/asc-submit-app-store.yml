@@ -61,15 +61,5 @@ jobs:
         run: |
           set -euo pipefail
           pip install -q PyJWT cryptography
-          python3 - <<'EXTRACT'
-          import pathlib, re, textwrap, subprocess
-          raw = subprocess.check_output(
-              ["git", "show", "f69eecf73ee470fa1f5c5f8ab259f89a673e05a2:.github/workflows/asc-submit-app-store.yml"],
-              text=True,
-          )
-          m = re.search(r"python3 <<'PY'\n(.*)\n          PY\s*$", raw, re.S)
-          if not m:
-              raise SystemExit("could not extract submit script from f69eecf")
-          pathlib.Path("/tmp/submit_app_store.py").write_text(textwrap.dedent(m.group(1)))
-          EXTRACT
+          python3 scripts/asc/submit_app_store.py
           python3 /tmp/submit_app_store.py
