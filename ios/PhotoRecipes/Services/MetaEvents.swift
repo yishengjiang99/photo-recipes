@@ -51,25 +51,41 @@ enum MetaEvents {
 
     /// Call from `applicationDidBecomeActive`. This is the install/session
     /// signal Meta uses for attribution.
+    ///
+    /// IMPORTANT: On first launch (ATT status `.notDetermined`), this does NOT
+    /// send the activation event immediately. Instead it requests ATT
+    /// authorization first, then sends the event in the completion handler.
+    /// Apple requires the ATT prompt to appear before any tracking data is
+    /// collected (Guideline 2.1).
     static func activateApp() {
         guard isConfigured else { return }
+        guard ATTrackingManager.trackingAuthorizationStatus != .notDetermined else {
+            // ATT not yet determined — request it; the activation event
+            // fires in the requestTrackingIfNeeded completion handler.
+            requestTrackingIfNeeded()
+            return
+        }
         AppEvents.shared.activateApp()
     }
 
-    /// Shows the App Tracking Transparency prompt once, after onboarding is
-    /// complete. Safe to call on every foregrounding — the system only prompts
+    /// Shows the App Tracking Transparency prompt on first launch.
+    /// Safe to call on every foregrounding — the system only prompts
     /// while the status is `.notDetermined`.
+    ///
+    /// NOTE: This is intentionally NOT gated behind onboarding completion.
+    /// Apple requires the ATT prompt before any tracking data is collected,
+    /// and reviewers test on fresh installs without completing onboarding.
     static func requestTrackingIfNeeded() {
         guard isConfigured else { return }
         guard ATTrackingManager.trackingAuthorizationStatus == .notDetermined else {
             syncAdvertiserTrackingFlag()
             return
         }
-        // Don't stack the ATT prompt on top of onboarding.
-        guard UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") else { return }
         ATTrackingManager.requestTrackingAuthorization { _ in
             Task { @MainActor in
                 syncAdvertiserTrackingFlag()
+                // ATT now determined — safe to send the activation event.
+                AppEvents.shared.activateApp()
             }
         }
     }
