@@ -35,6 +35,10 @@ struct PhotoRecipesApp: App {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     appModel.push.noteAppLaunchReady(reason: "scene_active")
+                    // Backup ATT trigger: the AppDelegate's applicationDidBecomeActive
+                    // may not fire reliably on iOS 27. The scenePhase is the
+                    // SwiftUI-equivalent signal.
+                    MetaEvents.requestTrackingIfNeeded()
                 }
             }
         }
