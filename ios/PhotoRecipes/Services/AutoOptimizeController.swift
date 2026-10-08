@@ -199,7 +199,7 @@ final class AutoOptimizeController: ObservableObject {
     func resetToAgent(session: CameraSession) {
         guard agentBaseline != nil else { return }
         if let id = chosenRecipeId, let recipe = BundledPresets.recipe(id: id) {
-            _ = session.apply(recipe: recipe)
+            Task { _ = await session.apply(recipe: recipe) }
         }
         afterSnapshot = agentBaseline
         isDirtyOverride = false
@@ -508,7 +508,7 @@ final class AutoOptimizeController: ObservableObject {
         beforeSnapshot = snap(session)
         var wroteTargets = false
         if entitlements.canApplyDials {
-            wroteTargets = session.applyPhoneTargets(solution.phoneTargets)
+            wroteTargets = await session.applyPhoneTargets(solution.phoneTargets)
         }
         session.clampMessages.append(contentsOf: solution.clampMessages)
 
@@ -567,7 +567,10 @@ final class AutoOptimizeController: ObservableObject {
         if let targetEV = solution.targetEV,
            solution.phoneTargets.exposureDurationSec != nil,
            entitlements.canApplyDials {
-            let v = await session.verifyExposure(targetEV: targetEV)
+            let v = await session.verifyExposure(
+                targetEV: targetEV,
+                priority: solution.priority,
+                shutterCapSeconds: solution.shutterCapSeconds)
             verifyIterations = v.iterations
             if v.verified {
                 verifyResidualEV = v.residualEV
@@ -974,7 +977,7 @@ final class AutoOptimizeController: ObservableObject {
                 let notesBefore = session.applyNotes
                 // Refine dials when server allows free phoneTargets (or Pro).
                 if entitlements.canApplyDials {
-                    _ = session.applyPhoneTargets(targets)
+                    _ = await session.applyPhoneTargets(targets)
                 }
                 // Look: auto-apply when Pass 1 left none; otherwise keep Pass 1 look.
                 if session.activeCreativeLook == nil,

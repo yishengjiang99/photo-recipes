@@ -245,7 +245,7 @@ struct CameraView: View {
         .sheet(isPresented: $showRecipePicker) {
             RecipePickerSheet { recipe in
                 showRecipePicker = false
-                _ = session.apply(recipe: recipe)
+                Task { @MainActor in _ = await session.apply(recipe: recipe) }
             }
         }
         .sheet(isPresented: $showOverflow) {
@@ -1301,7 +1301,7 @@ struct CameraView: View {
         guard let targets = mergeCreativeLook(response: response, message: message),
               targets.creativeLook != nil || response.creativeLook != nil || ApplyFiltersIntent.forcedLook(for: message ?? "") != nil else { return }
         if entitlements.canApplyDials {
-            _ = session.applyPhoneTargets(targets, autoApplyLook: true)
+            Task { @MainActor in _ = await session.applyPhoneTargets(targets, autoApplyLook: true) }
         } else if let look = targets.creativeLook ?? response.creativeLook {
             session.setActiveLook(look)
         }
@@ -1343,11 +1343,17 @@ struct CameraView: View {
 
     /// Apply Recommend recipe + phoneTargets + creativeLook onto the live viewfinder (dials + bake path).
     private func applyRecommendToCamera(recipe: Recipe, response: RecommendResponse?, message: String? = nil) {
-        _ = session.apply(recipe: recipe)
         let targets = mergeCreativeLook(response: response, message: message)
-        if entitlements.canApplyDials, let targets {
-            _ = session.applyPhoneTargets(targets, autoApplyLook: true)
-        } else if let look = targets?.creativeLook ?? response?.creativeLook {
+        let canApplyDials = entitlements.canApplyDials
+        // Applies are async now (awaitable exposure writes); the dial-write
+        // branch runs on the main actor right after.
+        Task { @MainActor in
+            _ = await session.apply(recipe: recipe)
+            if canApplyDials, let targets {
+                _ = await session.applyPhoneTargets(targets, autoApplyLook: true)
+            }
+        }
+        if !(canApplyDials && targets != nil), let look = targets?.creativeLook ?? response?.creativeLook {
             // Free Peek may lock dials — still bake the look onto preview/still so the finder changes.
             session.setActiveLook(look)
             if let lut = targets?.previewLUT, !lut.isEmpty {
@@ -1541,13 +1547,16 @@ struct CameraView: View {
             ])
         }
         if router.pendingApply {
-            _ = session.apply(recipe: recipe)
-            if let targets = router.stagedPhoneTargets {
-                // Ask / Recommend Apply → bake look immediately (same as runRecommend).
-                _ = session.applyPhoneTargets(targets, autoApplyLook: true)
-            }
+            let stagedTargets = router.stagedPhoneTargets
             router.stagedPhoneTargets = nil
             router.pendingApply = false
+            Task { @MainActor in
+                _ = await session.apply(recipe: recipe)
+                if let targets = stagedTargets {
+                    // Ask / Recommend Apply → bake look immediately (same as runRecommend).
+                    _ = await session.applyPhoneTargets(targets, autoApplyLook: true)
+                }
+            }
         } else {
             session.appliedRecipeId = recipe.id
             session.appliedRecipeTitle = recipe.title

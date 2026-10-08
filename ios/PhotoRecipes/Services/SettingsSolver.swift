@@ -30,6 +30,15 @@ enum SettingsSolver {
         /// in stops. Nil when no custom exposure is written (HDR, cheatsheet,
         /// thermal-critical fallback) — the verify loop skips then.
         var targetEV: Double?
+        /// A6: the recipe's exposure priority for the verify loop's correction
+        /// policy (`.shutter` recipes never have their shutter moved by
+        /// corrections). Populated by the solver-side worker; nil keeps the
+        /// legacy ISO-first-then-shutter corrections.
+        var priority: ExposurePlanner.Priority? = nil
+        /// A6: longest shutter the verify loop may move to when correcting
+        /// under `.auto` priority (the recipe's motion cap). Nil = device
+        /// limits only. Populated by the solver-side worker.
+        var shutterCapSeconds: Double? = nil
         var coachOnly: CoachOnly?
         var panCue: PanCue?
         var apertureGuidance: String?
