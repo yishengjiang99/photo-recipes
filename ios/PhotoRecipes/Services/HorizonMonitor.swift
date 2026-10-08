@@ -30,6 +30,27 @@ enum MotionMath {
     }
 }
 
+/// Pure tripod detection over a gyro history (no CoreMotion types in the
+/// signatures) — unit-testable.
+enum TripodDetector {
+    /// True when every sample in the trailing `sustainedSeconds` window is
+    /// below `thresholdRadPerSec` AND the history spans the full window —
+    /// i.e. the phone sat effectively still for the whole window.
+    static func isSteady(
+        history: [(date: Date, shake: Double)],
+        at now: Date = Date(),
+        thresholdRadPerSec: Double = 0.005,
+        sustainedSeconds: TimeInterval = 1.5
+    ) -> Bool {
+        let windowStart = now.addingTimeInterval(-sustainedSeconds)
+        let inWindow = history.filter { $0.date >= windowStart }
+        guard let oldest = inWindow.min(by: { $0.date < $1.date }),
+              oldest.date <= windowStart
+        else { return false }
+        return inWindow.allSatisfy { $0.shake < thresholdRadPerSec }
+    }
+}
+
 @MainActor
 final class HorizonMonitor: ObservableObject {
     @Published var rollDegrees: Double = 0
@@ -44,6 +65,15 @@ final class HorizonMonitor: ObservableObject {
     @Published var handShakeRadPerSec: Double = 0
     @Published var isLevel = true
     @Published var isAvailable = false
+
+    /// Recent (date, shake) gyro samples for tripod detection — pruned to ~3 s.
+    private var shakeHistory: [(date: Date, shake: Double)] = []
+
+    /// True when the gyro stayed < 0.005 rad/s for the last ≥ 1.5 s — the
+    /// phone is on a tripod (or otherwise braced) and long shutters are safe.
+    /// Read at AO tap time; the exposure planner drops its shake-derived
+    /// shutter limits when set.
+    var isTripodSteady: Bool { TripodDetector.isSteady(history: shakeHistory) }
 
     private let motion = CMMotionManager()
     private let queue = OperationQueue()
@@ -71,6 +101,12 @@ final class HorizonMonitor: ObservableObject {
                 self.cameraElevationDegrees = elevation
                 self.handShakeRadPerSec = smoothed
                 self.isLevel = abs(roll) < 1.0
+                // Tripod history lives on the main actor (this class is
+                // @MainActor) — the raw gyro sample, not the EMA, so a
+                // single jolt breaks the 1.5 s stillness window.
+                self.shakeHistory.append((Date(), shake))
+                let cutoff = Date().addingTimeInterval(-3)
+                self.shakeHistory.removeAll { $0.date < cutoff }
             }
         }
     }
@@ -78,5 +114,6 @@ final class HorizonMonitor: ObservableObject {
     func stop() {
         motion.stopDeviceMotionUpdates()
         shakeEMA = 0
+        shakeHistory = []
     }
 }

@@ -67,6 +67,7 @@ enum AOTelemetrySerializer {
         planShutterSec: Double?,
         planISO: String?,
         planTargetEV: Double?,
+        planResidualEV: Double?,
         residualEV: Double?,
         verifyIterations: Int,
         lensDeviceType: String
@@ -99,6 +100,9 @@ enum AOTelemetrySerializer {
             "plan_shutter": planShutterSec.map { String(format: "%.4g", $0) } ?? "",
             "plan_iso": planISO ?? "",
             "plan_target_ev": planTargetEV.map { String(format: "%.2f", $0) } ?? "",
+            // Planner residual (+ = brighter than target — same convention
+            // as the verify residual below), from Solution.residualEV.
+            "plan_residual_ev": planResidualEV.map { String(format: "%.2f", $0) } ?? "",
             "verify_residual_ev": residualEV.map { String(format: "%.2f", $0) } ?? "",
             "verify_iterations": "\(verifyIterations)",
         ]

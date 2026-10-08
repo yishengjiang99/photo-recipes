@@ -83,6 +83,7 @@ final class AOTelemetryTests: XCTestCase {
             planShutterSec: 1.0 / 125,
             planISO: "200",
             planTargetEV: 0.3,
+            planResidualEV: 0.05,
             residualEV: -0.12,
             verifyIterations: 1,
             lensDeviceType: "builtInWideAngleCamera"
@@ -97,6 +98,7 @@ final class AOTelemetryTests: XCTestCase {
         XCTAssertEqual(props["plan_shutter"], "0.008")
         XCTAssertEqual(props["plan_iso"], "200")
         XCTAssertEqual(props["plan_target_ev"], "0.30")
+        XCTAssertEqual(props["plan_residual_ev"], "0.05")
         XCTAssertEqual(props["verify_residual_ev"], "-0.12")
         XCTAssertEqual(props["verify_iterations"], "1")
 
@@ -123,6 +125,7 @@ final class AOTelemetryTests: XCTestCase {
             planShutterSec: nil,
             planISO: nil,
             planTargetEV: nil,
+            planResidualEV: nil,
             residualEV: nil,
             verifyIterations: 0,
             lensDeviceType: "unknown"
@@ -132,6 +135,7 @@ final class AOTelemetryTests: XCTestCase {
         XCTAssertEqual(props["gpu_grad"], "")
         XCTAssertEqual(props["face_count"], "")
         XCTAssertEqual(props["plan_shutter"], "")
+        XCTAssertEqual(props["plan_residual_ev"], "")
         XCTAssertEqual(props["verify_residual_ev"], "")
         // E_auto falls back to the 1/60 @ ISO 100 anchor.
         XCTAssertEqual(props["e_auto"], String(format: "%.4g", (1.0 / 60) * 100))

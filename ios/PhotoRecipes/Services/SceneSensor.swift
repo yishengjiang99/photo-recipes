@@ -11,6 +11,17 @@ struct SceneSnapshot {
     var features: SceneFeatures
     /// Seconds since the 1 Hz semantic snapshot was taken.
     var age: TimeInterval
+    /// When the snapshot's frame was analyzed. The controller requires this
+    /// to postdate AE convergence — frames exposed under a previous run's
+    /// custom exposure would anchor `E_auto` to the wrong light level.
+    /// Defaults to the distant past (conservative: forces a refresh).
+    var frameAt: Date = .distantPast
+
+    /// True when this snapshot's frame predates AE convergence — the caller
+    /// should `refreshNow` instead of scoring from it.
+    func predatesConvergence(_ convergedAt: Date) -> Bool {
+        frameAt <= convergedAt
+    }
 }
 
 /// Hysteresis for semantic groups so labels don't flicker frame to frame:
@@ -246,8 +257,9 @@ actor SceneSensor {
     /// and refreshes synchronously when `age` exceeds 1 s.
     func current() -> SceneSnapshot {
         let features = slowFeatures ?? SceneFeatures()
-        let age = slowFeaturesAt.map { Date().timeIntervalSince($0) } ?? .infinity
-        return SceneSnapshot(features: features, age: age)
+        let at = slowFeaturesAt
+        let age = at.map { Date().timeIntervalSince($0) } ?? .infinity
+        return SceneSnapshot(features: features, age: age, frameAt: at ?? .distantPast)
     }
 
     /// One full pass over the newest frame (classification, subjects, flow,
