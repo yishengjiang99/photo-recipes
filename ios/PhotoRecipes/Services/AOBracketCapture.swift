@@ -16,14 +16,16 @@ import os.log
 // - Nothing is ever uploaded automatically or in the background.
 // - Upload requires an explicit Settings tap + confirmation (the gate), and
 //   the transport is a declared stub until the server endpoint exists.
-// - Bracket capture never blocks the AO critical path: it fires ~2 s after
-//   Ready in its own task, skips when a newer run started, and soft-fails
-//   (logged) on any error. The user's shutter always wins — photoOutput
-//   serializes requests, so a tap during the bracket just queues behind it.
+// - Bracket capture never blocks the AO critical path: it is ARMED at Ready
+//   and fires right after the user's own capture completes (Section D —
+//   no timer that can collide with the shutter), skips when a newer run
+//   started or a user capture is in flight, and soft-fails (logged) on any
+//   error. The user's shutter always wins — photoOutput serializes requests,
+//   so a tap during the bracket just queues behind it.
 
 /// One AO run's bracket request. `isCurrent` is evaluated on the main actor
-/// after the post-Ready delay — a newer run or a capture in between cancels
-/// the bracket.
+/// at fire time — a newer run (generation bump) or `clear()` drops the armed
+/// bracket. `userCaptureInFlight` yields to a racing second shutter tap.
 struct AOBracketRun {
     var runId: String
     var recipeId: String
@@ -31,11 +33,27 @@ struct AOBracketRun {
     var coachOnly: Bool
     var features: SceneFeatures
     var isCurrent: () -> Bool
+    /// True while the user's own capture is in flight (their shutter wins).
+    var userCaptureInFlight: () -> Bool = { false }
+    /// Motion-safe shutter cap (s) from the run's exposure plan; nil when the
+    /// run didn't write custom exposure.
+    var motionCapShutter: Double? = nil
+    /// Planner target EV at Ready (label anchor).
+    var planTargetEV: Double? = nil
+    /// Dials actually applied at Ready (label anchors).
+    var appliedShutterSec: Double? = nil
+    var appliedISO: Float? = nil
+    /// Verify residual at Ready, in EV (label anchor).
+    var verifyResidualEV: Double? = nil
+    var lensDeviceType: String? = nil
 }
 
 /// Sendable manifest written next to the frames (meta.json) and used by the
 /// future explicit-consent uploader. Numeric only — never pixels.
 struct AOBracketManifest: Sendable, Codable, Equatable {
+    /// meta.json schema — bump when the sidecar gains/loses keys.
+    static let schemaVersion = 1
+
     var runId: String
     var recipeId: String
     var capturedAt: Date
@@ -50,6 +68,19 @@ struct AOBracketManifest: Sendable, Codable, Equatable {
     var sceneLabels: [SceneLabel]?
     var faceCount: Int?
     var handShakeRadPerSec: Float
+    // Label anchors (Section D): everything needed to label the bracket set
+    // without joining telemetry.
+    /// Metered exposure product at Ready: (t·ISO) from the scene sensor —
+    /// same formula as `AOTelemetrySerializer.readyProps`' e_auto.
+    var eAuto: Double?
+    var planTargetEV: Double?
+    var appliedShutterSec: Double?
+    var appliedISO: Float?
+    var verifyResidualEV: Double?
+    /// The motion-safe shutter cap the bracket was built against (s).
+    var motionCapShutter: Double?
+    var deviceModel: String
+    var lensDeviceType: String?
 
     init(run: AOBracketRun) {
         let f = run.features
@@ -67,11 +98,19 @@ struct AOBracketManifest: Sendable, Codable, Equatable {
         sceneLabels = f.sceneLabels
         faceCount = f.faceCount
         handShakeRadPerSec = f.handShakeRadPerSec
+        eAuto = (f.meteredExposureSeconds ?? 1 / 60) * Double(f.meteredISO ?? 100)
+        planTargetEV = run.planTargetEV
+        appliedShutterSec = run.appliedShutterSec
+        appliedISO = run.appliedISO
+        verifyResidualEV = run.verifyResidualEV
+        motionCapShutter = run.motionCapShutter
+        deviceModel = AOTelemetrySerializer.deviceModelIdentifier()
+        lensDeviceType = run.lensDeviceType
     }
 }
 
 @MainActor
-final class AOBracketCapture {
+final class AOBracketCapture: ObservableObject {
     static let shared = AOBracketCapture()
 
     private let log = Logger(subsystem: "com.ragnus.mvp", category: "AOBracket")
@@ -88,28 +127,69 @@ final class AOBracketCapture {
 
     /// 5-frame bracket: −2, −1, 0, +1, +2 EV around the current exposure.
     static let evOffsets: [Float] = [-2, -1, 0, 1, 2]
-    /// Post-Ready delay so the user's immediate shutter tap wins the queue.
-    static let bracketDelayNanoseconds: UInt64 = 2_000_000_000
+
+    /// While the bracket capture + store runs — the view shows a small
+    /// "Saving improvement data…" chip.
+    @Published var isSavingBracketData = false
+
+    /// Test seam: replaces the hardware bracket capture.
+    var captureBracketOverride: ((CameraSession, [Float], Double?) async throws -> AOBracketFrames)?
+    /// Test seam: bracket store (tests point it at a temp dir).
+    var bracketStore: AOBracketStore = .shared
 
     private var inFlight = false
+    /// Armed (not yet fired) bracket request — fires on the next user capture
+    /// completion while the run is still current.
+    private var armedRun: AOBracketRun?
 
-    /// Fire-and-forget after AO Ready. No-ops when the toggle is off, when a
-    /// bracket is already in flight, on thermal .critical, or when the run is
-    /// no longer current after the delay. Never throws — soft-fails with a log.
-    func maybeCaptureBracket(session: CameraSession, run: AOBracketRun) {
+    /// Arm the opt-in bracket at AO Ready. The bracket fires right after the
+    /// user's own capture completes (they're holding still on that scene) —
+    /// never on a timer that can collide with the shutter. No-ops when the
+    /// toggle is off, a bracket is already in flight/armed, or on thermal
+    /// .critical. Never throws — soft-fails with a log.
+    func armBracket(run: AOBracketRun) {
         guard Self.optedIn else { return }
         guard !inFlight else {
             log.debug("bracket skipped — already in flight")
             return
         }
+        guard armedRun == nil else {
+            log.debug("bracket skipped — already armed")
+            return
+        }
+        guard ProcessInfo.processInfo.thermalState != .critical else {
+            log.info("bracket skipped — thermal critical")
+            return
+        }
+        armedRun = run
+    }
+
+    /// Capture-completion hook — call after the user's photo returns. Fires
+    /// the armed bracket when the run is still current and no user capture is
+    /// in flight; otherwise the armed request is dropped. Shows the
+    /// "Saving improvement data…" chip while running. Never throws.
+    func userCaptureDidComplete(session: CameraSession) {
+        guard let run = armedRun else { return }
+        armedRun = nil
+        guard Self.optedIn else { return }
+        guard !inFlight else { return }
         inFlight = true
+        isSavingBracketData = true
+        let captureOverride = captureBracketOverride
+        let store = bracketStore
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.inFlight = false }
-            try? await Task.sleep(nanoseconds: Self.bracketDelayNanoseconds)
+            defer { self.inFlight = false; self.isSavingBracketData = false }
+            // A racing second shutter tap wins — re-check on the main actor
+            // before touching the photo output.
+            await Task.yield()
             guard !Task.isCancelled else { return }
             guard run.isCurrent() else {
                 self.log.debug("bracket skipped — run no longer current")
+                return
+            }
+            guard !run.userCaptureInFlight() else {
+                self.log.debug("bracket skipped — user capture in flight")
                 return
             }
             guard ProcessInfo.processInfo.thermalState != .critical else {
@@ -118,7 +198,12 @@ final class AOBracketCapture {
             }
             let frames: [Data]
             do {
-                frames = try await session.captureExposureBracket(evOffsets: Self.evOffsets)
+                if let captureOverride {
+                    frames = try await captureOverride(session, Self.evOffsets, run.motionCapShutter)
+                } else {
+                    frames = try await session.captureExposureBracket(
+                        evOffsets: Self.evOffsets, motionCapShutter: run.motionCapShutter)
+                }
             } catch {
                 self.log.error("bracket capture failed: \(error.localizedDescription, privacy: .public)")
                 return
@@ -126,7 +211,6 @@ final class AOBracketCapture {
             guard !frames.isEmpty else { return }
             // CPU-heavy downsample + disk writes leave the main actor.
             let manifest = AOBracketManifest(run: run)
-            let store = AOBracketStore.shared
             await Task.detached {
                 do {
                     try store.storeBracketSync(manifest: manifest, frames: frames)
@@ -143,21 +227,36 @@ final class AOBracketCapture {
         }
     }
 
-    /// Pure construction of the 5 manual-exposure bracket settings, scaling
+    /// Pure construction of the 5 manual-exposure bracket settings.
+    /// Negative offsets (and positive ones within the motion-safe cap) scale
     /// the shutter by 2^offset at constant ISO, clamped to device limits.
+    /// Positive offsets past `motionCapShutter` hold the shutter AT the cap
+    /// and raise ISO instead — in dim scenes a 2–4× longer shutter picks up
+    /// motion blur that would bias "best frame" labels toward darker frames.
     /// Unit-testable: no hardware touched. Nonisolated: pure function.
     nonisolated static func bracketedSettings(
         baseShutter: Double,
         baseISO: Float,
         offsets: [Float],
         minShutter: Double,
-        maxShutter: Double
+        maxShutter: Double,
+        motionCapShutter: Double? = nil,
+        maxISO: Float? = nil
     ) -> [AVCaptureManualExposureBracketedStillImageSettings] {
         offsets.map { offset in
-            let shutter = min(max(baseShutter * pow(2, Double(offset)), minShutter), maxShutter)
+            let desiredShutter = baseShutter * pow(2, Double(offset))
+            var shutter = min(max(desiredShutter, minShutter), maxShutter)
+            var iso = baseISO
+            if offset > 0, let cap = motionCapShutter, cap > 0, desiredShutter > cap {
+                shutter = min(max(cap, minShutter), maxShutter)
+                if shutter > 0 {
+                    iso = Float(Double(baseISO) * desiredShutter / shutter)
+                }
+                if let maxISO, maxISO > 0 { iso = min(iso, maxISO) }
+            }
             return AVCaptureManualExposureBracketedStillImageSettings.manualExposureSettings(
                 exposureDuration: CMTimeMakeWithSeconds(shutter, preferredTimescale: 1_000_000),
-                iso: baseISO
+                iso: iso
             )
         }
     }
@@ -230,6 +329,14 @@ enum AOBracketDownsampler {
 
     /// Downsample a captured JPEG to ≤640px, re-encode at 0.7 quality.
     /// Returns nil when the input isn't a decodable image.
+    ///
+    /// Privacy: the output is a FRESH JPEG written from bare pixel data with
+    /// only the compression-quality property — no EXIF, GPS, TIFF, or other
+    /// metadata dictionary is ever copied, so GPS and other non-exposure EXIF
+    /// are stripped by construction before anything reaches the store or the
+    /// upload manifest. (Per-frame shutter/ISO are read from the ORIGINAL
+    /// frame's EXIF before downsampling and recorded numerically in
+    /// meta.json; the originals are discarded.)
     static func downsampleJPEG(_ data: Data) -> Data? {
         guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let thumbOptions: [CFString: Any] = [
