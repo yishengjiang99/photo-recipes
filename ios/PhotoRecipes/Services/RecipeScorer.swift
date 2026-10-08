@@ -81,7 +81,7 @@ final class JSONRecipeScorer: RecipeScoring {
         return Model(
             schemaVersion: 1,
             temperature: 1.0,
-            intentBonus: 3.0,
+            intentBonus: 4.0,
             featureOrder: SceneFeatures.vectorFeatureNames,
             recipes: Dictionary(
                 uniqueKeysWithValues: SceneFeatures.autoSelectCandidates.map {

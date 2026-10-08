@@ -8,6 +8,9 @@ struct AgentStatusPill: View {
     /// True while Recommend (or Ask) SSE is in flight — pulse even if AO phase is idle.
     var isBusy: Bool = false
     var onStop: (() -> Void)? = nil
+    /// When set, tapping the pill opens the detail (exposure/teach). EV numbers
+    /// stay in the detail, never on the finder.
+    var onTapDetail: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
@@ -19,15 +22,18 @@ struct AgentStatusPill: View {
             return verifyWarning ?? phase.statusCopy
         }()
         if !copy.isEmpty {
+            // No pill background in steady state — text floats on the viewfinder
+            // like the mockup. The dot carries the state.
             HStack(spacing: 8) {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 8, height: 8)
                     .opacity(effectiveRunning && !reduceMotion ? (pulse ? 0.4 : 1) : 1)
                 Text(copy)
-                    .font(AppTheme.bodySm())
+                    .font(AppTheme.body())
                     .foregroundStyle(AppTheme.ink)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .shadow(color: .black.opacity(0.6), radius: 4)
                 if effectiveRunning, let onStop {
                     Button("Stop", action: onStop)
                         .font(AppTheme.caption())
@@ -35,10 +41,13 @@ struct AgentStatusPill: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Capsule().fill(AppTheme.agentStatusBg))
+            .padding(.vertical, 8)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(copy)
+            .accessibilityHint(onTapDetail != nil ? "Opens details" : "")
+            .onTapGesture {
+                onTapDetail?()
+            }
             .onAppear { startPulseIfNeeded() }
             .onChange(of: effectiveRunning) { _, _ in startPulseIfNeeded() }
         }

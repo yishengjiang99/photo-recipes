@@ -2,7 +2,7 @@
   "_comment": "Hand-tuned v1 recipe scorer (softmax over logits, temperature below). Feature order MUST match SceneFeatures.vectorFeatureNames. exposure-triangle-cheatsheet is intentionally absent: it is a reference card and must never be auto-selected.",
   "schemaVersion": 1,
   "temperature": 1.0,
-  "intentBonus": 3.0,
+  "intentBonus": 4.0,
   "featureOrder": [
     "sem.person",
     "sem.animal",
