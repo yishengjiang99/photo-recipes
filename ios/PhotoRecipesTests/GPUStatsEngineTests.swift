@@ -219,15 +219,15 @@ final class GPUStatsEngineTests: XCTestCase {
             (Float(x) / 319.0, Float(y) / 239.0, 0.4)
         }
         let engine = GPUStatsEngine(device: nil)
-        let stats = try! XCTUnwrap(await engine.analyze(buf))
+        let awaited = await engine.analyze(buf)
+        let stats = try! XCTUnwrap(awaited)
         XCTAssertEqual(stats.source, "cpu")
         XCTAssertEqual(stats.lumaHistogram64.count, 64)
         XCTAssertEqual(stats.lumaHistogram64.reduce(0, +), 256 * 192)
         XCTAssertEqual(stats.gradientScores.count, 13)
     }
 
-    func test420f_graceful_noCrash() async {
-        var pb: CVPixelBuffer?
+    func test420f_graceful_noCrash() async {        var pb: CVPixelBuffer?
         let status = CVPixelBufferCreate(
             kCFAllocatorDefault, 64, 48,
             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, nil, &pb)
@@ -245,7 +245,8 @@ final class GPUStatsEngineTests: XCTestCase {
         }
         CVPixelBufferUnlockBaseAddress(buffer, [])
         let engine = GPUStatsEngine(device: nil)
-        let stats = try! XCTUnwrap(await engine.analyze(buffer))
+        let awaited = await engine.analyze(buffer)
+        let stats = try! XCTUnwrap(awaited)
         XCTAssertEqual(stats.source, "cpu")
         XCTAssertEqual(stats.lumaHistogram64.reduce(0, +), 256 * 192)
         // Y=128 video range → (128−16)/219 ≈ 0.51 luma.
@@ -259,7 +260,8 @@ final class GPUStatsEngineTests: XCTestCase {
             kCVPixelFormatType_OneComponent8, nil, &pb)
         XCTAssertEqual(status, kCVReturnSuccess)
         let engine = GPUStatsEngine(device: nil)
-        XCTAssertNil(await engine.analyze(pb!))
+        let awaitedNil = await engine.analyze(pb!)
+        XCTAssertNil(awaitedNil)
     }
 
     // MARK: - buffer ring (no per-call allocation on the hot path)
