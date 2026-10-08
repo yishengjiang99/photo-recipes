@@ -482,13 +482,20 @@ final class AutoOptimizeController: ObservableObject {
             let v = await session.verifyExposure(targetEV: targetEV)
             if v.verified {
                 if v.iterations > 0 {
-                    verifyNotes.append(String(format:
-                        "Exposure was %+.1f EV off target — corrected in %d iteration(s); residual %+.1f EV.",
-                        v.initialError, v.iterations, v.residualEV))
+                    // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
+                    // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
+                    let stops = abs(v.initialError)
+                    let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
+                    let direction = v.initialError < 0 ? "Brightened" : "Darkened"
+                    if abs(v.residualEV) > 0.3 {
+                        let still = v.residualEV < 0 ? "still a bit dark" : "still a bit bright"
+                        verifyNotes.append("\(direction) \(stopsText), \(still)")
+                    } else {
+                        verifyNotes.append("\(direction) \(stopsText)")
+                    }
                 } else if abs(v.residualEV) > 0.3 {
-                    verifyNotes.append(String(format:
-                        "Exposure settled %+.1f EV from target.",
-                        v.residualEV))
+                    let still = v.residualEV < 0 ? "A bit dark" : "A bit bright"
+                    verifyNotes.append(still)
                 }
                 Analytics.shared.track("auto_optimize_verify", props: [
                     "run_id": runId,
@@ -522,7 +529,8 @@ final class AutoOptimizeController: ObservableObject {
             }
         }
 
-        session.clampMessages.append(contentsOf: verifyNotes)
+        // Single status surface: verify notes go only to verifyWarning (AgentStatusPill).
+        // Do NOT also append to session.clampMessages — that draws a duplicate banner.
         verifyWarning = verifyNotes.isEmpty ? nil : verifyNotes.joined(separator: " ")
 
         // Diff chips show the values READ BACK from the device, not the targets.
