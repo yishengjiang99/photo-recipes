@@ -137,7 +137,8 @@ kernel void gpu_frame_stats(
             const float gy = (e[6] + 2.0f * e[7] + e[8]) - (e[0] + 2.0f * e[1] + e[2]);
             const float g = sqrt(gx * gx + gy * gy);
             if (g > 0.01f) {
-                scores[i] = log1p(100.0f * g);
+                // Metal has no log1p; log(1+x) is identical for x > 0.
+                scores[i] = log(1.0f + 100.0f * g);
             }
         }
     }
