@@ -32,23 +32,12 @@ targets:
       - path: PhotoRecipes
         excludes:
           - "**/*.md"
-          # PrivacyInfo + storekit must be resources only (not compiled as sources).
-          # Keep Assets.xcassets in sources so XcodeGen treats it as an asset catalog
-          # (excluding it and listing under resources copies the folder raw → missing
-          # AppIcon / CFBundleIconName → ASC validation 409).
-          - "Resources/Products.storekit"
-          - "Resources/PrivacyInfo.xcprivacy"
-          # Pass 1 ML data files: resources only (JSON/TXT must not hit the Swift compiler).
-          - "Resources/scene-label-groups.json"
-          - "Resources/vision-labels.txt"
-          - "Resources/recipe-scorer-v1.json"
-    resources:
-      - path: PhotoRecipes/Resources/Products.storekit
-      - path: PhotoRecipes/Resources/PrivacyInfo.xcprivacy
-      # On-device Pass 1 ML: Vision label mapping + recipe scorer weights (data, not code).
-      - path: PhotoRecipes/Resources/scene-label-groups.json
-      - path: PhotoRecipes/Resources/vision-labels.txt
-      - path: PhotoRecipes/Resources/recipe-scorer-v1.json
+          # Keep Assets.xcassets in sources so XcodeGen treats it as an asset catalog.
+          # NOTE: XcodeGen has no target-level `resources` key (it is silently
+          # ignored) — data files ride the sources glob into Copy Bundle
+          # Resources automatically: .json/.txt/.xcprivacy/.storekit all map to
+          # the resources build phase, never the compiler.
+    # (No `resources:` key — see note above.)
     dependencies:
       - package: FacebookSDK
         product: FacebookCore
@@ -89,11 +78,16 @@ targets:
         excludes:
           # Fixtures + dummy Core ML model ship as bundle resources, not sources.
           - "Resources/**"
-    resources:
-      # Explicit sub-paths so the bundle layout is deterministic regardless
-      # of how the build system treats folder references:
-      #   Fixtures/scene-features/*.json + DummyScorer.mlmodel at bundle root.
+      # XcodeGen has no target-level `resources` key (silently ignored), so the
+      # test data rides explicit source entries:
+      # - Fixtures as a folder reference: preserves the
+      #   Fixtures/scene-features/ layout the tests look up in the bundle.
+      #   (A plain group would flatten the files to the bundle root.)
       - path: PhotoRecipesTests/Resources/Fixtures
+        type: folder
+      # - DummyScorer.mlmodel defaults to the Compile Sources phase, which is
+      #   what we want: Xcode compiles it to DummyScorer.mlmodelc in the test
+      #   bundle, and the test loads the compiled model directly.
       - path: PhotoRecipesTests/Resources/DummyScorer.mlmodel
     dependencies:
       - target: PhotoRecipes

@@ -129,9 +129,10 @@ enum SettingsSolver {
                 maxShutterSeconds: capabilities.maxExposureSeconds,
                 minISO: capabilities.minISO,
                 maxISO: capabilities.maxISO)
+            // targetEV already includes learnedEVOffset (folded in per branch).
             let plan = ExposurePlanner.plan(
                 eAuto: eAuto, targetEV: targetEV, priority: priority,
-                motion: motion, limits: limits, learnedEVOffset: learnedEVOffset)
+                motion: motion, limits: limits)
             messages.append(contentsOf: plan.clampMessages)
             return plan
         }

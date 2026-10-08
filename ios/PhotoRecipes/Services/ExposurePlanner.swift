@@ -107,25 +107,22 @@ enum ExposurePlanner {
     /// - Parameters:
     ///   - eAuto: metered exposure product from the converged AE state
     ///     (`exposureSeconds × iso`).
-    ///   - targetEV: recipe EV offset + face EV offset + learned offset
-    ///     (Phase 4 hook), in stops.
-    ///   - learnedEVOffset: reserved for `ExposureOffsetNet` (Phase 4);
-    ///     defaults to 0 and is already included in `targetEV` by the caller —
-    ///     kept as a named parameter so the hook is visible at the call site.
+    ///   - targetEV: fully composed offset in stops — recipe EV offset + face
+    ///     EV offset + `learnedEVOffset` (the Phase 4 hook, folded in by the
+    ///     caller, i.e. `SettingsSolver`).
     static func plan(
         eAuto: Double,
         targetEV: Double,
         priority: Priority,
         motion: MotionContext,
-        limits: DeviceLimits,
-        learnedEVOffset: Double = 0
+        limits: DeviceLimits
     ) -> Plan {
-        let eTarget = max(eAuto, 1e-9) * pow(2, targetEV + learnedEVOffset)
+        let eTarget = max(eAuto, 1e-9) * pow(2, targetEV)
         switch priority {
         case .systemAuto:
             return Plan(
                 useCustomExposure: false, shutterSeconds: 0, iso: 0,
-                targetEV: targetEV + learnedEVOffset, residualEV: 0,
+                targetEV: targetEV, residualEV: 0,
                 clamped: false, clampMessages: []
             )
         case .shutter(let seconds):
@@ -136,7 +133,7 @@ enum ExposurePlanner {
                 Float(eTarget / shutter), min: limits.minISO, max: limits.maxISO)
             return finish(
                 shutter: shutter, iso: iso, eTarget: eTarget,
-                targetEV: targetEV + learnedEVOffset, limits: limits)
+                targetEV: targetEV, limits: limits)
         case .iso(let value):
             let iso = clamp(value, min: limits.minISO, max: limits.maxISO)
             let shutter = clamp(
@@ -144,7 +141,7 @@ enum ExposurePlanner {
                 min: limits.minShutterSeconds, max: limits.maxShutterSeconds)
             return finish(
                 shutter: shutter, iso: iso, eTarget: eTarget,
-                targetEV: targetEV + learnedEVOffset, limits: limits)
+                targetEV: targetEV, limits: limits)
         case .auto(let cap):
             let derivedCap = min(
                 handheldLimitSeconds(fieldOfViewDegrees: motion.fieldOfViewDegrees),
@@ -162,7 +159,7 @@ enum ExposurePlanner {
                 Float(eTarget / shutter), min: limits.minISO, max: limits.maxISO)
             return finish(
                 shutter: shutter, iso: iso, eTarget: eTarget,
-                targetEV: targetEV + learnedEVOffset, limits: limits)
+                targetEV: targetEV, limits: limits)
         }
     }
 

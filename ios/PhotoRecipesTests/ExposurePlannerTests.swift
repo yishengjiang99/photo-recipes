@@ -61,7 +61,9 @@ final class ExposurePlannerTests: XCTestCase {
     // MARK: - 1d(b): shutter-priority conservation
 
     func testShutterPriority_conservesExposureProduct() {
-        let eAuto = 0.5
+        // eAuto chosen so the solved ISO stays inside [minISO, maxISO]
+        // (no clamping) — conservation only holds on the unclamped path.
+        let eAuto = 2.0
         let targetEV = 0.3
         let plan = ExposurePlanner.plan(
             eAuto: eAuto, targetEV: targetEV,
@@ -139,11 +141,13 @@ final class ExposurePlannerTests: XCTestCase {
         var shaky = motion!
         shaky.handShakeRadPerSec = 0.5
 
+        // eAuto chosen so neither plan hits the ISO rails (conservation
+        // only holds on the unclamped path).
         let pStill = ExposurePlanner.plan(
-            eAuto: 10, targetEV: 0, priority: .auto(),
+            eAuto: 0.5, targetEV: 0, priority: .auto(),
             motion: still, limits: limits)
         let pShaky = ExposurePlanner.plan(
-            eAuto: 10, targetEV: 0, priority: .auto(),
+            eAuto: 0.5, targetEV: 0, priority: .auto(),
             motion: shaky, limits: limits)
 
         XCTAssertLessThan(
@@ -151,9 +155,9 @@ final class ExposurePlannerTests: XCTestCase {
             "gyro motion must shorten the .auto shutter")
         // Both still conserve E_target (ISO absorbs the difference).
         XCTAssertEqual(
-            pShaky.shutterSeconds * Double(pShaky.iso), 10, accuracy: 0.1)
+            pShaky.shutterSeconds * Double(pShaky.iso), 0.5, accuracy: 0.01)
         XCTAssertEqual(
-            pStill.shutterSeconds * Double(pStill.iso), 10, accuracy: 0.1)
+            pStill.shutterSeconds * Double(pStill.iso), 0.5, accuracy: 0.01)
     }
 
     // MARK: - limit helpers

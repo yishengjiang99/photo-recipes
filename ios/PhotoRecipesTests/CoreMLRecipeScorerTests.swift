@@ -9,15 +9,15 @@ import CoreML
 final class CoreMLRecipeScorerTests: XCTestCase {
 
     private func dummyScorer() throws -> CoreMLRecipeScorer {
+        // Xcode compiles the bundled .mlmodel to .mlmodelc at build time
+        // (project.yml routes it through the Compile Sources phase).
         guard let url = Bundle(for: CoreMLRecipeScorerTests.self)
-            .url(forResource: "DummyScorer", withExtension: "mlmodel")
+            .url(forResource: "DummyScorer", withExtension: "mlmodelc")
         else {
             throw NSError(domain: "test", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "DummyScorer.mlmodel missing from test bundle"])
+                          userInfo: [NSLocalizedDescriptionKey: "DummyScorer.mlmodelc missing from test bundle"])
         }
-        // Ship the model in source form; compile on the test host.
-        let compiled = try MLModel.compileModel(at: url)
-        return CoreMLRecipeScorer(modelURL: compiled)
+        return CoreMLRecipeScorer(modelURL: url)
     }
 
     func testDummyModel_loadsAndReturnsFiveProbabilities() throws {
