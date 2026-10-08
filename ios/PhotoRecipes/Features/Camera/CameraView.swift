@@ -159,8 +159,16 @@ struct CameraView: View {
 
         .onChange(of: session.subjectAreaChangeToken) { _, token in
             guard token > 0, canOptimize else { return }
-            // monitorSubjectAreaChange → debounced re-run of Auto Optimize (same apply path).
-            Task { await runOptimize(trigger: "subject_change") }
+            // monitorSubjectAreaChange → debounced re-run of Auto Optimize,
+            // gated: a re-run pulses the preview (converge, then re-lock),
+            // so it only fires when the scene would actually change recipes.
+            Task {
+                switch await optimizer.shouldRerunOnSubjectChange() {
+                case .rerun: await runOptimize(trigger: "subject_change")
+                case .skip(let reason):
+                    Analytics.shared.track("ao_subject_change_skipped", props: ["reason": reason])
+                }
+            }
         }
 
         .onChange(of: voice.phase) { _, phase in

@@ -86,4 +86,51 @@ final class AutoOptimizeControllerTests: XCTestCase {
                 residual: 0.1, iterations: 0, initialError: 0, yieldNote: nil),
             [])
     }
+
+    // MARK: - subjectChangeDecision gate
+
+    private func gate(
+        secondsSinceRun: TimeInterval?, isRunning: Bool = false,
+        currentRecipeId: String? = "hdr",
+        topId: String? = "panning", topProb: Double = 0.7
+    ) -> AutoOptimizeController.SubjectChangeDecision {
+        let now = Date()
+        let lastRun = secondsSinceRun.map { now.addingTimeInterval(-$0) }
+        let top = topId.map { RecipeScore(recipeId: $0, probability: topProb, topFeatures: []) }
+        return AutoOptimizeController.subjectChangeDecision(
+            now: now, lastRunDate: lastRun, isRunning: isRunning,
+            currentRecipeId: currentRecipeId, sceneTop: top)
+    }
+
+    func testSubjectChange_runningSkips() {
+        XCTAssertEqual(gate(secondsSinceRun: 30, isRunning: true), .skip(reason: "running"))
+    }
+
+    func testSubjectChange_noResultSkips() {
+        XCTAssertEqual(
+            gate(secondsSinceRun: 30, currentRecipeId: nil),
+            .skip(reason: "no_result"))
+    }
+
+    func testSubjectChange_cooldownSkips() {
+        XCTAssertEqual(gate(secondsSinceRun: 3), .skip(reason: "cooldown"))
+    }
+
+    func testSubjectChange_sameRecipeSkips() {
+        XCTAssertEqual(
+            gate(secondsSinceRun: 12, topId: "hdr", topProb: 0.9),
+            .skip(reason: "same_recipe"))
+    }
+
+    func testSubjectChange_lowConfidenceSkips() {
+        XCTAssertEqual(
+            gate(secondsSinceRun: 12, topId: "panning", topProb: 0.4),
+            .skip(reason: "low_confidence"))
+    }
+
+    func testSubjectChange_confidentChangeReruns() {
+        XCTAssertEqual(
+            gate(secondsSinceRun: 12, topId: "panning", topProb: 0.7),
+            .rerun)
+    }
 }

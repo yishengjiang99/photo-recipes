@@ -1065,6 +1065,44 @@ final class AutoOptimizeController: ObservableObject {
 
     // MARK: - Scene-change watch (never a silent re-run)
 
+    /// Minimum seconds between subject-change re-runs.
+    static let subjectChangeCooldown: TimeInterval = 10
+    /// Minimum top-recipe probability for a subject-change re-run to be worth it.
+    static let subjectChangeMinProbability = 0.55
+
+    enum SubjectChangeDecision: Equatable {
+        case rerun
+        case skip(reason: String)
+    }
+
+    /// Pure, testable gate for subject-area-change re-runs. A re-run pulses
+    /// the preview (converge to auto, then re-lock), so it only happens when
+    /// the scene would actually pick a different recipe with confidence.
+    static func subjectChangeDecision(
+        now: Date, lastRunDate: Date?, isRunning: Bool,
+        currentRecipeId: String?, sceneTop: RecipeScore?
+    ) -> SubjectChangeDecision {
+        if isRunning { return .skip(reason: "running") }
+        guard currentRecipeId != nil else { return .skip(reason: "no_result") }
+        if let lastRunDate, now.timeIntervalSince(lastRunDate) < subjectChangeCooldown {
+            return .skip(reason: "cooldown")
+        }
+        guard let top = sceneTop else { return .skip(reason: "low_confidence") }
+        if top.recipeId == currentRecipeId { return .skip(reason: "same_recipe") }
+        if top.probability < subjectChangeMinProbability { return .skip(reason: "low_confidence") }
+        return .rerun
+    }
+
+    /// Scores the current scene and decides whether a subject-area change
+    /// warrants a re-run.
+    func shouldRerunOnSubjectChange() async -> SubjectChangeDecision {
+        let snapshot = await SceneSensor.shared.current()
+        let top = scorer.score(snapshot.features).first
+        return Self.subjectChangeDecision(
+            now: Date(), lastRunDate: lastRunDate, isRunning: phase.isRunning,
+            currentRecipeId: chosenRecipeId, sceneTop: top)
+    }
+
     /// After Ready, polls the sensor every 2 s. When a *different* recipe
     /// scores ≥ 0.75 twice in a row, or the scene EV shifted by > 1.5 stops,
     /// shows "Scene changed — re-optimize?" — the user taps to re-run.
