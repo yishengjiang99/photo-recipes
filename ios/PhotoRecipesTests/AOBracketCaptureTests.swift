@@ -451,7 +451,21 @@ final class AOBracketCaptureTests: XCTestCase {
         let outProps = try XCTUnwrap(
             CGImageSourceCopyPropertiesAtIndex(outSrc, 0, nil) as? [CFString: Any])
         XCTAssertNil(outProps[kCGImagePropertyGPSDictionary], "GPS must be stripped before anything reaches the upload manifest")
-        XCTAssertNil(outProps[kCGImagePropertyExifDictionary], "non-exposure EXIF must not survive the downsample")
         XCTAssertNil(outProps[kCGImagePropertyTIFFDictionary], "TIFF metadata must not survive the downsample")
+        // ImageIO synthesizes a minimal EXIF dict on encode (ColorSpace +
+        // pixel dimensions, derived from the pixels themselves) — what must
+        // not survive is any EXIF copied from the INPUT (exposure time,
+        // timestamps, camera info…).
+        let outExif = (outProps[kCGImagePropertyExifDictionary] as? [CFString: Any]) ?? [:]
+        let synthesized: Set<CFString> = [
+            kCGImagePropertyExifColorSpace,
+            kCGImagePropertyExifPixelXDimension,
+            kCGImagePropertyExifPixelYDimension,
+        ]
+        let carriedOver = Set(outExif.keys).subtracting(synthesized)
+        XCTAssertTrue(carriedOver.isEmpty,
+                      "no input EXIF may survive the downsample, found: \(carriedOver)")
+        XCTAssertNil(outExif[kCGImagePropertyExifExposureTime],
+                     "input exposure EXIF must not be copied to the stored frame")
     }
 }
