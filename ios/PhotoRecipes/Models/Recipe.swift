@@ -119,6 +119,11 @@ extension Recipe {
         case "panning-sharp-subject": return "Panning"
         case "get-down-low": return "Low Angle"
         case "hdr-brights-darks": return "HDR"
+        case "leading-lines": return "Leading Lines"
+        case "minimalist-photos": return "Minimalist"
+        case "exposure-triangle-cheatsheet": return "Exposure Triangle"
+        case "sharp-and-in-focus": return "Sharp Focus"
+        case "portrait-pop": return "Portrait Pop"
         default:
             let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
             if t.count <= 22 { return t }

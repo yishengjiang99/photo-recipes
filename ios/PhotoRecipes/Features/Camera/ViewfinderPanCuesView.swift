@@ -65,9 +65,14 @@ enum ViewfinderPanCueResolver {
             cue.caption = "pan with subject →"
         }
         if recipe.tags.contains(.composition) || id.contains("get-down-low") || blob.contains("knee-height") {
-            cue.down = true
-            if cue.caption == nil {
-                cue.caption = id.contains("get-down-low") ? "Drop lower" : "include foreground ↓"
+            // leading-lines / minimalist-photos are compositional, not positional —
+            // no chevron; their guidance lives in coach notes (thirds grid, subject placement).
+            let compositionalOnly = id.contains("leading-lines") || id.contains("minimalist")
+            if !compositionalOnly {
+                cue.down = true
+                if cue.caption == nil {
+                    cue.caption = id.contains("get-down-low") ? "Drop lower" : "include foreground ↓"
+                }
             }
         }
     }

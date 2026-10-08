@@ -2,10 +2,195 @@ import type { RecipePreset } from '../types'
 
 /**
  * Presets transcribed from the "30 Recipes" photography book pages.
- * Source of truth: photographed book pages (pp. 28, 30, 32, 40, 44).
+ * Source of truth: photographed book pages (pp. 12, 16, 20, 24, 26, 28, 30, 32, 40, 44).
  * Do not invent presets beyond these pages.
  */
 export const presets: RecipePreset[] = [
+  {
+    id: 'leading-lines',
+    page: 12,
+    title: 'Point to Your Main Subject With Leading Lines',
+    blurb:
+      'Pull the viewer’s eye from the foreground into the background — rock formations, branches, waves, light and shadows.',
+    whenToUse:
+      'Any landscape or scene where you can find a naturally occurring line — or a series of parallel lines — to aim at your main subject. Curved leading lines are the best.',
+    tags: ['composition'],
+    gear: ['camera', 'phone'],
+    dials: {
+      mode: 'auto',
+      notes: 'Composition over exposure settings; deep focus helps.',
+    },
+    steps: [
+      'Search for a naturally occurring line or series of parallel lines. Use any and all aspects of the landscape.',
+      'Position yourself so the lines will emerge out of the foreground of your image.',
+      'Avoid lines that run out of your photo on the side. The viewer’s eye will leave with it.',
+      'Your leading lines should point towards the main subject.',
+    ],
+    tips: [
+      'A leading line can be rock formations, trees reaching to the sky, branches, breaking waves, or even light and shadows.',
+      'Curved leading lines are the best.',
+      'Lines should start in the foreground and point at the subject — never let them run out the side.',
+    ],
+    equipmentChecklist: ['Camera or phone', 'Rule-of-thirds grid on'],
+    phoneTip:
+      'Turn on the rule-of-thirds grid and place the subject where a leading line meets a third line.',
+  },
+  {
+    id: 'minimalist-photos',
+    page: 16,
+    title: 'Minimalist Photos Win the Awards',
+    blurb:
+      'Simple, uncluttered, non-busy images that convey one simple message — the kind that wins photo contests.',
+    whenToUse:
+      'When you find one simple thing that stands out from its surroundings — a lone tree on a horizon line, a single shape in fog. Best in gloomy weather or the blue hour.',
+    tags: ['composition'],
+    gear: ['camera', 'phone'],
+    dials: {
+      mode: 'auto',
+      notes: 'Expose for the mood; underexpose slightly at blue hour.',
+    },
+    steps: [
+      'Search for one simple thing that stands out from its surroundings. Non-busy surroundings are the best.',
+      'Use the rule of thirds: place the main subject on a third line. If the subject faces one direction, have it face into, and not out of, your photo.',
+      'Use weather to your advantage. Minimalist photos look great in gloomy weather or when the light is low during the blue hour (the 30 minutes after the sun sets).',
+    ],
+    tips: [
+      'One subject, one message — remove everything else from the frame.',
+      'A single tree on a horizon line with nothing behind it is the classic.',
+      'Blue hour (30 minutes after sunset) gives low, moody light.',
+      'If the subject faces a direction, leave space in front of it.',
+    ],
+    equipmentChecklist: ['Camera or phone', 'Rule-of-thirds grid on'],
+  },
+  {
+    id: 'exposure-triangle-cheatsheet',
+    page: 20,
+    title: 'The Camera Settings Cheat Sheet',
+    blurb:
+      'The exposure triangle on one card: aperture, ISO, and shutter speed — change one, compensate with another.',
+    whenToUse:
+      'Reference card for any shoot. Read before you touch the dials: understand what each setting does so you can leave auto mode behind.',
+    tags: [],
+    gear: ['camera'],
+    dials: {
+      mode: 'auto',
+      notes: 'Reference card — no single dial setting; it explains the triangle.',
+    },
+    steps: [
+      'There are three essential settings you can adjust: ISO, shutter speed, and aperture. If you change one, you will need to compensate by changing another.',
+      'If you use auto mode, your camera is making all these decisions for you. Don’t use auto mode. You are not a beginner. You have this book.',
+    ],
+    tips: [
+      'Aperture f/22 → f/2.8: small aperture keeps the image darker with deep focus; large aperture brightens it with shallow focus.',
+      'ISO 100 → 4000: adds “fake light” to a dark image, but too much ISO introduces noise (graininess).',
+      'Shutter 1/1000 → 1/30: fast speeds darken the image and freeze motion; slow speeds brighten it and blur motion.',
+    ],
+    equipmentChecklist: ['Camera', 'This card'],
+    subVariants: [
+      {
+        id: 'cheatsheet-aperture',
+        label: 'Aperture',
+        description: 'Controls how much of your scene is in focus.',
+        dials: {
+          mode: 'aperture-priority',
+          aperture: 'small f-stop → shallow focus',
+          notes: 'Sharp foreground + blurred background: use a small f-stop number.',
+        },
+        tips: [
+          'Small f-stop number = blurred background, subject pops.',
+          'Large f-stop number = more of the scene in focus.',
+        ],
+      },
+      {
+        id: 'cheatsheet-iso',
+        label: 'ISO',
+        description: 'Sensor sensitivity — “fake light” with a noise cost.',
+        dials: {
+          mode: 'manual',
+          iso: 'as low as the light allows',
+          notes: 'Raise ISO to brighten a dark image; watch for graininess.',
+        },
+        tips: [
+          'ISO 100 in sun, 160–400 in shade, 1600+ at night.',
+          'Increasing ISO too much introduces noise into the image.',
+        ],
+      },
+      {
+        id: 'cheatsheet-shutter',
+        label: 'Shutter speed',
+        description: 'How long the sensor sees light — freezes or blurs motion.',
+        dials: {
+          mode: 'shutter-priority',
+          shutter: '1/1000 freeze → 1/30 blur',
+          notes: 'Fast darkens; slow brightens.',
+        },
+        tips: [
+          'Fast shutter (1/1000) darkens the image and freezes motion.',
+          'Slow shutter (1/30) brightens the image and blurs motion.',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'sharp-and-in-focus',
+    page: 24,
+    title: 'Sharp and in Focus',
+    blurb:
+      'Take control of focus: turn off multi-point, put a single focus point exactly where it matters — on the eyes.',
+    whenToUse:
+      'Portraits, pets, wildlife, any subject where the camera’s multi-point focus might pick the wrong element. You are smarter than the camera.',
+    tags: ['depth-of-field'],
+    gear: ['camera', 'phone'],
+    dials: {
+      mode: 'aperture-priority',
+      aperture: 'high f-stop for more in focus',
+      notes: 'Single-point focus; high f-stop trades light for depth of field (see cheat sheet, page 20).',
+    },
+    steps: [
+      'On a phone camera, you can tap the element to be used as the focus point. On a camera, turn on single point focus (google your camera’s model to learn how to do this).',
+      'Determine exactly what element in the frame needs to be sharp. If your subject is a person or animal, choose the eyes. Set the focus point on them.',
+      'Use your aperture to set the desired amount of depth of field. A high f-stop number will result in more elements being in sharp focus, but there are trade offs that come with that. See the camera settings cheat sheet on page 20.',
+    ],
+    tips: [
+      'Multi-point focus lets the camera guess — single-point focus lets you decide.',
+      'For people and animals, always focus on the eyes.',
+      'Zoom in tight after the shot to verify the face is truly sharp.',
+    ],
+    equipmentChecklist: ['Camera or phone'],
+    phoneTip:
+      'Tap the element on your phone screen to set the focus point exactly where you want it.',
+  },
+  {
+    id: 'portrait-pop',
+    page: 26,
+    title: 'Make a Portrait Pop by Blurring the Background',
+    blurb:
+      'Blur the background so distractions melt away and the subject pops off the screen.',
+    whenToUse:
+      'Portraits of people (or pets) where the background competes with the subject. Widest aperture + zoom + eye focus.',
+    tags: ['depth-of-field'],
+    gear: ['camera', 'phone'],
+    dials: {
+      mode: 'aperture-priority',
+      aperture: 'smallest f-stop (wide open)',
+      notes: 'Widest aperture + most zoom + single-point focus on the eyes.',
+    },
+    steps: [
+      'Use aperture priority mode with the camera’s smallest f-stop number.',
+      'To magnify the effect even more, use the most possible zoom on your lens.',
+      'Use single point focus and be sure to focus on one of the eyes.',
+      'Take the photo and zoom in tight on the image to ensure the face is fully in focus. It is easy for the face to come out with a soft focus, and you don’t want that.',
+    ],
+    tips: [
+      'Smallest f-stop number = most background blur.',
+      'More zoom = stronger blur effect.',
+      'Focus on the eyes — soft-focus faces ruin the shot.',
+      'After shooting, zoom in tight to verify the face is fully sharp.',
+    ],
+    equipmentChecklist: ['Camera or phone'],
+    phoneTip:
+      'Cell phone cameras often have a portrait mode that will help create this effect.',
+  },
   {
     id: 'sharp-front-to-back',
     page: 28,

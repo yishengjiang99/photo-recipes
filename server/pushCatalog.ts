@@ -6,6 +6,11 @@
 export type RecipeChip = { id: string; title: string }
 
 export const BRIEF_RECIPE_CHIPS: RecipeChip[] = [
+  { id: 'leading-lines', title: 'Point to Your Main Subject With Leading Lines' },
+  { id: 'minimalist-photos', title: 'Minimalist Photos Win the Awards' },
+  { id: 'exposure-triangle-cheatsheet', title: 'The Camera Settings Cheat Sheet' },
+  { id: 'sharp-and-in-focus', title: 'Sharp and in Focus' },
+  { id: 'portrait-pop', title: 'Make a Portrait Pop by Blurring the Background' },
   { id: 'sharp-front-to-back', title: 'Sharp from Front to Back' },
   { id: 'blur-moving-subjects', title: 'How to Blur Moving Subjects' },
   {

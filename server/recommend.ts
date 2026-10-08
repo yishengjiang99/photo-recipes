@@ -1866,8 +1866,9 @@ export function parseFastRecommendPayload(raw: unknown): SelectionPayload | { er
     }
   }
   if (!preset) {
-    // Soft fallback: first catalog recipe so apply path still has a preset shell.
-    preset = presets[0]
+    // Soft fallback: a general-purpose recipe so apply path still has a preset shell.
+    preset =
+      presets.find((p) => p.id === 'sharp-front-to-back') ?? presets[0]
     if (!preset) return { error: 'Recipe catalog is empty' }
     presetId = preset.id
   }
