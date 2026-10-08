@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var bracketTotalBytes: Int64 = 0
     @State private var showBracketUploadConfirm = false
     @State private var bracketUploadNote: String? = nil
+    @State private var gradientOverlayEnabled = GradientOverlaySettings.enabled
 
     private func refreshBracketInfo() {
         let sets = AOBracketStore.shared.pendingSets()
@@ -156,8 +157,20 @@ struct SettingsView: View {
                         Text("This would send \(bracketSetCount) downsampled bracket sets (\(Self.formatBytes(bracketTotalBytes))) to help improve Auto Optimize. Frames are 640px, keep no location data, and are never linked to your identity.")
                     }
 
-                    Section("Voice") {
-                        Text("Camera dictate runs the same Auto Optimize → apply path as the button (including phoneTargets). Uses your Optimize quota.")
+                    Section("Developer") {
+                        Toggle("Re-exposure gradient overlay", isOn: $gradientOverlayEnabled)
+                            .onChange(of: gradientOverlayEnabled) { _, on in
+                                GradientOverlaySettings.enabled = on
+                            }
+                        Text("Debug only. Shows the 13-ratio re-exposure gradient curve and its argmax from the latest frame stats — sanity check on real scenes before Phase 4 training depends on them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if gradientOverlayEnabled {
+                            GradientCurveView()
+                        }
+                    }
+
+                    Section("Voice") {                       Text("Camera dictate runs the same Auto Optimize → apply path as the button (including phoneTargets). Uses your Optimize quota.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text("Field Coach mic fills the Ask field only — tap Recommend after. Voice becomes text for scene matching; we don't keep audio clips.")

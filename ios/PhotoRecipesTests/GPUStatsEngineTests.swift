@@ -213,20 +213,20 @@ final class GPUStatsEngineTests: XCTestCase {
 
     // MARK: - graceful degradation
 
-    func testNoGPUFallback_producesFullStats() {
+    func testNoGPUFallback_producesFullStats() async {
         // Simulates CI/Simulator: MTLCreateSystemDefaultDevice() == nil.
         let buf = makeBuffer(width: 320, height: 240) { x, y in
             (Float(x) / 319.0, Float(y) / 239.0, 0.4)
         }
         let engine = GPUStatsEngine(device: nil)
-        let stats = try! XCTUnwrap(engine.analyze(buf))
+        let stats = try! XCTUnwrap(await engine.analyze(buf))
         XCTAssertEqual(stats.source, "cpu")
         XCTAssertEqual(stats.lumaHistogram64.count, 64)
         XCTAssertEqual(stats.lumaHistogram64.reduce(0, +), 256 * 192)
         XCTAssertEqual(stats.gradientScores.count, 13)
     }
 
-    func test420f_graceful_noCrash() {
+    func test420f_graceful_noCrash() async {
         var pb: CVPixelBuffer?
         let status = CVPixelBufferCreate(
             kCFAllocatorDefault, 64, 48,
@@ -245,20 +245,53 @@ final class GPUStatsEngineTests: XCTestCase {
         }
         CVPixelBufferUnlockBaseAddress(buffer, [])
         let engine = GPUStatsEngine(device: nil)
-        let stats = try! XCTUnwrap(engine.analyze(buffer))
+        let stats = try! XCTUnwrap(await engine.analyze(buffer))
         XCTAssertEqual(stats.source, "cpu")
         XCTAssertEqual(stats.lumaHistogram64.reduce(0, +), 256 * 192)
         // Y=128 video range → (128−16)/219 ≈ 0.51 luma.
         XCTAssertEqual(stats.meanR, 0.51, accuracy: 0.05)
     }
 
-    func testUnsupportedFormat_returnsNil_noCrash() {
+    func testUnsupportedFormat_returnsNil_noCrash() async {
         var pb: CVPixelBuffer?
         let status = CVPixelBufferCreate(
             kCFAllocatorDefault, 64, 48,
             kCVPixelFormatType_OneComponent8, nil, &pb)
         XCTAssertEqual(status, kCVReturnSuccess)
         let engine = GPUStatsEngine(device: nil)
-        XCTAssertNil(engine.analyze(pb!))
+        XCTAssertNil(await engine.analyze(pb!))
+    }
+
+    // MARK: - buffer ring (no per-call allocation on the hot path)
+
+    func testBufferRing_noAllocationsOnFallbackPath() async {
+        // CPU fallback path (CI/Simulator): repeated analyses must never
+        // allocate buffer pairs — the hot path reuses the pre-allocated ring.
+        let buf = makeBuffer(width: 320, height: 240) { x, y in
+            (Float(x) / 319.0, Float(y) / 239.0, 0.4)
+        }
+        let engine = GPUStatsEngine(device: nil)
+        XCTAssertEqual(engine.bufferPairAllocations, 0)
+        for _ in 0..<3 {
+            _ = await engine.analyze(buf)
+        }
+        XCTAssertEqual(engine.bufferPairAllocations, 0,
+                       "fallback path must not allocate buffer pairs per call")
+    }
+
+    func testBufferRing_cyclesSlotsWithoutAllocating() {
+        var ring = BufferRing<String>()
+        ring.populate(["a", "b", "c"])
+        XCTAssertEqual(ring.count, 3)
+        var seen: [String] = []
+        for _ in 0..<7 { seen.append(ring.next()!) }
+        // Round-robin reuse: no growth, no per-checkout allocation.
+        XCTAssertEqual(seen, ["a", "b", "c", "a", "b", "c", "a"])
+        XCTAssertEqual(ring.count, 3)
+    }
+
+    func testBufferRing_empty_returnsNil() {
+        var ring = BufferRing<String>()
+        XCTAssertNil(ring.next())
     }
 }
