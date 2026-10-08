@@ -1163,8 +1163,12 @@ final class CameraSession: NSObject, ObservableObject {
                     minShutter: caps.minExposureSeconds,
                     maxShutter: caps.maxExposureSeconds)
                 guard !manual.isEmpty else { cont.resume(throwing: CamError.captureFailed); return }
+                // Processed (non-RAW) bracket: rawPixelFormatType 0 + explicit
+                // JPEG processed format + the 5 manual-exposure bracket settings.
                 let settings = AVCapturePhotoBracketSettings(
-                    bracketedSettings: manual, lensStabilization: [:])
+                    rawPixelFormatType: 0,
+                    processedFormat: [AVVideoCodecKey: AVVideoCodecType.jpeg],
+                    bracketedSettings: manual)
                 // Must match photoOutput.maxPhotoQualityPrioritization or AVFoundation aborts (SIGABRT).
                 settings.photoQualityPrioritization = maxQuality
                 let delegate = AOBracketPhotoDelegate(continuation: cont)
