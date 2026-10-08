@@ -95,9 +95,13 @@ final class SettingsSolverTests: XCTestCase {
             recipeId: "blur-moving-subjects", features: f,
             capabilities: caps, context: ctx1150)
         XCTAssertEqual(sol.phoneTargets.iso, "50", "ISO must clamp at minimum")
+        // E_auto = 1/500 × 100 = 0.2 → at ISO 50 the correct shutter is 1/250.
+        // The ~0.05 s blur shutter would be ~3.7 stops over, so it yields.
+        XCTAssertEqual(sol.phoneTargets.exposureDurationSec ?? -1, 1.0 / 250, accuracy: 1e-6)
+        XCTAssertEqual(sol.residualEV ?? 99, 0, accuracy: 0.05, "must be correctly exposed")
         XCTAssertTrue(
-            sol.clampMessages.contains(where: { $0.contains("Overexposed") }),
-            "expected an overexposure clamp message, got: \(sol.clampMessages)")
+            sol.clampMessages.contains(where: { $0.contains("Bright light") }),
+            "expected the shutter-yield message, got: \(sol.clampMessages)")
         XCTAssertTrue(
             sol.coachOnly?.nd?.contains("ND") == true,
             "expected the ND coach note, got: \(sol.coachOnly?.nd ?? "nil")")
@@ -111,6 +115,27 @@ final class SettingsSolverTests: XCTestCase {
             capabilities: caps, context: ctx1150)
         XCTAssertTrue(
             sol.clampMessages.contains(where: { $0.contains("No subject motion") }),
+            "got: \(sol.clampMessages)")
+        // Handheld: never a full-second guess.
+        XCTAssertLessThanOrEqual(sol.phoneTargets.exposureDurationSec ?? 99, 0.25 + 1e-9)
+    }
+
+    func testPanning_directSun_shutterYieldsToCorrectExposure() {
+        // The device report: Panning picked in direct sun, 1/30 s locked at
+        // min ISO, frame ~7 stops over and "A bit bright" with no fix.
+        var f = baseFeatures()
+        f.meteredExposureSeconds = 1.0 / 4000
+        f.meteredISO = 50
+        f.sceneEV100 = 15
+        f.backgroundSpeedPxPerSec = 0
+        let sol = SettingsSolver.solve(
+            recipeId: "panning-sharp-subject", features: f,
+            capabilities: caps, context: ctx1150)
+        XCTAssertEqual(sol.phoneTargets.iso, "50")
+        XCTAssertEqual(sol.phoneTargets.exposureDurationSec ?? -1, 1.0 / 4000, accuracy: 1e-7)
+        XCTAssertEqual(sol.residualEV ?? 99, 0, accuracy: 0.05)
+        XCTAssertTrue(
+            sol.clampMessages.contains(where: { $0.contains("Bright light") }),
             "got: \(sol.clampMessages)")
     }
 
