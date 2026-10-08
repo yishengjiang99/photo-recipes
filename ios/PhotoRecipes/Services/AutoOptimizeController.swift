@@ -162,6 +162,14 @@ final class AutoOptimizeController: ObservableObject {
     private var runGeneration = 0
     private var cloudRefineTask: Task<Void, Never>?
     private var sceneWatchTask: Task<Void, Never>?
+    /// Part 0.2: background fine-tune (verify settle + correct) task. Launched
+    /// after Ready is published so the user can shoot while it runs; cancelled
+    /// by a newer run, clear(), or a user capture mid-correction
+    /// (CameraView.takePhoto → cancelFineTune()).
+    private var fineTuneTask: Task<Void, Never>?
+    /// True when the in-flight fine-tune was cancelled by a user capture
+    /// rather than superseded — the run still reports its verify state.
+    private var fineTuneCancelledByCapture = false
     /// The scorer behind Pass 1 (JSON v1 default; Core ML opt-in via Settings).
     private let scorer: RecipeScoring = RecipeScorerSelector.scorer()
 
@@ -432,6 +440,9 @@ final class AutoOptimizeController: ObservableObject {
         sceneWatchTask = nil
         captureWindowTask?.cancel()
         captureWindowTask = nil
+        fineTuneTask?.cancel()
+        fineTuneTask = nil
+        fineTuneCancelledByCapture = false
         overrideInactivityTask?.cancel()
         overrideInactivityTask = nil
         pendingOverrideRunId = nil
@@ -463,8 +474,10 @@ final class AutoOptimizeController: ObservableObject {
     /// 3. Solve: `SettingsSolver` + `ExposurePlanner` turn the recipe +
     ///    features into dial targets from the converged E_auto.
     /// 4. Apply: `applyPhoneTargets` — never `setEV` after custom exposure.
-    /// 5. Verify: closed-loop settle + read-back; ≤2 ISO corrections while
-    ///    |offset − targetEV| > 0.3 EV; diff chips show read-back values.
+    /// 5. Ready: published as soon as the first write lands; the verify
+    ///    settle + correct runs as a background fine-tune task (≤1 correction
+    ///    when the planned shutter is slower than 1/15 s); diff chips show
+    ///    read-back values.
     func run(
         session: CameraSession,
         entitlements: EntitlementsStore,
@@ -492,6 +505,9 @@ final class AutoOptimizeController: ObservableObject {
         sceneWatchTask?.cancel()
         captureWindowTask?.cancel()
         captureWindowTask = nil
+        fineTuneTask?.cancel()
+        fineTuneTask = nil
+        fineTuneCancelledByCapture = false
         runGeneration &+= 1
         let generation = runGeneration
         lastTrigger = trigger
@@ -687,78 +703,42 @@ final class AutoOptimizeController: ObservableObject {
             return
         }
 
-        // --- 5. Verify: closed-loop settle + read-back + correct ---------------
-        phase = .verifying("Checking exposure…")
-        var verifyNotes: [String] = []
+        // --- 5. Ready: publish as soon as the first write lands ----------------
+        // Part 0.2: the camera is Ready for capture the moment applyPhoneTargets
+        // returned above (its writes were awaited there). The verify settle +
+        // correct runs as a background fine-tune task (step 6) so the user can
+        // shoot while it runs; a capture mid-correction cancels the correction.
+        // In dim light (planned shutter slower than 1/15 s) at most ONE
+        // correction is allowed — worst case was converge ≤0.6 s + settle
+        // ≤1.2 s + 2 × 1.2 s ≈ 4 s before Ready.
+        let plannedShutterSec = solution.phoneTargets.exposureDurationSec
+        let dimLightFineTune = (plannedShutterSec ?? 0) > (1.0 / 15.0)
+        let maxVerifyIterations = ExposureVerifyLoop.maxIterations(plannedShutterSec: plannedShutterSec)
 
-        // Closed-loop correction against the planner's targetEV: wait for the
-        // write to land (completion + ~2 frames), compare exposureTargetOffset,
-        // correct ISO while |offset − targetEV| > 0.3 EV (≤2 iterations).
-        // Replaces the old single >1-stop nudge.
-        // The residual is hoisted into the AO Ready telemetry (Phase 3).
-        var verifyResidualEV: Double? = nil
-        var verifyIterations = 0
-        if let targetEV = solution.targetEV,
-           solution.phoneTargets.exposureDurationSec != nil,
-           entitlements.canApplyDials {
-            let v = await session.verifyExposure(
-                targetEV: targetEV,
-                priority: solution.priority,
-                shutterCapSeconds: solution.shutterCapSeconds)
-            verifyIterations = v.iterations
-            if v.verified {
-                verifyResidualEV = v.residualEV
-                if v.iterations > 0 {
-                    // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
-                    // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
-                    let stops = abs(v.initialError)
-                    let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
-                    let direction = v.initialError < 0 ? "Brightened" : "Darkened"
-                    if abs(v.residualEV) > 0.3 {
-                        let still = v.residualEV < 0 ? "still a bit dark" : "still a bit bright"
-                        verifyNotes.append("\(direction) \(stopsText), \(still)")
-                    } else {
-                        verifyNotes.append("\(direction) \(stopsText)")
-                    }
-                } else if abs(v.residualEV) > 0.3 {
-                    let still = v.residualEV < 0 ? "A bit dark" : "A bit bright"
-                    verifyNotes.append(still)
-                }
-                Analytics.shared.track("auto_optimize_verify", props: [
-                    "run_id": runId,
-                    "recipe_id": recipe.id,
-                    "residual_ev": String(format: "%.2f", v.residualEV),
-                    "iterations": "\(v.iterations)",
-                    "clamped": v.clamped ? "1" : "0",
-                ])
-            }
-        } else {
-            try? await Task.sleep(nanoseconds: 300_000_000) // let hardware settle
-        }
-        if wasCancelled(stage: "verify") { return }
+        // Read-back drift checks against the solved targets (no verify needed).
+        var driftNotes: [String] = []
         session.refreshReadouts()
-        let readback = session.readbackState()
-
+        let preVerifyReadback = session.readbackState()
         if solution.phoneTargets.exposureDurationSec != nil {
-            if readback.exposureMode != "custom" {
-                verifyNotes.append("Custom exposure not held (\(readback.exposureMode)) — values below are guidance.")
+            if preVerifyReadback.exposureMode != "custom" {
+                driftNotes.append("Custom exposure not held (\(preVerifyReadback.exposureMode)) — values below are guidance.")
             } else if let want = solution.phoneTargets.exposureDurationSec, want > 0 {
-                let drift = abs(readback.exposureDuration - want) / want
+                let drift = abs(preVerifyReadback.exposureDuration - want) / want
                 if drift > 0.15 {
-                    verifyNotes.append("Shutter read back \(RecipeCameraMapper.formatShutter(readback.exposureDuration)) vs solved \(RecipeCameraMapper.formatShutter(want)).")
+                    driftNotes.append("Shutter read back \(RecipeCameraMapper.formatShutter(preVerifyReadback.exposureDuration)) vs solved \(RecipeCameraMapper.formatShutter(want)).")
                 }
             }
         }
         if let wantISO = solution.phoneTargets.iso.flatMap({ Float($0) }), wantISO > 0 {
-            let drift = abs(readback.iso - wantISO) / wantISO
+            let drift = abs(preVerifyReadback.iso - wantISO) / wantISO
             if drift > 0.15 {
-                verifyNotes.append("ISO read back \(Int(readback.iso.rounded())) vs solved \(Int(wantISO.rounded())).")
+                driftNotes.append("ISO read back \(Int(preVerifyReadback.iso.rounded())) vs solved \(Int(wantISO.rounded())).")
             }
         }
 
         // Single status surface: verify notes go only to verifyWarning (AgentStatusPill).
         // Do NOT also append to session.clampMessages — that draws a duplicate banner.
-        verifyWarning = verifyNotes.isEmpty ? nil : verifyNotes.joined(separator: " ")
+        verifyWarning = driftNotes.isEmpty ? nil : driftNotes.joined(separator: " ")
 
         // Diff chips show the values READ BACK from the device, not the targets.
         afterSnapshot = snap(session)
@@ -772,38 +752,144 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
         applyFeedbackToken &+= 1
         captureAppliedDials(session: session, recipeId: recipe.id)
-        let latencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets) latency=\(latencyMs)ms")
-        var successProps: [String: String] = [
-            "recipe_id": recipe.id,
-            "latency_ms": "\(latencyMs)",
-            "path": "local",
-            "trigger": trigger,
-            "run_id": runId,
-            "parent_run_id": parentRunId ?? "",
-            "features_v": "\(SceneFeatures.currentSchemaVersion)",
-            "feature_vector": Self.quantizedVector(features),
-            "top3": Self.top3Scores(scores),
-            "thermal_state": Self.thermalStateName,
-            "gpu_stats": Self.gpuStatsProvenance(features),
-            "scene_label_top": features.sceneLabels?.first?.identifier ?? "",
-        ]
-        successProps.merge(Self.telemetryV2Props(
-            features: features,
-            solution: solution,
-            residualEV: verifyResidualEV,
-            verifyIterations: verifyIterations,
-            lensDeviceType: readback.lensDeviceType
-        )) { _, new in new }
-        Analytics.shared.track("auto_optimize_success", props: successProps)
-        AOPerf.end(perfId, outcome: "ready")
+        let readyLatencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets) latency=\(readyLatencyMs)ms")
         consumeSharedFreeIfNeeded(entitlements)
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
         scheduleCaptureWindowCheck(runId: runId, recipeId: recipe.id)
-        maybeCaptureOptInBracket(session: session, runId: runId, recipeId: recipe.id,
-                                 features: features, coachOnly: false,
-                                 solution: solution, verifyResidualEV: verifyResidualEV,
-                                 lensDeviceType: readback.lensDeviceType)
+
+        // --- 6. Fine-tune (background): verify settle + correct ----------------
+        // The pill shows "Fine-tuning exposure…" in dim light via verifyWarning
+        // (the existing status-text mechanism — Part 3 replaces this with
+        // sub-step progress). Cancelled by a newer run, clear(), or a user
+        // capture mid-correction (CameraView.takePhoto → cancelFineTune()).
+        let fineTuneGeneration = generation
+        let fineTuneDriftNotes = driftNotes
+        fineTuneTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let verifyStart = Date()
+            var verifyResidualEV: Double? = nil
+            var verifyIterations = 0
+            var tVerifyMs = 0
+            var verifyNotes: [String] = []
+
+            // Closed-loop correction against the planner's targetEV: wait for
+            // the write to land (completion + ~2 frames), compare
+            // exposureTargetOffset, correct while |offset − targetEV| > 0.3 EV
+            // (≤ maxVerifyIterations correction writes).
+            // The residual is hoisted into the AO Ready telemetry (Phase 3).
+            if !Task.isCancelled,
+               let targetEV = solution.targetEV,
+               solution.phoneTargets.exposureDurationSec != nil,
+               entitlements.canApplyDials {
+                if dimLightFineTune {
+                    // Visible in the pill at Ready while the correction runs.
+                    self.verifyWarning = "Fine-tuning exposure…"
+                }
+                let v = await session.verifyExposure(
+                    targetEV: targetEV,
+                    priority: solution.priority,
+                    shutterCapSeconds: solution.shutterCapSeconds,
+                    maxIterations: maxVerifyIterations)
+                tVerifyMs = Int(Date().timeIntervalSince(verifyStart) * 1000)
+                if !Task.isCancelled {
+                    verifyIterations = v.iterations
+                    if v.verified {
+                        verifyResidualEV = v.residualEV
+                        if v.iterations > 0 {
+                            // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
+                            // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
+                            let stops = abs(v.initialError)
+                            let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
+                            let direction = v.initialError < 0 ? "Brightened" : "Darkened"
+                            if abs(v.residualEV) > 0.3 {
+                                let still = v.residualEV < 0 ? "still a bit dark" : "still a bit bright"
+                                verifyNotes.append("\(direction) \(stopsText), \(still)")
+                            } else {
+                                verifyNotes.append("\(direction) \(stopsText)")
+                            }
+                        } else if abs(v.residualEV) > 0.3 {
+                            let still = v.residualEV < 0 ? "A bit dark" : "A bit bright"
+                            verifyNotes.append(still)
+                        }
+                        Analytics.shared.track("auto_optimize_verify", props: [
+                            "run_id": runId,
+                            "recipe_id": recipe.id,
+                            "residual_ev": String(format: "%.2f", v.residualEV),
+                            "iterations": "\(v.iterations)",
+                            "clamped": v.clamped ? "1" : "0",
+                        ])
+                    }
+                }
+            } else {
+                try? await Task.sleep(nanoseconds: 300_000_000) // let hardware settle
+            }
+
+            // Superseded by a newer run or clear(): no success analytics
+            // (matches the old wasCancelled(stage: "verify") behavior).
+            guard self.runGeneration == fineTuneGeneration else {
+                Analytics.shared.track("auto_optimize_cancel", props: [
+                    "latency_ms": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+                    "stage": "fine-tune",
+                ])
+                AOPerf.end(perfId, outcome: "cancelled")
+                return
+            }
+            let cancelledByCapture = self.fineTuneCancelledByCapture
+            self.fineTuneTask = nil
+            self.fineTuneCancelledByCapture = false
+
+            // Refresh the read-back chips after any correction writes.
+            session.refreshReadouts()
+            let readback = session.readbackState()
+            self.afterSnapshot = self.snap(session)
+            self.agentBaseline = self.afterSnapshot
+            self.diffs = self.buildDiffs(self.beforeSnapshot, self.afterSnapshot, session.clampMessages)
+            self.advancedDiffs = self.buildAdvancedDiffs(session: session)
+
+            // Verify notes supersede the drift notes; drift notes stand when
+            // verify produced none.
+            let finalNotes = verifyNotes.isEmpty ? fineTuneDriftNotes : verifyNotes
+            self.verifyWarning = finalNotes.isEmpty ? nil : finalNotes.joined(separator: " ")
+            if self.suggestedLook != nil { self.verifyWarning = nil }
+
+            let latencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            var successProps: [String: String] = [
+                "recipe_id": recipe.id,
+                "latency_ms": "\(latencyMs)",
+                "path": "local",
+                "trigger": trigger,
+                "run_id": runId,
+                "parent_run_id": parentRunId ?? "",
+                "features_v": "\(SceneFeatures.currentSchemaVersion)",
+                "feature_vector": Self.quantizedVector(features),
+                "top3": Self.top3Scores(scores),
+                "thermal_state": Self.thermalStateName,
+                "gpu_stats": Self.gpuStatsProvenance(features),
+                "scene_label_top": features.sceneLabels?.first?.identifier ?? "",
+            ]
+            // Part 0.2: per-verify timing for the dim-light latency check
+            // (0 when the verify path was skipped — no custom exposure).
+            successProps["t_verify_ms"] = "\(tVerifyMs)"
+            if cancelledByCapture {
+                successProps["fine_tune_cancelled"] = "capture"
+            }
+            successProps.merge(Self.telemetryV2Props(
+                features: features,
+                solution: solution,
+                residualEV: verifyResidualEV,
+                verifyIterations: verifyIterations,
+                lensDeviceType: readback.lensDeviceType,
+                readbackShutterSec: readback.exposureDuration,
+                readbackISO: readback.iso
+            )) { _, new in new }
+            Analytics.shared.track("auto_optimize_success", props: successProps)
+            AOPerf.end(perfId, outcome: "ready")
+            self.maybeCaptureOptInBracket(session: session, runId: runId, recipeId: recipe.id,
+                                           features: features, coachOnly: false,
+                                           solution: solution, verifyResidualEV: verifyResidualEV,
+                                           lensDeviceType: readback.lensDeviceType)
+        }
 
         // Pass 2: refine the LOCKED recipe with one still JPEG (never pixels for Pass 1).
         // Gate: the first successful optimize stays local-only, the toggle
@@ -944,7 +1030,9 @@ final class AutoOptimizeController: ObservableObject {
         solution: SettingsSolver.Solution,
         residualEV: Double?,
         verifyIterations: Int,
-        lensDeviceType: String
+        lensDeviceType: String,
+        readbackShutterSec: Double? = nil,
+        readbackISO: Float? = nil
     ) -> [String: String] {
         AOTelemetrySerializer.readyProps(
             features: features,
@@ -954,7 +1042,9 @@ final class AutoOptimizeController: ObservableObject {
             planResidualEV: solution.residualEV,
             residualEV: residualEV,
             verifyIterations: verifyIterations,
-            lensDeviceType: lensDeviceType
+            lensDeviceType: lensDeviceType,
+            readbackShutterSec: readbackShutterSec,
+            readbackISO: readbackISO
         )
     }
 
@@ -1252,6 +1342,17 @@ final class AutoOptimizeController: ObservableObject {
         cloudRefineTask?.cancel()
         cloudRefineTask = nil
         isCloudRefining = false
+    }
+
+    /// Part 0.2: cancels an in-flight background fine-tune (verify correction)
+    /// when the user captures mid-correction. Called by CameraView.takePhoto.
+    /// The run already reached Ready — the fine-tune task reports the verify
+    /// state it recorded before cancellation.
+    func cancelFineTune() {
+        if fineTuneTask != nil {
+            fineTuneCancelledByCapture = true
+            fineTuneTask?.cancel()
+        }
     }
 
     // MARK: - Pass 2 exposure plumbing (Section B: planner-respecting refine)

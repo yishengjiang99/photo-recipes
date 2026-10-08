@@ -53,6 +53,14 @@ enum ExposureVerifyLoop {
         var clamped: Bool
     }
 
+    /// Part 0.2: dim-light correction cap. When the planned shutter is slower
+    /// than 1/15 s, allow at most ONE correction write — worst case was
+    /// converge ≤0.6 s + settle ≤1.2 s + 2 × 1.2 s ≈ 4 s before Ready.
+    /// Otherwise the historical cap of 2 stands.
+    static func maxIterations(plannedShutterSec: Double?) -> Int {
+        (plannedShutterSec ?? 0) > (1.0 / 15.0) ? 1 : 2
+    }
+
     /// Runs the verify loop against `clock`.
     ///
     /// - Parameters:

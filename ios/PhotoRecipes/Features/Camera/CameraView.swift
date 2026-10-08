@@ -1421,6 +1421,9 @@ struct CameraView: View {
         guard !isCapturing else { return }
         isCapturing = true
         optimizer.isUserCaptureInFlight = true
+        // Part 0.2: a capture mid-correction cancels the background fine-tune —
+        // the user shoots with the first write while the correction is dropped.
+        optimizer.cancelFineTune()
         captureError = nil
         dismissSceneKeyboard()
 

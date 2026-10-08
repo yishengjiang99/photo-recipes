@@ -460,12 +460,19 @@ final class CameraSession: NSObject, ObservableObject {
     /// (sensor space, 0…1) — callers must convert from UI space first via
     /// `focusOnUIPoint(_:lock:)` or `devicePointConverter`. Never stores the
     /// reticle: `focusPoint` is UI-space and is only written by `focusOnUIPoint`.
-    func focus(at devicePoint: CGPoint, lock: Bool) {
+    ///
+    /// `setsExposurePoint` (Part 0.1): Auto Optimize's apply path passes
+    /// false — `convergeAutoExposure` already reset the exposure point to
+    /// frame center and `verifyExposure` meters there; moving it to the
+    /// face/subject after custom exposure was written would meter the face
+    /// and could cancel (or double) the backlit EV correction. Tap-to-focus
+    /// keeps the default true.
+    func focus(at devicePoint: CGPoint, lock: Bool, setsExposurePoint: Bool = true) {
         guard let device = input?.device else { return }
         let clamped = CoordinateSpaces.clamp01(devicePoint)
         configure(device) {
             if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = clamped }
-            if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = clamped }
+            if setsExposurePoint, device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = clamped }
             if lock, device.isFocusModeSupported(.locked) {
                 device.focusMode = .locked
             } else if device.isFocusModeSupported(.autoFocus) {
@@ -480,11 +487,13 @@ final class CameraSession: NSObject, ObservableObject {
     /// UI-space entry point for tap-to-focus and Auto Optimize. Converts the
     /// UI-normalized point (top-left origin) to a device point of interest,
     /// applies it, and stores the **UI** point in `focusPoint` for the reticle.
-    func focusOnUIPoint(_ uiPoint: CGPoint, lock: Bool) {
+    /// `setsExposurePoint` defaults to true (tap-to-focus behavior); Auto
+    /// Optimize's apply path passes false (Part 0.1).
+    func focusOnUIPoint(_ uiPoint: CGPoint, lock: Bool, setsExposurePoint: Bool = true) {
         let ui = CoordinateSpaces.clamp01(uiPoint)
         focusPoint = ui
         let device = devicePointConverter?.devicePoint(uiNormalized: ui) ?? ui
-        focus(at: device, lock: lock)
+        focus(at: device, lock: lock, setsExposurePoint: setsExposurePoint)
     }
 
     /// Converts a UI-normalized point (top-left origin) to a device point of
@@ -593,12 +602,16 @@ final class CameraSession: NSObject, ObservableObject {
         if let fp = targets.focusPoint {
             let lock = (targets.focusMode?.lowercased()).map { ["locked", "lock", "near"].contains($0) } ?? true
             // focusPoint is UI-space (top-left normalized); convert to device space.
-            focusOnUIPoint(fp.cgPoint, lock: lock)
+            // Part 0.1: focus moves, the exposure point stays where
+            // convergeAutoExposure put it (frame center).
+            focusOnUIPoint(fp.cgPoint, lock: lock,
+                           setsExposurePoint: FocusPointPolicy.setsExposurePoint(for: .autoOptimizeApply))
             wrote = true
         } else if targets.lensPosition == nil, let focusMode = targets.focusMode?.lowercased() {
             switch focusMode {
             case "locked", "lock", "near":
-                focusOnUIPoint(focusPoint ?? CGPoint(x: 0.5, y: 0.5), lock: true)
+                focusOnUIPoint(focusPoint ?? CGPoint(x: 0.5, y: 0.5), lock: true,
+                               setsExposurePoint: FocusPointPolicy.setsExposurePoint(for: .autoOptimizeApply))
                 wrote = true
             case "continuous", "auto", "infinity":
                 unlockFocus()
@@ -1656,6 +1669,37 @@ final class CameraSession: NSObject, ObservableObject {
 
 /// CameraSession is the production `ExposureWriteClock` (A1 seam).
 extension CameraSession: ExposureWriteClock {}
+
+/// Focus/exposure-point policy (Part 0.1).
+///
+/// `convergeAutoExposure` resets the exposure point of interest to frame
+/// center so E_auto is metered from a known point. Auto Optimize's apply path
+/// must then move focus ONLY — if it also moved the exposure point to the
+/// face/subject, `verifyExposure` would meter at the face and the correction
+/// could cancel the backlit +0.7 EV (or double it to +1.4). Tap-to-focus and
+/// manual controls keep the historical behavior (both points move).
+///
+/// Unit-tested — this is the seam that proves the apply path never changes
+/// the exposure point of interest (CameraSession itself can't be unit-driven
+/// without a capture device).
+enum FocusPointPolicy {
+    enum Path {
+        /// `applyPhoneTargets` (Auto Optimize / voice apply).
+        case autoOptimizeApply
+        /// User tapped the preview.
+        case tapToFocus
+        /// Manual controls (dials sheet recenter, etc.).
+        case manualControl
+    }
+
+    /// Whether a focus call from the given path may move the exposure POI.
+    static func setsExposurePoint(for path: Path) -> Bool {
+        switch path {
+        case .autoOptimizeApply: return false
+        case .tapToFocus, .manualControl: return true
+        }
+    }
+}
 
 /// Pure policy for the exposure seam: EV bias is folded into the ISO solve when
 /// custom shutter/ISO was written in the same apply; programming a bias on top
