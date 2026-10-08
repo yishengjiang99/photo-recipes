@@ -80,10 +80,19 @@ final class AOBracketStore: Sendable {
             let name = String(format: "frame_ev%+.1f.jpg", offset)
             try small.write(to: setURL.appendingPathComponent(name))
             var entry: [String: Any] = ["file": name, "evOffset": offset]
-            if let exif = AOBracketDownsampler.exifExposure(data) {
+            let exif = AOBracketDownsampler.exifExposure(data)
+            if let exif {
                 entry["exposureSeconds"] = exif.exposureSeconds
                 entry["iso"] = exif.iso
             }
+            // Section D: flag frames whose shutter ran past the motion-safe
+            // cap — their blur would otherwise bias "best frame" labels.
+            let blurRisk: Bool = {
+                guard let t = exif?.exposureSeconds,
+                      let cap = manifest.motionCapShutter, cap > 0 else { return false }
+                return t > cap
+            }()
+            entry["blur_risk"] = blurRisk
             frameEntries.append(entry)
         }
 
@@ -92,6 +101,17 @@ final class AOBracketStore: Sendable {
             "recipeId": manifest.recipeId,
             "capturedAt": manifest.capturedAt.timeIntervalSince1970,
             "coachOnly": manifest.coachOnly,
+            // Section D label anchors: a bracket set can be labeled without
+            // joining telemetry.
+            "schema_version": AOBracketManifest.schemaVersion,
+            "e_auto": manifest.eAuto as Any,
+            "plan_target_ev": manifest.planTargetEV as Any,
+            "appliedShutterSec": manifest.appliedShutterSec as Any,
+            "appliedISO": manifest.appliedISO as Any,
+            "verify_residual_ev": manifest.verifyResidualEV as Any,
+            "device_model": manifest.deviceModel,
+            "lens": manifest.lensDeviceType as Any,
+            "motionCapShutterSec": manifest.motionCapShutter as Any,
             "frames": frameEntries,
             "stats": [
                 "gpuSource": manifest.gpuSource as Any,

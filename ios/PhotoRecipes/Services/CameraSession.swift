@@ -1187,15 +1187,27 @@ final class CameraSession: NSObject, ObservableObject {
     /// retain the delegate passed to `capturePhoto`).
     private var activeBracketDelegates: [AOBracketPhotoDelegate] = []
 
+    /// True while the device holds system auto exposure, so the EV-bias dial
+    /// actually moves exposure. In `.custom` the EV dial is a no-op (the
+    /// controller never calls setEV after custom writes). No device (unit
+    /// tests) → nothing custom was ever written → true.
+    var isAutoExposure: Bool {
+        guard let device = input?.device else { return true }
+        return device.exposureMode != .custom
+    }
+
     /// Phase 3 opt-in bracket: frames at the given EV offsets via
     /// AVCapturePhotoBracketSettings + AVCaptureManualExposureBracketedStillImageSettings.
     /// Uses its own delegate — never touches the normal capture path's
     /// `photoCont`. Throws when the session isn't running or the bracket fails.
     ///
+    /// `motionCapShutter`: positive offsets past this motion-safe cap hold
+    /// the shutter at the cap and raise ISO instead (Section D).
+    ///
     /// Assumed-but-unverified on device: bracketed frames each deliver one
     /// `didFinishProcessingPhoto` before `didFinishCaptureFor`; the
     /// per-frame EV offset is read back from EXIF (order-independent).
-    func captureExposureBracket(evOffsets: [Float]) async throws -> AOBracketFrames {
+    func captureExposureBracket(evOffsets: [Float], motionCapShutter: Double? = nil) async throws -> AOBracketFrames {
         let baseShutter = exposureSeconds
         let baseISO = iso
         let caps = capabilities
@@ -1214,7 +1226,9 @@ final class CameraSession: NSObject, ObservableObject {
                     baseISO: baseISO,
                     offsets: evOffsets,
                     minShutter: caps.minExposureSeconds,
-                    maxShutter: caps.maxExposureSeconds)
+                    maxShutter: caps.maxExposureSeconds,
+                    motionCapShutter: motionCapShutter,
+                    maxISO: caps.maxISO)
                 guard !manual.isEmpty else { cont.resume(throwing: CamError.captureFailed); return }
                 // Processed (non-RAW) bracket: rawPixelFormatType 0 + explicit
                 // JPEG processed format + the 5 manual-exposure bracket settings.

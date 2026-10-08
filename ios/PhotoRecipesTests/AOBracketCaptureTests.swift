@@ -188,4 +188,284 @@ final class AOBracketCaptureTests: XCTestCase {
         store.clearAll()
         XCTAssertEqual(store.pendingSets().count, 0)
     }
+
+    // MARK: - Section D helpers
+
+    /// JPEG carrying EXIF exposure time + ISO (the store reads these from the
+    /// ORIGINAL frame before downsampling).
+    static func makeTestJPEGWithEXIF(exposureSeconds: Double, iso: Double, width: Int = 64, height: Int = 64) -> Data {
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let ctx = CGContext(data: nil, width: width, height: height,
+                            bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 0.2, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let img = ctx.makeImage()!
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(
+            out, UTType.jpeg.identifier as CFString, 1, nil)!
+        let exif: [CFString: Any] = [
+            kCGImagePropertyExifExposureTime: exposureSeconds,
+            kCGImagePropertyExifISOSpeedRatings: [Int(iso)],
+        ]
+        CGImageDestinationAddImage(dest, img, [
+            kCGImagePropertyExifDictionary: exif,
+        ] as CFDictionary)
+        CGImageDestinationFinalize(dest)
+        return out as Data
+    }
+
+    /// JPEG carrying GPS + TIFF + EXIF metadata (must NOT survive the downsample).
+    static func makeTestJPEGWithGPS(width: Int = 64, height: Int = 64) -> Data {
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let ctx = CGContext(data: nil, width: width, height: height,
+                            bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let img = ctx.makeImage()!
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(
+            out, UTType.jpeg.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, img, [
+            kCGImagePropertyGPSDictionary: [
+                kCGImagePropertyGPSLatitude: 37.33,
+                kCGImagePropertyGPSLongitude: -122.01,
+            ] as [CFString: Any],
+            kCGImagePropertyTIFFDictionary: [
+                kCGImagePropertyTIFFMake: "TestCam",
+            ] as [CFString: Any],
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifExposureTime: 1.0 / 60,
+            ] as [CFString: Any],
+        ] as CFDictionary)
+        CGImageDestinationFinalize(dest)
+        return out as Data
+    }
+
+    /// Reset the AOBracketCapture singleton's test seams + opt-in.
+    @MainActor
+    private func resetBracketShared() {
+        AOBracketCapture.optedIn = false
+        AOBracketCapture.shared.captureBracketOverride = nil
+        AOBracketCapture.shared.bracketStore = .shared
+        // Defensive: drop any armed run left by a failing test (no-op when none).
+        AOBracketCapture.shared.userCaptureDidComplete(session: CameraSession())
+    }
+
+    /// Wait until the bracket fire task finishes (chip off) or time out.
+    @MainActor
+    private func waitForBracketQuiescence(timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while AOBracketCapture.shared.isSavingBracketData, Date() < deadline {
+            await Task.yield()
+        }
+    }
+
+    private func readMetaJSON(dir: URL, runId: String) throws -> [String: Any] {
+        let url = dir.appendingPathComponent("\(runId)/meta.json")
+        let data = try Data(contentsOf: url)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    // MARK: - Section D (b): post-capture trigger
+
+    @MainActor
+    func testBracketFiresAfterUserCapture() async throws {
+        AOBracketCapture.optedIn = true
+        defer { resetBracketShared() }
+        let dir = tempDir()
+        let store = AOBracketStore(baseURL: dir)
+        AOBracketCapture.shared.bracketStore = store
+        var fired: [(offsets: [Float], cap: Double?)] = []
+        AOBracketCapture.shared.captureBracketOverride = { _, offsets, cap in
+            fired.append((offsets, cap))
+            return [Self.makeTestJPEG(width: 64, height: 64)]
+        }
+        var run = makeRun(id: "run-fire", at: Date())
+        run.motionCapShutter = 1.0 / 60
+        // Armed at Ready — nothing fires yet.
+        AOBracketCapture.shared.armBracket(run: run)
+        XCTAssertFalse(AOBracketCapture.shared.isSavingBracketData)
+        XCTAssertEqual(store.pendingSets().count, 0)
+        // The user's capture completes → the bracket fires (chip on).
+        AOBracketCapture.shared.userCaptureDidComplete(session: CameraSession())
+        XCTAssertTrue(AOBracketCapture.shared.isSavingBracketData)
+        await waitForBracketQuiescence()
+        XCTAssertEqual(fired.count, 1, "armed bracket must fire once the user's capture completes")
+        XCTAssertEqual(fired[0].offsets, [-2, -1, 0, 1, 2])
+        XCTAssertEqual(fired[0].cap, 1.0 / 60, "motion cap must thread through to the capture")
+        XCTAssertFalse(AOBracketCapture.shared.isSavingBracketData)
+        XCTAssertEqual(store.pendingSets().count, 1, "fired bracket must be stored")
+    }
+
+    @MainActor
+    func testBracketSkipsWhenUserCaptureInFlight() async throws {
+        AOBracketCapture.optedIn = true
+        defer { resetBracketShared() }
+        var fired = false
+        AOBracketCapture.shared.captureBracketOverride = { _, _, _ in
+            fired = true
+            return []
+        }
+        var run = makeRun(id: "run-skip-flight", at: Date())
+        run.userCaptureInFlight = { true } // racing second shutter tap
+        AOBracketCapture.shared.armBracket(run: run)
+        AOBracketCapture.shared.userCaptureDidComplete(session: CameraSession())
+        await waitForBracketQuiescence()
+        XCTAssertFalse(fired, "bracket must yield to an in-flight user capture")
+        XCTAssertFalse(AOBracketCapture.shared.isSavingBracketData)
+    }
+
+    @MainActor
+    func testBracketSkipsWhenRunChanged() async throws {
+        AOBracketCapture.optedIn = true
+        defer { resetBracketShared() }
+        var fired = false
+        AOBracketCapture.shared.captureBracketOverride = { _, _, _ in
+            fired = true
+            return []
+        }
+        var run = makeRun(id: "run-skip-stale", at: Date())
+        run.isCurrent = { false } // a newer run started (generation bump)
+        AOBracketCapture.shared.armBracket(run: run)
+        AOBracketCapture.shared.userCaptureDidComplete(session: CameraSession())
+        await waitForBracketQuiescence()
+        XCTAssertFalse(fired, "bracket must not fire for a superseded run")
+        XCTAssertFalse(AOBracketCapture.shared.isSavingBracketData)
+    }
+
+    // MARK: - Section D (c): ISO-raised positive offsets + blur_risk
+
+    func testBracketedSettingsRaiseISOPastMotionCap() {
+        // Dim scene: 1/30 s base, motion-safe cap 1/60 s.
+        let settings = AOBracketCapture.bracketedSettings(
+            baseShutter: 1.0 / 30, baseISO: 100,
+            offsets: AOBracketCapture.evOffsets,
+            minShutter: 1.0 / 8000, maxShutter: 1.0,
+            motionCapShutter: 1.0 / 60, maxISO: 3200)
+        XCTAssertEqual(settings.count, 5)
+        // Negative offsets: shutter shortens, ISO untouched.
+        XCTAssertEqual(settings[0].exposureDuration.seconds, 1.0 / 120, accuracy: 1e-6)
+        XCTAssertEqual(settings[0].iso, 100)
+        XCTAssertEqual(settings[1].exposureDuration.seconds, 1.0 / 60, accuracy: 1e-6)
+        XCTAssertEqual(settings[1].iso, 100)
+        XCTAssertEqual(settings[2].exposureDuration.seconds, 1.0 / 30, accuracy: 1e-6)
+        XCTAssertEqual(settings[2].iso, 100)
+        // +1 EV: shutter held AT the 1/60 cap, ISO raised 100 → 400.
+        XCTAssertEqual(settings[3].exposureDuration.seconds, 1.0 / 60, accuracy: 1e-6)
+        XCTAssertEqual(settings[3].iso, 400)
+        // +2 EV: shutter held at the cap, ISO raised 100 → 800.
+        XCTAssertEqual(settings[4].exposureDuration.seconds, 1.0 / 60, accuracy: 1e-6)
+        XCTAssertEqual(settings[4].iso, 800)
+    }
+
+    func testBracketedSettingsClampRaisedISOToMax() {
+        // +2 EV from 1/30 s at cap 1/60 would want ISO 800 — maxISO 500 wins.
+        let settings = AOBracketCapture.bracketedSettings(
+            baseShutter: 1.0 / 30, baseISO: 100,
+            offsets: [2], minShutter: 1.0 / 8000, maxShutter: 1.0,
+            motionCapShutter: 1.0 / 60, maxISO: 500)
+        XCTAssertEqual(settings.count, 1)
+        XCTAssertEqual(settings[0].exposureDuration.seconds, 1.0 / 60, accuracy: 1e-6)
+        XCTAssertEqual(settings[0].iso, 500)
+    }
+
+    func testBracketedSettingsWithoutCapKeepShutterScaling() {
+        // No motion cap → legacy behavior: shutter scales, ISO constant.
+        let settings = AOBracketCapture.bracketedSettings(
+            baseShutter: 1.0 / 60, baseISO: 100,
+            offsets: AOBracketCapture.evOffsets,
+            minShutter: 1.0 / 8000, maxShutter: 1.0 / 2)
+        XCTAssertEqual(settings[4].exposureDuration.seconds, 1.0 / 15, accuracy: 1e-4)
+        for s in settings { XCTAssertEqual(s.iso, 100) }
+    }
+
+    func testStoreFlagsBlurRiskPerFrame() throws {
+        let dir = tempDir()
+        let store = AOBracketStore(baseURL: dir)
+        let frames = [
+            Self.makeTestJPEGWithEXIF(exposureSeconds: 1.0 / 120, iso: 100),
+            Self.makeTestJPEGWithEXIF(exposureSeconds: 1.0 / 60, iso: 100),
+            Self.makeTestJPEGWithEXIF(exposureSeconds: 1.0 / 15, iso: 400),
+        ]
+        var run = makeRun(id: "run-blur", at: Date(timeIntervalSince1970: 1_700_000_000))
+        run.motionCapShutter = 1.0 / 60
+        try store.storeBracketSync(manifest: AOBracketManifest(run: run), frames: frames)
+        let meta = try readMetaJSON(dir: dir, runId: "run-blur")
+        let frameMetas = try XCTUnwrap(meta["frames"] as? [[String: Any]])
+        XCTAssertEqual(frameMetas.count, 3)
+        func blurRisk(shutter: Double) throws -> Bool {
+            let entry = try XCTUnwrap(frameMetas.first {
+                guard let t = $0["exposureSeconds"] as? Double else { return false }
+                return abs(t - shutter) < 1e-9
+            })
+            return try XCTUnwrap(entry["blur_risk"] as? Bool)
+        }
+        XCTAssertFalse(try blurRisk(shutter: 1.0 / 120))
+        XCTAssertFalse(try blurRisk(shutter: 1.0 / 60), "at the cap is not past the cap")
+        XCTAssertTrue(try blurRisk(shutter: 1.0 / 15), "shutter past the motion cap must be flagged")
+    }
+
+    // MARK: - Section D (d): manifest anchors
+
+    func testMetaJsonContainsLabelAnchors() throws {
+        let dir = tempDir()
+        let store = AOBracketStore(baseURL: dir)
+        var features = SceneFeatures()
+        features.meteredExposureSeconds = 1.0 / 60
+        features.meteredISO = 200
+        let run = AOBracketRun(
+            runId: "run-anchors", recipeId: "portrait-pop",
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            coachOnly: false, features: features, isCurrent: { true },
+            motionCapShutter: 1.0 / 60, planTargetEV: 0.3,
+            appliedShutterSec: 1.0 / 60, appliedISO: 200,
+            verifyResidualEV: -0.1, lensDeviceType: "builtInWideAngleCamera")
+        try store.storeBracketSync(
+            manifest: AOBracketManifest(run: run),
+            frames: [Self.makeTestJPEG(width: 64, height: 64)])
+        let meta = try readMetaJSON(dir: dir, runId: "run-anchors")
+        XCTAssertEqual(meta["schema_version"] as? Int, 1)
+        XCTAssertEqual(try XCTUnwrap(meta["e_auto"] as? Double), (1.0 / 60) * 200, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(meta["plan_target_ev"] as? Double), 0.3, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(meta["appliedShutterSec"] as? Double), 1.0 / 60, accuracy: 1e-9)
+        XCTAssertEqual(meta["appliedISO"] as? Double, 200)
+        XCTAssertEqual(try XCTUnwrap(meta["verify_residual_ev"] as? Double), -0.1, accuracy: 1e-9)
+        XCTAssertFalse((meta["device_model"] as? String ?? "").isEmpty)
+        XCTAssertEqual(meta["lens"] as? String, "builtInWideAngleCamera")
+    }
+
+    // MARK: - Section D (e): EXIF strip
+
+    func testDownsampledJPEGsStripGPSAndEXIF() throws {
+        let tagged = Self.makeTestJPEGWithGPS()
+        // Sanity: the input really carries GPS.
+        let inSrc = try XCTUnwrap(CGImageSourceCreateWithData(tagged as CFData, nil))
+        let inProps = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(inSrc, 0, nil) as? [CFString: Any])
+        XCTAssertNotNil(inProps[kCGImagePropertyGPSDictionary], "test input must carry GPS EXIF")
+        // The stored (downsampled) JPEG must carry none of it.
+        let small = try XCTUnwrap(AOBracketDownsampler.downsampleJPEG(tagged))
+        let outSrc = try XCTUnwrap(CGImageSourceCreateWithData(small as CFData, nil))
+        let outProps = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(outSrc, 0, nil) as? [CFString: Any])
+        XCTAssertNil(outProps[kCGImagePropertyGPSDictionary], "GPS must be stripped before anything reaches the upload manifest")
+        XCTAssertNil(outProps[kCGImagePropertyTIFFDictionary], "TIFF metadata must not survive the downsample")
+        // ImageIO synthesizes a minimal EXIF dict on encode (ColorSpace +
+        // pixel dimensions, derived from the pixels themselves) — what must
+        // not survive is any EXIF copied from the INPUT (exposure time,
+        // timestamps, camera info…).
+        let outExif = (outProps[kCGImagePropertyExifDictionary] as? [CFString: Any]) ?? [:]
+        let synthesized: Set<CFString> = [
+            kCGImagePropertyExifColorSpace,
+            kCGImagePropertyExifPixelXDimension,
+            kCGImagePropertyExifPixelYDimension,
+        ]
+        let carriedOver = Set(outExif.keys).subtracting(synthesized)
+        XCTAssertTrue(carriedOver.isEmpty,
+                      "no input EXIF may survive the downsample, found: \(carriedOver)")
+        XCTAssertNil(outExif[kCGImagePropertyExifExposureTime],
+                     "input exposure EXIF must not be copied to the stored frame")
+    }
 }

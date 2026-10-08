@@ -102,6 +102,20 @@ final class AutoOptimizeController: ObservableObject {
     /// Numeric dial state at AO Ready (post-verify read-back) — the baseline
     /// for override deltas in `optimize_dial_override`.
     private var appliedDialsAtReady: AppliedDials?
+    /// Run id whose dial-override label is armed but not yet recorded — the
+    /// label fires at the user's capture or after dial inactivity (Section D).
+    private var pendingOverrideRunId: String?
+    /// 3 s dial-inactivity task for the pending override label.
+    private var overrideInactivityTask: Task<Void, Never>?
+    /// Weak session for the inactivity path (markDirty may be called without one).
+    private weak var pendingOverrideSession: CameraSession?
+    /// Test seam: override-label events go here instead of Analytics.
+    var overrideLabelSink: (([String: String]) -> Void)?
+    /// Test seam: dial-inactivity delay before the deferred override label fires.
+    static var overrideLabelInactivityDelayNanoseconds: UInt64 = 3_000_000_000
+    /// Set by the camera view while the user's own capture is in flight — the
+    /// armed opt-in bracket yields to it (Section D).
+    var isUserCaptureInFlight = false
     /// 30 s capture-window task: fires `optimize_capture_abandoned` when the
     /// window closes without a capture.
     private var captureWindowTask: Task<Void, Never>?
@@ -206,29 +220,111 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
     }
 
+    /// Manual dial touch after an optimize. Arms the deferred
+    /// `optimize_dial_override` label — the event records the FINAL dial
+    /// state at the user's capture or after 3 s of dial inactivity, whichever
+    /// comes first, compared against the applied-at-Ready state. The first
+    /// touch's tiny partial delta is NOT the training signal (Section D).
     func markDirty(session: CameraSession? = nil) {
         isDirtyOverride = true
-        // Manual dial override after an optimize — outcome of that run, once per run.
-        // Deltas are computed against the post-verify read-back at Ready: the
-        // first correction after AO is the residual learning signal.
-        if let runId = lastRunId, overrideTrackedForRun != runId {
-            overrideTrackedForRun = runId
-            var props: [String: String] = [
-                "recipe_id": chosenRecipeId ?? "",
-                "trigger": lastTrigger,
-                "run_id": runId,
-            ]
-            if let session, let applied = appliedDialsAtReady {
-                let current = AppliedDials(
-                    shutterSec: session.exposureSeconds,
-                    iso: session.iso,
-                    ev: session.evBias,
-                    wbKelvin: session.currentWhiteBalanceKelvin(),
-                    recipeId: chosenRecipeId ?? "")
-                props.merge(Self.dialDeltaProps(applied: applied, current: current)) { _, new in new }
-            }
+        guard let runId = lastRunId, overrideTrackedForRun != runId else { return }
+        if let session { pendingOverrideSession = session }
+        pendingOverrideRunId = runId
+        scheduleOverrideInactivityLabel()
+    }
+
+    /// Record the deferred `optimize_dial_override` label: the FINAL dial
+    /// state (at capture or after 3 s of dial inactivity) vs the
+    /// applied-at-Ready state. Once per run; no-ops when no override is armed
+    /// or the run moved on. Called from the capture-completion path and the
+    /// inactivity timer.
+    func recordPendingOverrideLabel() {
+        overrideInactivityTask?.cancel()
+        overrideInactivityTask = nil
+        guard let runId = pendingOverrideRunId, runId == lastRunId else {
+            pendingOverrideRunId = nil
+            return
+        }
+        pendingOverrideRunId = nil
+        overrideTrackedForRun = runId
+        let session = pendingOverrideSession
+        pendingOverrideSession = nil
+        var props: [String: String] = [
+            "recipe_id": chosenRecipeId ?? "",
+            "trigger": lastTrigger,
+            "run_id": runId,
+        ]
+        if let session, let applied = appliedDialsAtReady {
+            let current = AppliedDials(
+                shutterSec: session.exposureSeconds,
+                iso: session.iso,
+                ev: session.evBias,
+                wbKelvin: session.currentWhiteBalanceKelvin(),
+                recipeId: chosenRecipeId ?? "")
+            props.merge(Self.overrideLabelProps(
+                applied: applied,
+                current: current,
+                inAutoExposure: session.isAutoExposure)) { _, new in new }
+        }
+        if let sink = overrideLabelSink {
+            sink(props)
+        } else {
             Analytics.shared.track("optimize_dial_override", props: props)
         }
+    }
+
+    /// (Re)start the 3 s dial-inactivity timer for the pending override label.
+    private func scheduleOverrideInactivityLabel() {
+        overrideInactivityTask?.cancel()
+        overrideInactivityTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.overrideLabelInactivityDelayNanoseconds)
+            guard let self, !Task.isCancelled else { return }
+            self.recordPendingOverrideLabel()
+        }
+    }
+
+    /// Test seam: seeds the "current run" (run id + applied-at-Ready dials)
+    /// without running the pipeline.
+    func seedCurrentRunForTests(runId: String, appliedDials: AppliedDials) {
+        lastRunId = runId
+        lastRunDate = Date()
+        appliedDialsAtReady = appliedDials
+        overrideTrackedForRun = nil
+        pendingOverrideRunId = nil
+    }
+
+    /// The single training target for ExposureOffsetNet: the total exposure
+    /// change the user's override made, in stops — log2 of the (t·ISO) ratio
+    /// plus the EV-bias delta. The EV delta is included only in auto
+    /// exposure; in custom exposure the EV dial is a no-op. Nil on
+    /// degenerate dials. Pure and nonisolated — unit-tested.
+    nonisolated static func exposureDeltaStops(
+        applied: AppliedDials,
+        current: AppliedDials,
+        inAutoExposure: Bool
+    ) -> Double? {
+        guard applied.shutterSec > 0, applied.iso > 0,
+              current.shutterSec > 0, current.iso > 0 else { return nil }
+        let ratio = (current.shutterSec * Double(current.iso))
+            / (applied.shutterSec * Double(applied.iso))
+        var stops = log2(ratio)
+        if inAutoExposure { stops += Double(current.ev - applied.ev) }
+        return stops
+    }
+
+    /// Deferred override-label props: the per-dial deltas plus the single
+    /// `exposure_delta_stops` training target. Pure and nonisolated —
+    /// unit-tested.
+    nonisolated static func overrideLabelProps(
+        applied: AppliedDials,
+        current: AppliedDials,
+        inAutoExposure: Bool
+    ) -> [String: String] {
+        var props = dialDeltaProps(applied: applied, current: current)
+        if let stops = exposureDeltaStops(applied: applied, current: current, inAutoExposure: inAutoExposure) {
+            props["exposure_delta_stops"] = String(format: "%+.2f", stops)
+        }
+        return props
     }
 
     /// Numeric dial state (Phase 3 outcome telemetry).
@@ -323,6 +419,10 @@ final class AutoOptimizeController: ObservableObject {
         sceneWatchTask = nil
         captureWindowTask?.cancel()
         captureWindowTask = nil
+        overrideInactivityTask?.cancel()
+        overrideInactivityTask = nil
+        pendingOverrideRunId = nil
+        pendingOverrideSession = nil
         isCloudRefining = false
         runGeneration &+= 1
         phase = .idle
@@ -386,6 +486,11 @@ final class AutoOptimizeController: ObservableObject {
         let runId = UUID().uuidString
         lastRunId = runId
         lastRunDate = Date()
+        // A new run drops any armed override label from the previous run.
+        pendingOverrideRunId = nil
+        overrideInactivityTask?.cancel()
+        overrideInactivityTask = nil
+        pendingOverrideSession = nil
         let perfId = AOPerf.begin(runId: runId)
         let isFirstSuccessPending = !UserDefaults.standard.bool(
             forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
@@ -563,7 +668,9 @@ final class AutoOptimizeController: ObservableObject {
             consumeSharedFreeIfNeeded(entitlements)
             scheduleCaptureWindowCheck(runId: runId, recipeId: recipe.id)
             maybeCaptureOptInBracket(session: session, runId: runId, recipeId: recipe.id,
-                                     features: features, coachOnly: true)
+                                     features: features, coachOnly: true,
+                                     solution: solution, verifyResidualEV: nil,
+                                     lensDeviceType: session.readbackState().lensDeviceType)
             return
         }
 
@@ -681,7 +788,9 @@ final class AutoOptimizeController: ObservableObject {
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
         scheduleCaptureWindowCheck(runId: runId, recipeId: recipe.id)
         maybeCaptureOptInBracket(session: session, runId: runId, recipeId: recipe.id,
-                                 features: features, coachOnly: false)
+                                 features: features, coachOnly: false,
+                                 solution: solution, verifyResidualEV: verifyResidualEV,
+                                 lensDeviceType: readback.lensDeviceType)
 
         // Pass 2: refine the LOCKED recipe with one still JPEG (never pixels for Pass 1).
         // Gate: the first successful optimize stays local-only, the toggle
@@ -855,24 +964,39 @@ final class AutoOptimizeController: ObservableObject {
         }
     }
 
-    /// Phase 3 opt-in bracket: off the AO critical path (the capture module
-    /// adds its own post-Ready delay). No-op when the toggle is off.
+    /// Phase 3 opt-in bracket: off the AO critical path. Arms the bracket at
+    /// Ready — it fires right after the user's own capture completes
+    /// (Section D; no post-Ready timer that can collide with the shutter).
+    /// No-op when the toggle is off.
     private func maybeCaptureOptInBracket(
         session: CameraSession,
         runId: String,
         recipeId: String,
         features: SceneFeatures,
-        coachOnly: Bool
+        coachOnly: Bool,
+        solution: SettingsSolver.Solution,
+        verifyResidualEV: Double?,
+        lensDeviceType: String
     ) {
-        AOBracketCapture.shared.maybeCaptureBracket(
-            session: session,
+        // Generation-based currency: the user's capture consumes lastRunId,
+        // so an id check would always fail at fire time. A newer run or
+        // clear() bumps the generation and drops the armed bracket.
+        let generation = runGeneration
+        AOBracketCapture.shared.armBracket(
             run: AOBracketRun(
                 runId: runId,
                 recipeId: recipeId,
                 capturedAt: Date(),
                 coachOnly: coachOnly,
                 features: features,
-                isCurrent: { [weak self] in self?.lastRunId == runId }
+                isCurrent: { [weak self] in self?.runGeneration == generation },
+                userCaptureInFlight: { [weak self] in self?.isUserCaptureInFlight ?? false },
+                motionCapShutter: solution.shutterCapSeconds,
+                planTargetEV: solution.targetEV,
+                appliedShutterSec: appliedDialsAtReady?.shutterSec,
+                appliedISO: appliedDialsAtReady?.iso,
+                verifyResidualEV: verifyResidualEV,
+                lensDeviceType: lensDeviceType
             )
         )
     }

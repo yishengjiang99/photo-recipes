@@ -11,6 +11,8 @@ struct CameraView: View {
     @StateObject private var optimizer = AutoOptimizeController()
     @StateObject private var voice = VoiceCaptureController()
     @StateObject private var horizon = HorizonMonitor()
+    /// Opt-in bracket capture progress — shows the "Saving improvement data…" chip.
+    @ObservedObject private var bracketCapture = AOBracketCapture.shared
 
     @State private var sceneNote = ""
     @State private var sceneFromViewfinder = false
@@ -472,6 +474,27 @@ struct CameraView: View {
                                     .overlay(Capsule().stroke(AppTheme.border.opacity(0.5), lineWidth: 1))
                             )
                             .padding(.bottom, bottomScrim + 4 + (keyboardHeight > 0 ? max(0, keyboardHeight - safeBottom) : 0))
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(92)
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                }
+                // Section D: opt-in bracket capture progress — small,
+                // non-modal, above the saved chip while it runs.
+                if bracketCapture.isSavingBracketData {
+                    VStack {
+                        Spacer(minLength: 0)
+                        Text("Saving improvement data…")
+                            .font(AppTheme.caption())
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule()
+                                    .fill(AppTheme.agentStatusBg)
+                                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.5), lineWidth: 1))
+                            )
+                            .padding(.bottom, bottomScrim + 48 + (keyboardHeight > 0 ? max(0, keyboardHeight - safeBottom) : 0))
                     }
                     .allowsHitTesting(false)
                     .zIndex(92)
@@ -1397,6 +1420,7 @@ struct CameraView: View {
     private func takePhoto() async {
         guard !isCapturing else { return }
         isCapturing = true
+        optimizer.isUserCaptureInFlight = true
         captureError = nil
         dismissSceneKeyboard()
 
@@ -1410,6 +1434,7 @@ struct CameraView: View {
             let data = try await session.capturePhoto()
             // Unlock shutter ASAP — feedback overlays must not gate the next shot.
             isCapturing = false
+            optimizer.isUserCaptureInFlight = false
             withAnimation(.spring(response: 0.28, dampingFraction: 0.52)) {
                 shutterPressScale = 1.0
             }
@@ -1456,6 +1481,7 @@ struct CameraView: View {
             await maybeAutoRunFirstOptimize(isFirstCapture: isFirstCapture)
         } catch {
             isCapturing = false
+            optimizer.isUserCaptureInFlight = false
             withAnimation(.easeOut(duration: 0.15)) { shutterPressScale = 1.0 }
             captureError = error.localizedDescription
             UINotificationFeedbackGenerator().notificationOccurred(.error)
@@ -1466,6 +1492,14 @@ struct CameraView: View {
     /// Runs on every successful `capturePhoto` return — never gated on Photos save.
     private func playCaptureFeedback(jpeg: Data) {
         captureFeedbackTask?.cancel()
+        // Section D: the FINAL dial state is labeled at capture — the deferred
+        // `optimize_dial_override` event fires here (or after 3 s of dial
+        // inactivity, whichever comes first).
+        optimizer.recordPendingOverrideLabel()
+        // Section D: fire the armed opt-in bracket right after the user's own
+        // capture (they're holding still on this scene) — before
+        // takeRecentRunIdForCapture consumes the run id.
+        bracketCapture.userCaptureDidComplete(session: session)
         // Outcome of the last optimize when the shutter lands within 30 s.
         if let runId = optimizer.takeRecentRunIdForCapture() {
             let secondsAfterReady = optimizer.lastRunDate

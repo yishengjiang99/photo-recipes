@@ -187,4 +187,117 @@ final class AOTelemetryTests: XCTestCase {
         XCTAssertEqual(p["shutter_delta_stops"], "+0.00")
         XCTAssertEqual(p["recipe_unchanged"], "0")
     }
+
+    // MARK: - Section D: deferred override label
+
+    func testExposureDeltaStopsMath() {
+        let applied = AutoOptimizeController.AppliedDials(
+            shutterSec: 1.0 / 60, iso: 100, ev: 0, wbKelvin: nil, recipeId: "a")
+        let current = AutoOptimizeController.AppliedDials(
+            shutterSec: 1.0 / 30, iso: 200, ev: 0.5, wbKelvin: nil, recipeId: "a")
+        // (1/30·200)/(1/60·100) = 4 → +2 stops, + 0.5 EV bias in auto exposure.
+        XCTAssertEqual(
+            AutoOptimizeController.exposureDeltaStops(
+                applied: applied, current: current, inAutoExposure: true)!,
+            2.5, accuracy: 1e-9)
+        // Custom exposure: the EV dial is a no-op — excluded from the target.
+        XCTAssertEqual(
+            AutoOptimizeController.exposureDeltaStops(
+                applied: applied, current: current, inAutoExposure: false)!,
+            2.0, accuracy: 1e-9)
+        // Degenerate dials → nil (no target recorded).
+        let bad = AutoOptimizeController.AppliedDials(
+            shutterSec: 0, iso: 100, ev: 0, wbKelvin: nil, recipeId: "a")
+        XCTAssertNil(AutoOptimizeController.exposureDeltaStops(
+            applied: bad, current: current, inAutoExposure: true))
+        XCTAssertNil(AutoOptimizeController.exposureDeltaStops(
+            applied: applied, current: bad, inAutoExposure: true))
+    }
+
+    func testOverrideLabelPropsIncludeTrainingTarget() {
+        let applied = AutoOptimizeController.AppliedDials(
+            shutterSec: 1.0 / 60, iso: 100, ev: 0, wbKelvin: nil, recipeId: "a")
+        let current = AutoOptimizeController.AppliedDials(
+            shutterSec: 1.0 / 30, iso: 200, ev: 0.5, wbKelvin: nil, recipeId: "a")
+        let p = AutoOptimizeController.overrideLabelProps(
+            applied: applied, current: current, inAutoExposure: true)
+        // The single ExposureOffsetNet training target…
+        XCTAssertEqual(p["exposure_delta_stops"], "+2.50")
+        // …alongside the per-dial deltas.
+        XCTAssertEqual(p["shutter_delta_stops"], "+1.00")
+        XCTAssertEqual(p["iso_delta_stops"], "+1.00")
+        XCTAssertEqual(p["ev_delta"], "+0.5")
+        XCTAssertEqual(p["recipe_unchanged"], "1")
+    }
+
+    @MainActor
+    func testOverrideLabelDeferredUntilCapture() async {
+        let controller = AutoOptimizeController()
+        let session = CameraSession()
+        controller.seedCurrentRunForTests(
+            runId: "run-1",
+            appliedDials: AutoOptimizeController.AppliedDials(
+                shutterSec: 1.0 / 60, iso: 100, ev: 0, wbKelvin: nil, recipeId: "a"))
+        // The user drags dials after Ready…
+        session.exposureSeconds = 1.0 / 30
+        session.iso = 200
+        session.evBias = 0.5
+        var captured: [[String: String]] = []
+        controller.overrideLabelSink = { captured.append($0) }
+        controller.markDirty(session: session)
+        // …but the label does NOT fire on the first touch.
+        XCTAssertTrue(captured.isEmpty, "override label must be deferred past the first dial touch")
+        // The user's capture completes → the FINAL dial state is labeled.
+        controller.recordPendingOverrideLabel()
+        XCTAssertEqual(captured.count, 1)
+        XCTAssertEqual(captured[0]["run_id"], "run-1")
+        XCTAssertEqual(captured[0]["exposure_delta_stops"], "+2.50")
+        XCTAssertEqual(captured[0]["shutter_delta_stops"], "+1.00")
+        // Once per run — a second record is a no-op.
+        controller.recordPendingOverrideLabel()
+        XCTAssertEqual(captured.count, 1)
+    }
+
+    @MainActor
+    func testOverrideLabelFiresAfterDialInactivity() async {
+        let controller = AutoOptimizeController()
+        let session = CameraSession()
+        controller.seedCurrentRunForTests(
+            runId: "run-2",
+            appliedDials: AutoOptimizeController.AppliedDials(
+                shutterSec: 1.0 / 60, iso: 100, ev: 0, wbKelvin: nil, recipeId: "a"))
+        session.exposureSeconds = 1.0 / 30
+        session.iso = 200
+        session.evBias = 0.5
+        var captured: [[String: String]] = []
+        controller.overrideLabelSink = { captured.append($0) }
+        let previousDelay = AutoOptimizeController.overrideLabelInactivityDelayNanoseconds
+        AutoOptimizeController.overrideLabelInactivityDelayNanoseconds = 50_000_000
+        defer { AutoOptimizeController.overrideLabelInactivityDelayNanoseconds = previousDelay }
+        controller.markDirty(session: session)
+        XCTAssertTrue(captured.isEmpty)
+        // No capture — 3 s (here 50 ms) of dial inactivity fires the label.
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertEqual(captured.count, 1)
+        XCTAssertEqual(captured[0]["run_id"], "run-2")
+        XCTAssertEqual(captured[0]["exposure_delta_stops"], "+2.50")
+    }
+
+    @MainActor
+    func testOverrideLabelSkippedWhenRunMovedOn() async {
+        let controller = AutoOptimizeController()
+        let session = CameraSession()
+        controller.seedCurrentRunForTests(
+            runId: "run-3",
+            appliedDials: AutoOptimizeController.AppliedDials(
+                shutterSec: 1.0 / 60, iso: 100, ev: 0, wbKelvin: nil, recipeId: "a"))
+        var captured: [[String: String]] = []
+        controller.overrideLabelSink = { captured.append($0) }
+        controller.markDirty(session: session)
+        // The run id was consumed/closed (capture window) before the label
+        // fired → the armed label belongs to a stale run and must not fire.
+        _ = controller.takeRecentRunIdForCapture()
+        controller.recordPendingOverrideLabel()
+        XCTAssertTrue(captured.isEmpty)
+    }
 }
