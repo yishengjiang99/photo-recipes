@@ -14,7 +14,6 @@ struct CameraView: View {
 
     @State private var sceneNote = ""
     @State private var sceneFromViewfinder = false
-    @State private var sceneExpanded = false
     /// Snapshot of sceneNote when dictation starts — partials replace utterance, not append.
     @State private var voiceDictationBase = ""
     @State private var isDescribingScene = false
@@ -165,10 +164,8 @@ struct CameraView: View {
         .onChange(of: voice.phase) { _, phase in
             switch phase {
             case .recording:
-                // Expand Scene chip so the live TextField is visible while speaking.
-                if !sceneExpanded {
-                    withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
-                }
+                // Focus the scene field so the live TextField is visible while speaking.
+                sceneFieldFocused = true
             case .error:
                 if voice.permission == .denied { showMicDenied = true }
             default:
@@ -298,10 +295,8 @@ struct CameraView: View {
                 },
                 onVoice: {
                     showOverflow = false
-                    // Voice entry from the sheet expands the scene field.
-                    if !sceneExpanded {
-                        withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
-                    }
+                    // Voice entry from the sheet focuses the scene field.
+                    sceneFieldFocused = true
                     voice.toggle(
                         onPartial: { applyCameraVoicePartial($0) },
                         onTranscript: { applyCameraVoiceFinal($0) }
@@ -684,7 +679,8 @@ struct CameraView: View {
                 )
             }
 
-            // One chip row: look + scene, centered.
+            // One chip row: the look chip. The scene text field lives at the
+            // bottom — always visible, with its mic button.
             HStack(spacing: 8) {
                 if let mode = lookChipMode {
                     LookChip(
@@ -720,52 +716,21 @@ struct CameraView: View {
                         }
                     )
                 }
-
-                sceneChip(compact: compact)
             }
             .padding(.horizontal, hPad)
         }
-    }
-
-    /// Compact scene chip for the top status section.
-    private func sceneChip(compact: Bool) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                sceneExpanded = true
-                sceneFieldFocused = true
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text(sceneNote.isEmpty ? "Scene…" : sceneNote)
-                    .font(AppTheme.caption())
-                    .foregroundStyle(sceneNote.isEmpty ? AppTheme.inkTertiary : AppTheme.ink)
-                    .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AppTheme.inkTertiary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                Capsule().fill(AppTheme.agentStatusBg)
-                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.7), lineWidth: 1))
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     private func bottomOverlay(compact: Bool, width: CGFloat, scrimHeight: CGFloat, bottomSafeInset: CGFloat) -> some View {
         let hPad: CGFloat = width <= 320 ? 8 : (compact ? 12 : 16)
 
         return VStack(spacing: compact ? 6 : 8) {
-            // Bottom holds only controls: the expanded scene editor (when editing)
-            // and the shutter. Statuses live on top; the center stays clear.
+            // Bottom holds the controls: scene field + mic, then the shutter
+            // flanked by Auto Optimize. Statuses live on top; the center stays clear.
 
-            // Scene editor expands here when the top chip is tapped.
-            if sceneExpanded || isVoiceListening {
-                sceneEditor(compact: compact)
-                    .padding(.horizontal, hPad)
-            }
+            // Scene text field — always visible, with the mic button inline.
+            sceneFieldRow(compact: compact)
+                .padding(.horizontal, hPad)
 
             // Transient suggestion chips live here, above the shutter.
             if let alsoId = optimizer.alsoTryRecipeId, !optimizer.phase.isRunning {
@@ -823,14 +788,14 @@ struct CameraView: View {
         return false
     }
 
-    /// Scene TextField when editing — the collapsed chip lives in the top
-    /// status section. Expands here, above the shutter, when tapped.
-    private func sceneEditor(compact: Bool) -> some View {
+    /// Scene text field — always visible, with the mic button inline.
+    /// Tapping the mic dictates; partials stream into the field.
+    private func sceneFieldRow(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 // Real TextField so STT partials stream into a visible text box (App Review).
-                TextField("e.g. silky waterfall, sharp rocks…", text: $sceneNote, axis: .vertical)
-                    .lineLimit(2...4)
+                TextField("Describe the scene…", text: $sceneNote, axis: .vertical)
+                    .lineLimit(1...3)
                     .font(AppTheme.bodySm())
                     .foregroundStyle(AppTheme.ink)
                     .focused($sceneFieldFocused)
@@ -853,18 +818,27 @@ struct CameraView: View {
                     .onChange(of: sceneNote) { _, _ in
                         sceneFromViewfinder = false
                     }
-                    .onChange(of: sceneFieldFocused) { _, focused in
-                        if focused, !sceneExpanded {
-                            withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
-                        }
-                    }
 
                 if isDescribingScene {
                     ProgressView().scaleEffect(0.7)
+                } else {
+                    Button {
+                        voice.toggle(
+                            onPartial: { applyCameraVoicePartial($0) },
+                            onTranscript: { applyCameraVoiceFinal($0) }
+                        )
+                    } label: {
+                        Image(systemName: isVoiceListening ? "mic.fill" : "mic")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(isVoiceListening ? AppTheme.accent : AppTheme.inkSecondary)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(AppTheme.agentStatusBg))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isVoiceListening ? "Stop dictation" : "Dictate scene")
                 }
             }
 
-            // Build 28: never stack voice error with Collapse — one row only.
             if case .error(let msg) = voice.phase {
                 Button {
                     voice.clearError()
@@ -877,122 +851,10 @@ struct CameraView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(msg)
                 .accessibilityHint("Dismisses the voice error")
-            } else if !isVoiceListening {
-                Button {
-                    dismissSceneKeyboard()
-                } label: {
-                    Text("Collapse")
-                        .font(AppTheme.caption())
-                        .foregroundStyle(AppTheme.inkSecondary)
-                }
-                .buttonStyle(.plain)
             }
         }
     }
 
-    @available(*, deprecated, message: "Use sceneChip (top) + sceneEditor (bottom) instead")
-    private func sceneMicRow(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Group {
-                    if sceneExpanded || isVoiceListening {
-                        // Real TextField so STT partials stream into a visible text box (App Review).
-                        TextField("e.g. silky waterfall, sharp rocks…", text: $sceneNote, axis: .vertical)
-                            .lineLimit(2...4)
-                            .font(AppTheme.bodySm())
-                            .foregroundStyle(AppTheme.ink)
-                            .focused($sceneFieldFocused)
-                            .submitLabel(.done)
-                            .onSubmit { dismissSceneKeyboard() }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .background(
-                                RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
-                                    .fill(AppTheme.agentStatusBg)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
-                                            .stroke(
-                                                isVoiceListening ? AppTheme.accent.opacity(0.7) : AppTheme.border.opacity(0.7),
-                                                lineWidth: 1
-                                            )
-                                    )
-                            )
-                            .onChange(of: sceneNote) { _, _ in
-                                sceneFromViewfinder = false
-                            }
-                            .onChange(of: sceneFieldFocused) { _, focused in
-                                if focused, !sceneExpanded {
-                                    withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
-                                }
-                            }
-                    } else {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                sceneExpanded = true
-                                sceneFieldFocused = true
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                // "From viewfinder" pill removed — the scene chip
-                                // itself conveys the source. One chip, not two.
-                                Text(sceneNote.isEmpty ? "Scene…" : sceneNote)
-                                    .font(AppTheme.caption())
-                                    .foregroundStyle(sceneNote.isEmpty ? AppTheme.inkTertiary : AppTheme.ink)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(AppTheme.inkTertiary)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(AppTheme.agentStatusBg)
-                                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.7), lineWidth: 1))
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                if isDescribingScene {
-                    ProgressView().scaleEffect(0.7)
-                }
-                // Mic and refresh live in the ··· overflow sheet now — the scene
-                // row keeps only the editable field.
-            }
-
-            // Build 28: never stack voice error with Collapse — one row only.
-            if case .error(let msg) = voice.phase {
-                Button {
-                    voice.clearError()
-                } label: {
-                    Text(msg)
-                        .font(AppTheme.caption())
-                        .foregroundStyle(AppTheme.danger)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(msg)
-                .accessibilityHint("Dismisses the voice error")
-            } else if sceneExpanded && !isVoiceListening {
-                Button {
-                    dismissSceneKeyboard()
-                    withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = false }
-                } label: {
-                    Text("Collapse scene")
-                        .font(AppTheme.caption())
-                        .foregroundStyle(AppTheme.inkTertiary)
-                }
-                .buttonStyle(.plain)
-            } else {
-                VoiceStatusCaption(controller: voice)
-            }
-        }
-    }
-
-    private func shutterRow(compact: Bool, hPad: CGFloat) -> some View {
         let outer: CGFloat = compact ? 68 : 76
         let inner: CGFloat = compact ? 56 : 62
 
@@ -1006,6 +868,35 @@ struct CameraView: View {
             }
 
             HStack(spacing: 0) {
+                Spacer(minLength: 0)
+
+                // Auto Optimize, back on the finder — left of the shutter.
+                Button {
+                    Analytics.shared.track("ao_tap", props: ["source": "finder"])
+                    Task { await runOptimize(trigger: "manual") }
+                } label: {
+                    HStack(spacing: 6) {
+                        if optimizer.phase.isRunning {
+                            ProgressView().scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.callout.weight(.semibold))
+                        }
+                        Text(optimizer.phase.isRunning ? "Working…" : "Optimize")
+                            .font(AppTheme.caption().weight(.semibold))
+                    }
+                    .foregroundStyle(AppTheme.accent)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule().fill(AppTheme.accentSoft)
+                            .overlay(Capsule().stroke(AppTheme.accent.opacity(0.4), lineWidth: 1))
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(optimizer.phase.isRunning)
+                .accessibilityLabel("Auto Optimize")
+
                 Spacer(minLength: 0)
 
                 Button {
@@ -1045,6 +936,13 @@ struct CameraView: View {
                         if comparingOriginal { comparingOriginal = false }
                     }
                 )
+
+                Spacer(minLength: 0)
+
+                // Balance spacer so the shutter stays optically centered.
+                Color.clear
+                    .frame(width: 96, height: 10)
+                    .allowsHitTesting(false)
 
                 Spacer(minLength: 0)
             }
