@@ -118,6 +118,12 @@ struct CameraView: View {
                 }
                 await SceneSensor.shared.start()
                 await SceneSensor.shared.setVisible(true)
+                // Phase 2: probe-JPEG fallback for refreshNow when no video
+                // frames have arrived (session interruption / lens switch).
+                await SceneSensor.shared.setProbeProvider { [weak session] in
+                    guard let session else { throw CameraSession.CamError.noFrame }
+                    return try await session.captureProbeFrame()
+                }
             }
             applyStagingIfNeeded()
             if CameraCoachMarksStore.shouldShow {

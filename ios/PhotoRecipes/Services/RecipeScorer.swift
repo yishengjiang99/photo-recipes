@@ -93,6 +93,11 @@ final class JSONRecipeScorer: RecipeScoring {
 
     func score(_ features: SceneFeatures) -> [RecipeScore] {
         let x = features.featureVector()
+        // Phase 2: Vision scene labels contribute alongside the typed note.
+        // Label boosts are capped at 1.0 < intentBonus 3.0, so an explicit
+        // note always wins over label evidence.
+        let labelEvidence = SceneLabelRecipeMapper.boosts(
+            labels: features.sceneLabels ?? [], features: features)
         var rows: [(id: String, logit: Double, top: [String])] = []
         for id in candidateIds {
             guard let rw = model.recipes[id] else { continue }
@@ -108,11 +113,15 @@ final class JSONRecipeScorer: RecipeScoring {
             if features.recipeIntent?.recipeId == id {
                 z += model.intentBonus
             }
-            let top = contribs
+            if let lb = labelEvidence.boosts[id] {
+                z += lb
+            }
+            var top = contribs
                 .filter { $0.1 > 0 }
                 .sorted { $0.1 > $1.1 }
                 .prefix(3)
                 .map { $0.0 }
+            top += labelEvidence.phrases[id] ?? []
             rows.append((id, z, top))
         }
         let temperature = max(model.temperature, 0.05)
@@ -122,6 +131,50 @@ final class JSONRecipeScorer: RecipeScoring {
         return zip(rows, exps)
             .map { RecipeScore(recipeId: $0.0.id, probability: $0.1 / sum, topFeatures: $0.0.top) }
             .sorted { $0.probability > $1.probability }
+    }
+}
+
+// MARK: - Scene-label → recipe boosts (Phase 2)
+
+/// Maps raw Vision classification labels (`SceneFeatures.sceneLabels`) to
+/// additive recipe boosts, used alongside the typed-note intent.
+///
+/// Examples: waterfall/fireworks → blur-moving-subjects (long-exposure
+/// subjects); sunset/sunrise + clipped highlights → hdr-brights-darks
+/// (bracket the range). Food → the warmPop *look* is already handled by
+/// `LookSuggester` — no recipe boost needed there.
+///
+/// The user's explicit note intent always wins: boosts are capped at 1.0,
+/// well below the intent bonus (3.0) in `JSONRecipeScorer`.
+enum SceneLabelRecipeMapper {
+    static let maxBoost = 1.0
+    /// Minimum label confidence to count as evidence.
+    static let minConfidence: Float = 0.3
+
+    /// Returns recipe id → boost, plus the label phrases that fired (as
+    /// synthetic `label.*` feature names for the explanation copy).
+    static func boosts(
+        labels: [SceneLabel],
+        features: SceneFeatures
+    ) -> (boosts: [String: Double], phrases: [String: [String]]) {
+        var boosts: [String: Double] = [:]
+        var phrases: [String: [String]] = [:]
+        func add(_ recipeId: String, _ amount: Double, phrase: String) {
+            boosts[recipeId] = min((boosts[recipeId] ?? 0) + amount, maxBoost)
+            phrases[recipeId, default: []].append(phrase)
+        }
+        for label in labels where label.confidence >= minConfidence {
+            let id = label.identifier.lowercased()
+            if id.contains("waterfall") || id.contains("fireworks") {
+                add("blur-moving-subjects", 0.8,
+                    phrase: id.contains("waterfall") ? "label.waterfall" : "label.fireworks")
+            }
+            if id.contains("sunset") || id.contains("sunrise"),
+               features.highlightClipFraction > 0.02 {
+                add("hdr-brights-darks", 1.0, phrase: "label.sunset")
+            }
+        }
+        return (boosts, phrases)
     }
 }
 
@@ -226,6 +279,10 @@ enum RecipeExplainer {
         "light.subjectDeltaStopsN": "a backlit subject",
         "light.warmBias": "warm light",
         "pose.elevationN": "camera tilted up",
+        // Phase 2 label evidence (synthetic names from SceneLabelRecipeMapper).
+        "label.waterfall": "a waterfall",
+        "label.fireworks": "fireworks",
+        "label.sunset": "sunset light",
     ]
 
     private static let actions: [String: String] = [
@@ -285,7 +342,9 @@ enum RecipeExplainer {
     }
 
     /// Dynamic phrases for value-dependent features; static table otherwise.
+    /// Synthetic `label.*` names resolve straight from the table.
     private static func phrase(for feature: String, value features: SceneFeatures) -> String? {
+        if feature.hasPrefix("label.") { return phrases[feature] }
         let x = features.featureVector()
         guard let i = SceneFeatures.vectorFeatureNames.firstIndex(of: feature) else { return nil }
         let v = x[i]

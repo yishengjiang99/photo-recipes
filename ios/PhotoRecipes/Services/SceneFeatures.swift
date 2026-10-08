@@ -64,6 +64,13 @@ struct RecipeIntent: Codable, Equatable {
     var matchedPhrase: String
 }
 
+/// One raw `VNClassifyImageRequest` result (identifier + confidence), top 5.
+/// Phase 2: feeds `SceneLabelRecipeMapper` alongside the typed-note intent.
+struct SceneLabel: Codable, Equatable {
+    var identifier: String
+    var confidence: Float
+}
+
 // MARK: - SceneFeatures
 
 /// The single, versioned input to recipe scoring. Everything the phone knows
@@ -73,7 +80,7 @@ struct RecipeIntent: Codable, Equatable {
 /// MUST match the Core ML model's input (`scripts/train-recipe-scorer/`).
 /// Add new features only at the end and bump `currentSchemaVersion`.
 struct SceneFeatures: Codable, Equatable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     /// The ten bundled recipes in fixed order. Used for the intent one-hot
     /// slice of the feature vector and by the Core ML scorer.
@@ -173,6 +180,28 @@ struct SceneFeatures: Codable, Equatable {
 
     // MARK: user intent (local note only)
     var recipeIntent: RecipeIntent?
+
+    // MARK: - Phase 2 GPU stats (schema v3 — appended at end per the rule above)
+    //
+    // The v3 fields are NOT part of the Core ML feature vector (contract:
+    // `vectorDimension` stays 45). They carry the GPUStatsEngine analysis and
+    // the raw Vision labels for the label→recipe mapper and future phases.
+    /// True when the GPU stats below came from a recent video-frame analysis.
+    var gpuStatsFresh: Bool = false
+    /// "metal" or "cpu" (nil when no analysis ran).
+    var gpuStatsSource: String?
+    /// 64-bin luma histogram from GPUStatsEngine (nil when unavailable).
+    var lumaHistogram64: [Int]?
+    /// Gray-world RGB means over unclipped pixels (nil when unavailable).
+    var grayWorldMeanR: Float?
+    var grayWorldMeanG: Float?
+    var grayWorldMeanB: Float?
+    /// RMS contrast of luma (nil when unavailable).
+    var lumaContrast: Float?
+    /// 13 synthetic re-exposure gradient scores, ratios 1/4…4 (nil when unavailable).
+    var gradientScores: [Float]?
+    /// Vision top-5 classification labels (raw identifiers + confidence).
+    var sceneLabels: [SceneLabel]?
 
     /// Subject center Y in UI space (0 top … 1 bottom). Low-in-frame subjects
     /// have high values — a strong get-down-low signal with a tilted-up camera.
@@ -290,6 +319,16 @@ struct SceneFeatures: Codable, Equatable {
         cameraElevationDegrees = try c.decodeIfPresent(Float.self, forKey: .cameraElevationDegrees) ?? 0
         handShakeRadPerSec = try c.decodeIfPresent(Float.self, forKey: .handShakeRadPerSec) ?? 0
         recipeIntent = try c.decodeIfPresent(RecipeIntent.self, forKey: .recipeIntent)
+        // Schema v3 (Phase 2) — all tolerant; v2 payloads decode with defaults.
+        gpuStatsFresh = try c.decodeIfPresent(Bool.self, forKey: .gpuStatsFresh) ?? false
+        gpuStatsSource = try c.decodeIfPresent(String.self, forKey: .gpuStatsSource)
+        lumaHistogram64 = try c.decodeIfPresent([Int].self, forKey: .lumaHistogram64)
+        grayWorldMeanR = try c.decodeIfPresent(Float.self, forKey: .grayWorldMeanR)
+        grayWorldMeanG = try c.decodeIfPresent(Float.self, forKey: .grayWorldMeanG)
+        grayWorldMeanB = try c.decodeIfPresent(Float.self, forKey: .grayWorldMeanB)
+        lumaContrast = try c.decodeIfPresent(Float.self, forKey: .lumaContrast)
+        gradientScores = try c.decodeIfPresent([Float].self, forKey: .gradientScores)
+        sceneLabels = try c.decodeIfPresent([SceneLabel].self, forKey: .sceneLabels)
     }
 }
 
@@ -789,7 +828,14 @@ enum SceneFeatureExtractor {
         timestamp: CMTime,
         metering: MeteringSample,
         pose: (elevationDegrees: Double, handShakeRadPerSec: Double),
-        note: String
+        note: String,
+        /// Phase 2 GPU stats for this frame (nil → legacy CPU histogram path,
+        /// kept for the probe-JPEG fallback). Prefer the GPU stats when
+        /// available: one analysis feeds both the sensor and the extractor.
+        gpuStats: GPUFrameStats? = nil,
+        /// Thermal `.serious` skips Vision classification (labels + semantic
+        /// groups are reused from the previous tick by the sensor).
+        includeClassification: Bool = true
     ) -> SceneFeatures {
         var features = SceneFeatures()
         features.cameraElevationDegrees = Float(pose.elevationDegrees)
@@ -812,14 +858,21 @@ enum SceneFeatureExtractor {
         let tiny = FrameDownsampler.downsample(pixelBuffer, maxLongSide: 256) ?? pixelBuffer
 
         // Semantic classification (upright frames → orientation .up).
-        do {
-            let request = VNClassifyImageRequest()
-            try VNImageRequestHandler(cvPixelBuffer: small, orientation: .up, options: [:])
-                .perform([request])
-            let mapped = SceneLabelMapper.map(request.results ?? [])
-            features.semanticGroups = mapped.groups
-        } catch {
-            log.error("classification failed: \(error.localizedDescription, privacy: .public)")
+        // Also captures the raw top-5 labels for the label→recipe mapper.
+        if includeClassification {
+            do {
+                let request = VNClassifyImageRequest()
+                try VNImageRequestHandler(cvPixelBuffer: small, orientation: .up, options: [:])
+                    .perform([request])
+                let results = request.results ?? []
+                let mapped = SceneLabelMapper.map(results)
+                features.semanticGroups = mapped.groups
+                features.sceneLabels = results.prefix(5).map {
+                    SceneLabel(identifier: $0.identifier, confidence: $0.confidence)
+                }
+            } catch {
+                log.error("classification failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         // Subjects: largest face → largest human → largest animal →
@@ -851,8 +904,12 @@ enum SceneFeatureExtractor {
             }
         }
 
-        // Light & range from the luminance histogram.
-        if let (bins, warm) = LuminanceHistogram.compute(tiny) {
+        // Light & range: prefer the Phase 2 GPU stats when available (one
+        // analysis per tick feeds the whole pipeline); the legacy CPU
+        // histogram stays for the probe-JPEG fallback.
+        if let stats = gpuStats, stats.lumaHistogram64.count == GPUStatsCore.histogramBins {
+            applyGPUStats(&features, stats: stats, pixelBuffer: tiny)
+        } else if let (bins, warm) = LuminanceHistogram.compute(tiny) {
             let stats = LuminanceStats.fromHistogram(bins: bins, warmBias: warm)
             features.highlightClipFraction = stats.highlightClipFraction
             features.shadowCrushFraction = stats.shadowCrushFraction
@@ -863,9 +920,42 @@ enum SceneFeatureExtractor {
                     pixelBuffer: tiny, box: box.cgRect, frameMedian: stats.mean
                 )
             }
+            features.gpuStatsFresh = false
         }
 
         return features
+    }
+
+    /// Maps one `GPUFrameStats` into the light & range fields plus the v3
+    /// stats fields. The 64-bin histogram is resampled to 256 bins so the
+    /// existing percentile / clip / crush math stays on one code path.
+    private static func applyGPUStats(
+        _ features: inout SceneFeatures,
+        stats: GPUFrameStats,
+        pixelBuffer: CVPixelBuffer
+    ) {
+        let bins256 = stats.lumaHistogram64.flatMap { Array(repeating: $0, count: 4) }
+        // Same warm-bias convention as the CPU path: (R−B)/(R+B), 0…1 means.
+        let rMean = Double(stats.meanR), bMean = Double(stats.meanB)
+        let warm = Float((rMean - bMean) / (rMean + bMean + 1e-6))
+        let s = LuminanceStats.fromHistogram(bins: bins256, warmBias: warm)
+        features.highlightClipFraction = s.highlightClipFraction
+        features.shadowCrushFraction = s.shadowCrushFraction
+        features.percentileSpreadStops = s.spreadStops
+        features.warmBias = s.warmBias
+        if let box = features.subjectBox {
+            features.subjectDeltaStops = subjectDeltaStops(
+                pixelBuffer: pixelBuffer, box: box.cgRect, frameMedian: s.mean
+            )
+        }
+        features.gpuStatsFresh = true
+        features.gpuStatsSource = stats.source
+        features.lumaHistogram64 = stats.lumaHistogram64
+        features.grayWorldMeanR = stats.meanR
+        features.grayWorldMeanG = stats.meanG
+        features.grayWorldMeanB = stats.meanB
+        features.lumaContrast = stats.contrast
+        features.gradientScores = stats.gradientScores
     }
 
     // MARK: subjects
