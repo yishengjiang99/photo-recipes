@@ -463,6 +463,34 @@ final class AutoOptimizeController: ObservableObject {
         return applied == aoChosen ? nil : applied
     }
 
+    /// Pure verify-note copy: the yield note (if any) first, then what the
+    /// closed loop did. Multi-stop misses are stated plainly — "A bit bright"
+    /// hid ~2–7 stop misses.
+    static func verifyNotes(residual: Double, iterations: Int, initialError: Double, yieldNote: String?) -> [String] {
+        var notes: [String] = []
+        if let yieldNote { notes.append(yieldNote) }
+        if iterations > 0 {
+            // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
+            // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
+            let stops = abs(initialError)
+            let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
+            let direction = initialError < 0 ? "Brightened" : "Darkened"
+            if abs(residual) > 0.3 {
+                let still = residual < 0 ? "still a bit dark" : "still a bit bright"
+                notes.append("\(direction) \(stopsText), \(still)")
+            } else {
+                notes.append("\(direction) \(stopsText)")
+            }
+        } else if abs(residual) >= 1 {
+            // Say how far off: "A bit bright" hid a ~2–7 stop miss.
+            let stops = String(format: "%.0f", abs(residual))
+            notes.append(residual < 0 ? "~\(stops) stops too dark" : "~\(stops) stops too bright")
+        } else if abs(residual) > 0.3 {
+            notes.append(residual < 0 ? "A bit dark" : "A bit bright")
+        }
+        return notes
+    }
+
     // MARK: - Pass 1 (on-device ML loop: features → score → solve → apply → verify)
 
     /// Local-first Auto Optimize. The happy path never calls the network.
@@ -505,6 +533,11 @@ final class AutoOptimizeController: ObservableObject {
         sceneWatchTask?.cancel()
         captureWindowTask?.cancel()
         captureWindowTask = nil
+        // `pillStatus` shows verifyWarning ahead of the phase: a stale warning
+        // from the previous run hid this run entirely (an automatic
+        // subject-change re-run converged, re-locked and looked like nothing
+        // happened under "A bit bright").
+        verifyWarning = nil
         runGeneration &+= 1
         let generation = runGeneration
         lastTrigger = trigger
@@ -711,6 +744,7 @@ final class AutoOptimizeController: ObservableObject {
         // The residual is hoisted into the AO Ready telemetry (Phase 3).
         var verifyResidualEV: Double? = nil
         var verifyIterations = 0
+        var shutterYieldNote: String? = nil
         if let targetEV = solution.targetEV,
            solution.phoneTargets.exposureDurationSec != nil,
            entitlements.canApplyDials {
@@ -721,22 +755,12 @@ final class AutoOptimizeController: ObservableObject {
             verifyIterations = v.iterations
             if v.verified {
                 verifyResidualEV = v.residualEV
-                if v.iterations > 0 {
-                    // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
-                    // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
-                    let stops = abs(v.initialError)
-                    let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
-                    let direction = v.initialError < 0 ? "Brightened" : "Darkened"
-                    if abs(v.residualEV) > 0.3 {
-                        let still = v.residualEV < 0 ? "still a bit dark" : "still a bit bright"
-                        verifyNotes.append("\(direction) \(stopsText), \(still)")
-                    } else {
-                        verifyNotes.append("\(direction) \(stopsText)")
-                    }
-                } else if abs(v.residualEV) > 0.3 {
-                    let still = v.residualEV < 0 ? "A bit dark" : "A bit bright"
-                    verifyNotes.append(still)
-                }
+                // Bright light shortened the recipe's creative shutter — say so
+                // plainly, first.
+                shutterYieldNote = solution.clampMessages.first(where: { $0.hasPrefix("Bright light:") })
+                verifyNotes = Self.verifyNotes(
+                    residual: v.residualEV, iterations: v.iterations,
+                    initialError: v.initialError, yieldNote: shutterYieldNote)
                 Analytics.shared.track("auto_optimize_verify", props: [
                     "run_id": runId,
                     "recipe_id": recipe.id,
@@ -781,7 +805,10 @@ final class AutoOptimizeController: ObservableObject {
 
         publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId)
 
-        if suggestedLook != nil { verifyWarning = nil }
+        // A look suggestion may replace a minor note, never a real miss: the
+        // device showed "Ready · Warm Pop" over a frame ~2 stops over.
+        let majorMiss = (verifyResidualEV.map { abs($0) >= 1 } ?? false) || shutterYieldNote != nil
+        if suggestedLook != nil, !majorMiss { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
         captureAppliedDials(session: session, recipeId: recipe.id)
