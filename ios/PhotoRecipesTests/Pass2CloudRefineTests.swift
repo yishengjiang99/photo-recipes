@@ -126,33 +126,24 @@ final class Pass2CloudRefineTests: XCTestCase {
 
     func testCloudRefineGateTruthTable() {
         typealias G = AutoOptimizeController.CloudRefineGate
-        let gate = AutoOptimizeController.cloudRefineGate
+        func gate(_ pending: Bool, _ enabled: Bool, _ trigger: String) -> G {
+            AutoOptimizeController.cloudRefineGate(
+                isFirstSuccessPending: pending, cloudRefineEnabled: enabled, trigger: trigger)
+        }
 
         // The first successful optimize stays local-only — even with the toggle on.
-        XCTAssertEqual(
-            gate(isFirstSuccessPending: true, cloudRefineEnabled: true, trigger: "manual"),
-            .skip(reason: "first_win_local"))
-        XCTAssertEqual(
-            gate(isFirstSuccessPending: true, cloudRefineEnabled: false, trigger: "manual"),
-            .skip(reason: "first_win_local"))
+        XCTAssertEqual(gate(true, true, "manual"), .skip(reason: "first_win_local"))
+        XCTAssertEqual(gate(true, false, "manual"), .skip(reason: "first_win_local"))
 
         // Toggle off → disabled (and only then).
-        XCTAssertEqual(
-            gate(isFirstSuccessPending: false, cloudRefineEnabled: false, trigger: "manual"),
-            .skip(reason: "disabled"))
+        XCTAssertEqual(gate(false, false, "manual"), .skip(reason: "disabled"))
 
         // auto_first_capture never triggers a cloud call.
-        XCTAssertEqual(
-            gate(isFirstSuccessPending: false, cloudRefineEnabled: true, trigger: "auto_first_capture"),
-            .skip(reason: "auto_first_capture"))
+        XCTAssertEqual(gate(false, true, "auto_first_capture"), .skip(reason: "auto_first_capture"))
 
         // Happy paths.
-        XCTAssertEqual(
-            gate(isFirstSuccessPending: false, cloudRefineEnabled: true, trigger: "manual"),
-            .allow)
-        XCTAssertEqual(
-            gate(isFirstSuccessPending: false, cloudRefineEnabled: true, trigger: "subject_change"),
-            .allow)
+        XCTAssertEqual(gate(false, true, "manual"), .allow)
+        XCTAssertEqual(gate(false, true, "subject_change"), .allow)
     }
 
     // MARK: - (d) verifyExposure runs after the Pass 2 apply
