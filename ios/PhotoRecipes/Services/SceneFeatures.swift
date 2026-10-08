@@ -348,7 +348,7 @@ struct SceneFeatures: Codable, Equatable {
         // form — which JSONDecoder won't decode into an enum-keyed dictionary
         // (it expects the alternating-key array form there). Accept the object
         // form first (unknown group names are dropped), falling back to the
-        // native encoding. (Same fix as main's 0b431bf.)
+        // native encoding.
         if let object = try? c.decode([String: Float].self, forKey: .semanticGroups) {
             var groups: [SemanticGroup: Float] = [:]
             for (key, value) in object {
