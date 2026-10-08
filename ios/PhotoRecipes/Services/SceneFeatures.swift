@@ -79,8 +79,12 @@ struct SceneLabel: Codable, Equatable {
 /// The fixed numeric vector (`featureVector()`) has a documented order that
 /// MUST match the Core ML model's input (`scripts/train-recipe-scorer/`).
 /// Add new features only at the end and bump `currentSchemaVersion`.
+/// v4 changed the *meaning* of the motion features (handheld-wobble gating:
+/// below the deliberate-pan threshold, subject speed is relative to the
+/// background and background flow reads as 0) — vector length and order
+/// unchanged.
 struct SceneFeatures: Codable, Equatable {
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
 
     /// The ten bundled recipes in fixed order. Used for the intent one-hot
     /// slice of the feature vector and by the Core ML scorer.
@@ -216,6 +220,13 @@ struct SceneFeatures: Codable, Equatable {
     /// have high values — a strong get-down-low signal with a tilted-up camera.
     var subjectCenterY: Float { subjectBox?.centerY ?? 0.5 }
 
+    /// Background flow (full-frame px/s) above which the camera is being
+    /// deliberately panned. Handheld wobble is ~40–150 px/s at 1920 px.
+    static let deliberatePanBackgroundPxPerSec: Float = 300
+
+    /// True when background flow says the camera is being swept, not held.
+    var isCameraPanning: Bool { backgroundSpeedPxPerSec >= Self.deliberatePanBackgroundPxPerSec }
+
     // MARK: - Fixed numeric vector
 
     /// The scorer input. Order == `vectorFeatureNames`; this is the contract
@@ -254,13 +265,19 @@ struct SceneFeatures: Codable, Equatable {
         // Centered encoding: 0 = mid-frame, +1 = bottom edge, −1 = top edge.
         // A subject low in frame (high UI y) scores positive.
         case "subject.centerY": return Double((subjectCenterY - 0.5) * 2)
-        case "motion.logSubjectSpeed": return Self.logNorm(subjectSpeedPxPerSec)
-        case "motion.logBackgroundSpeed": return Self.logNorm(backgroundSpeedPxPerSec)
+        // Handheld jitter moves subject and background together, so absolute
+        // flow is not subject motion. Below the deliberate-pan threshold the
+        // subject's world speed is its speed relative to the background, and
+        // background flow is camera wobble, not a pan.
+        case "motion.logSubjectSpeed":
+            return Self.logNorm(isCameraPanning ? subjectSpeedPxPerSec : subjectRelativeSpeedPxPerSec)
+        case "motion.logBackgroundSpeed":
+            return isCameraPanning ? Self.logNorm(backgroundSpeedPxPerSec) : 0
         case "motion.logRelativeSpeed": return Self.logNorm(subjectRelativeSpeedPxPerSec)
         case "motion.panMatchesSubject":
-            // Gated on real subject motion: a still scene must not read as
-            // "pan matching the subject".
-            guard subjectSpeedPxPerSec > 50 else { return 0 }
+            // Gated on a deliberate pan plus real subject motion: a still
+            // scene held by hand must not read as "pan matching the subject".
+            guard isCameraPanning, subjectSpeedPxPerSec > 50 else { return 0 }
             let s = max(subjectSpeedPxPerSec, 1)
             return Double(1 - min(1, subjectRelativeSpeedPxPerSec / s))
         case "motion.directionX": return Double(motionDirectionX)
@@ -556,8 +573,8 @@ enum SceneChipText {
             else if ev >= 13 { parts.append("bright") }
         }
         if features.subjectRelativeSpeedPxPerSec > 250 {
-            parts.append(features.backgroundSpeedPxPerSec > 500 ? "panning with subject" : "moving subject")
-        } else if features.backgroundSpeedPxPerSec > 500 {
+            parts.append(features.isCameraPanning ? "panning with subject" : "moving subject")
+        } else if features.isCameraPanning {
             parts.append("camera moving")
         }
         if parts.isEmpty { parts.append("steady scene") }
