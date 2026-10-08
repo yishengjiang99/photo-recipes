@@ -39,8 +39,23 @@ struct GPUFrameStats: Codable, Equatable {
     var contrast: Float = 0
     /// One score per ratio in `GPUStatsCore.gradientRatios`.
     var gradientScores: [Float] = []
+    /// Device GPU time of the analysis, milliseconds (from
+    /// `gpuStartTime`/`gpuEndTime`). 0 when unmeasured (CPU fallback, or the
+    /// device didn't report timestamps). Device measurement pending.
+    var gpuMs: Double = 0
     /// Wall time of the analysis, milliseconds (device measurement pending).
     var analysisMs: Double = 0
+
+    /// Index of the ratio with the highest gradient score — the re-exposure
+    /// the Phase 4 model should prefer. nil when there are no scores.
+    var gradientArgmaxIndex: Int? {
+        guard !gradientScores.isEmpty else { return nil }
+        var best = 0
+        for i in 1..<gradientScores.count where gradientScores[i] > gradientScores[best] {
+            best = i
+        }
+        return best
+    }
 }
 
 // MARK: - Shared algorithm (pure Swift; the Metal kernel mirrors this)
@@ -165,6 +180,66 @@ enum GPUStatsCore {
     }
 }
 
+// MARK: - Fixed-depth resource ring
+
+/// Fixed-depth ring of pre-allocated resources. `populate` fills every slot
+/// once; `next` cycles through the slots without allocating. Not thread-safe
+/// on its own — `GPUStatsEngine` guards it with its lock.
+struct BufferRing<Element> {
+    private var slots: [Element] = []
+    private var cursor = 0
+
+    var count: Int { slots.count }
+
+    mutating func populate(_ items: [Element]) {
+        slots = items
+        cursor = 0
+    }
+
+    /// Next slot in rotation, or nil when the ring is empty.
+    mutating func next() -> Element? {
+        guard !slots.isEmpty else { return nil }
+        let item = slots[cursor % slots.count]
+        cursor += 1
+        return item
+    }
+}
+
+// MARK: - Gradient curve data source (debug overlay)
+
+/// Debug data source for the re-exposure gradient overlay (Phase 4 input
+/// sanity check). Pure value type — the SwiftUI view stays thin and this is
+/// unit-testable without rendering.
+struct GradientCurveData: Equatable {
+    /// 13 ratios (geomspace 0.25…4) matching `GPUStatsCore.gradientRatios`.
+    var ratios: [Float]
+    /// 13 gradient scores normalized to max = 1 for display.
+    var normalizedScores: [Float]
+    /// Raw scores (log-domain sums).
+    var rawScores: [Float]
+    /// Index of the max score, nil when there are no scores.
+    var argmaxIndex: Int?
+    /// Device GPU time from the source stats, 0 when unmeasured.
+    var gpuMs: Double = 0
+
+    /// Build from engine outputs; nil unless the stats carry exactly 13
+    /// gradient scores.
+    static func from(_ stats: GPUFrameStats) -> GradientCurveData? {
+        guard stats.gradientScores.count == GPUStatsCore.gradientRatioCount else { return nil }
+        let maxScore = stats.gradientScores.max() ?? 0
+        let normalized = maxScore > 0
+            ? stats.gradientScores.map { $0 / maxScore }
+            : stats.gradientScores
+        return GradientCurveData(
+            ratios: GPUStatsCore.gradientRatios,
+            normalizedScores: normalized,
+            rawScores: stats.gradientScores,
+            argmaxIndex: stats.gradientArgmaxIndex,
+            gpuMs: stats.gpuMs
+        )
+    }
+}
+
 // MARK: - Engine
 
 /// Fast on-device frame statistics (Phase 2).
@@ -179,8 +254,18 @@ enum GPUStatsCore {
 ///   Simulator) the vImage reference below produces byte-comparable outputs
 ///   (`GPUFrameStats`), so the pipeline never depends on a GPU.
 ///
-/// Thread-safe (internal lock + triple-buffered outputs). Called from the
-/// sensor's vision queue — never the capture queue, never the main actor.
+/// Thread-safe (internal lock). Called from the sensor's vision queue —
+/// never the capture queue, never the main actor.
+///
+/// The Metal path never blocks the caller: GPU completion arrives via
+/// `addCompletedHandler` and is resumed through a `CheckedContinuation`,
+/// so `analyze` is async and the actor's executor is never parked on a
+/// semaphore. The histogram/accumulator buffers come from a pre-allocated
+/// 3-deep ring — no per-call allocation on the hot path. The only production
+/// caller (`SceneSensor`, an actor) awaits each analysis before the next,
+/// so a ring slot is never reused while its GPU work is still in flight;
+/// concurrent callers must not exceed the ring depth.
+///
 /// Pixel format: 32BGRA (what the session delivers); 420f is handled via the
 /// Y plane (luma-exact, chroma-neutral); anything else returns nil — never
 /// crashes.
@@ -194,6 +279,10 @@ final class GPUStatsEngine {
     /// Must match the kernel name in GPUStats.metal.
     static let kernelFunctionName = "gpu_frame_stats"
 
+    private static let histBufferLength = histogramBins * MemoryLayout<UInt32>.size
+    private static let accumBufferLength = (9 + gradientRatioCount) * MemoryLayout<UInt32>.size
+    private static let bufferRingDepth = 3
+
     private let log = Logger(subsystem: "com.ragnus.mvp", category: "GPUStats")
     private let lock = NSLock()
     private let device: MTLDevice?
@@ -204,24 +293,59 @@ final class GPUStatsEngine {
     private var unsupportedFormatLogged = false
     /// Triple-buffered recent analyses (newest last).
     private var ring: [GPUFrameStats] = []
+    /// Pre-allocated histogram/accumulator buffer pairs (ringDepth deep).
+    /// Checked out per analysis — the hot path never allocates.
+    private var bufferRing = BufferRing<(hist: MTLBuffer, accum: MTLBuffer)>()
+    /// Test seam: how many buffer pairs were allocated. The ring is
+    /// pre-filled once; this must not grow on the hot path.
+    private(set) var bufferPairAllocations = 0
 
     /// - Parameter device: inject nil in tests to force the CPU reference path.
     init(device: MTLDevice? = MTLCreateSystemDefaultDevice()) {
         self.device = device
+        if let device {
+            preallocateBufferRing(device: device)
+        }
+    }
+
+    /// Fill the buffer ring once. Idempotent — called at init; the hot path
+    /// never allocates.
+    private func preallocateBufferRing(device: MTLDevice) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard bufferRing.count == 0 else { return }
+        var pairs: [(hist: MTLBuffer, accum: MTLBuffer)] = []
+        for _ in 0..<Self.bufferRingDepth {
+            guard let hist = device.makeBuffer(length: Self.histBufferLength, options: .storageModeShared),
+                  let accum = device.makeBuffer(length: Self.accumBufferLength, options: .storageModeShared)
+            else { break }
+            bufferPairAllocations += 1
+            pairs.append((hist: hist, accum: accum))
+        }
+        if !pairs.isEmpty { bufferRing.populate(pairs) }
     }
 
     /// Analyze one frame. Returns nil only for unsupported pixel formats.
-    func analyze(_ pixelBuffer: CVPixelBuffer) -> GPUFrameStats? {
+    /// Async: the Metal path suspends on the GPU completion continuation
+    /// instead of blocking; the CPU/vImage fallback never suspends.
+    func analyze(_ pixelBuffer: CVPixelBuffer) async -> GPUFrameStats? {
         let start = CFAbsoluteTimeGetCurrent()
         let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
         let stats: GPUFrameStats?
         if format == kCVPixelFormatType_32BGRA, ensureMetal() {
-            stats = analyzeMetal(pixelBuffer) ?? cpuReferenceAnalyze(pixelBuffer)
+            stats = await analyzeMetal(pixelBuffer) ?? cpuReferenceAnalyze(pixelBuffer)
         } else {
             stats = cpuReferenceAnalyze(pixelBuffer)
         }
         guard var s = stats else { return nil }
         s.analysisMs = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        // Per-analysis timing into the os_signpost instrumentation
+        // (gpuMs is nil on the CPU fallback / when the device reports no
+        // timestamps).
+        AOPerf.recordFrameStats(
+            wallMs: s.analysisMs,
+            gpuMs: s.gpuMs > 0 ? s.gpuMs : nil,
+            source: s.source)
         lock.lock()
         ring.append(s)
         if ring.count > 3 { ring.removeFirst() }
@@ -298,14 +422,17 @@ final class GPUStatsEngine {
         return true
     }
 
-    private func analyzeMetal(_ pixelBuffer: CVPixelBuffer) -> GPUFrameStats? {
+    private func analyzeMetal(_ pixelBuffer: CVPixelBuffer) async -> GPUFrameStats? {
         lock.lock()
         let cache = textureCache
         let pipeline = pipeline
         let queue = commandQueue
         let device = device
+        let pair = bufferRing.next()
         lock.unlock()
-        guard let device, let cache, let pipeline, let queue else { return nil }
+        guard let device, let cache, let pipeline, let queue,
+              let (histBuf, accumBuf) = pair
+        else { return nil }
         let w = CVPixelBufferGetWidth(pixelBuffer)
         let h = CVPixelBufferGetHeight(pixelBuffer)
         guard w > 0, h > 0 else { return nil }
@@ -335,13 +462,10 @@ final class GPUStatsEngine {
         MPSImageBilinearScale(device: device)
             .encode(commandBuffer: commandBuffer, sourceTexture: src, destinationTexture: small)
 
-        let histLen = Self.histogramBins * MemoryLayout<UInt32>.size
-        let accumLen = (9 + Self.gradientRatioCount) * MemoryLayout<UInt32>.size
-        guard let histBuf = device.makeBuffer(length: histLen, options: .storageModeShared),
-              let accumBuf = device.makeBuffer(length: accumLen, options: .storageModeShared)
-        else { return nil }
-        memset(histBuf.contents(), 0, histLen)
-        memset(accumBuf.contents(), 0, accumLen)
+        // Reused ring buffers — zeroed per dispatch (the slot is never
+        // reused while its GPU work is still in flight; see class docs).
+        memset(histBuf.contents(), 0, Self.histBufferLength)
+        memset(accumBuf.contents(), 0, Self.accumBufferLength)
 
         guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return nil }
         encoder.setComputePipelineState(pipeline)
@@ -356,11 +480,23 @@ final class GPUStatsEngine {
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
 
-        let done = DispatchSemaphore(value: 0)
-        commandBuffer.addCompletedHandler { _ in done.signal() }
-        commandBuffer.commit()
-        guard done.wait(timeout: .now() + 2.0) == .success else {
-            log.error("GPUStats: Metal execution timed out — CPU fallback for this frame")
+        // Never block: the completion handler resumes the continuation, so
+        // the caller's executor (the SceneSensor actor) stays unblocked.
+        // Metal fires the handler exactly once; device timestamps are only
+        // valid after completion. (gpuStartTime/gpuEndTime availability is
+        // device-pending — treated as unmeasured when 0.)
+        let gpuMs: Double = await withCheckedContinuation { continuation in
+            commandBuffer.addCompletedHandler { cb in
+                if cb.status == .completed, cb.gpuEndTime > cb.gpuStartTime {
+                    continuation.resume(returning: (cb.gpuEndTime - cb.gpuStartTime) * 1000)
+                } else {
+                    continuation.resume(returning: -1)
+                }
+            }
+            commandBuffer.commit()
+        }
+        guard gpuMs >= 0 else {
+            log.error("GPUStats: Metal execution did not complete — CPU fallback for this frame")
             return nil
         }
 
@@ -391,6 +527,7 @@ final class GPUStatsEngine {
             meanB: valid > 0 ? Float(Double(acc[7]) / 1000.0 / valid) : Float(mean),
             contrast: Float(contrast),
             gradientScores: scores,
+            gpuMs: gpuMs,
             analysisMs: 0
         )
     }

@@ -59,9 +59,13 @@ struct SemanticHysteresis {
 ///   don't flicker.
 ///
 /// Behavior:
-/// - Pauses when the camera tab isn't visible (`setVisible`) or
-///   `ProcessInfo.thermalState` is `.serious` or worse.
-/// - At `.fair` thermal state, drops to classification only (no flow).
+/// - Pauses when the camera tab isn't visible (`setVisible`).
+/// - Thermal policy (`cadence(for:)`): `.fair` keeps motion sensing at FULL
+///   rate (subject/background speed drive the blur-moving-subjects and
+///   panning-sharp-subject shutter choices); `.serious` halves both rates
+///   and skips Vision classification (motion + GPU stats keep running);
+///   `.critical` pauses everything until the device cools — AO falls back
+///   to rules + system auto.
 /// - Vision runs on a dedicated serial queue at `.userInitiated`; the capture
 ///   queue is never blocked.
 actor SceneSensor {
@@ -149,32 +153,57 @@ actor SceneSensor {
     private func loop() async {
         while running, visible, !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 200_000_000) // 5 Hz tick
-            tick()
+            await tick()
         }
     }
 
-    private func tick() {
-        guard let latest else { return }
-        let thermal = ProcessInfo.processInfo.thermalState
-        if thermal == .critical {
-            return // paused until the device cools; AO falls back to rules + system auto
+    /// Thermal policy for the sensing cadence. `.fair` keeps motion sensing
+    /// at FULL rate (subject/background speed drive the blur-moving-subjects
+    /// and panning-sharp-subject shutter choices — skipping motion at .fair
+    /// made those recipes fall back to "No subject motion measured").
+    /// `.serious` halves both rates and skips Vision classification;
+    /// `.critical` pauses sensing entirely until the device cools. A pure
+    /// function of the thermal state so the rate decision is unit-testable.
+    struct ThermalCadence {
+        /// Seconds between motion ticks, or nil to skip motion entirely.
+        var motionInterval: TimeInterval?
+        /// Seconds between semantic/GPU-stats ticks, or nil to skip.
+        var slowInterval: TimeInterval?
+        /// Whether the slow tick runs Vision classification.
+        var includeClassification: Bool
+    }
+
+    static func cadence(for thermal: ProcessInfo.ThermalState) -> ThermalCadence {
+        switch thermal {
+        case .critical:
+            // Paused until the device cools; AO falls back to rules + system auto.
+            return ThermalCadence(motionInterval: nil, slowInterval: nil, includeClassification: false)
+        case .serious:
+            // Halve the analysis rate AND skip Vision classification (don't
+            // just pause) — motion + GPU stats keep running at half rate.
+            return ThermalCadence(motionInterval: 0.4, slowInterval: 2.0, includeClassification: false)
+        default:
+            // .nominal, .fair, and future states: full rate.
+            return ThermalCadence(motionInterval: 0.2, slowInterval: 1.0, includeClassification: true)
         }
+    }
+
+    private func tick() async {
+        guard let latest else { return }
+        let cadence = Self.cadence(for: ProcessInfo.processInfo.thermalState)
         let now = Date()
 
-        // .serious: halve the analysis rate AND skip Vision classification
-        // (don't just pause) — motion + GPU stats keep running at half rate.
-        let motionInterval: TimeInterval = thermal == .serious ? 0.4 : 0.2
-        let slowInterval: TimeInterval = thermal == .serious ? 2.0 : 1.0
-
-        // ~5 Hz motion (skipped entirely at .fair — classification only).
-        if thermal != .fair, now.timeIntervalSince(lastMotionRun) >= motionInterval {
+        // ~5 Hz motion ticks (skipped entirely at .critical).
+        if let motionInterval = cadence.motionInterval,
+           now.timeIntervalSince(lastMotionRun) >= motionInterval {
             lastMotionRun = now
             runMotionTick(latest: latest)
         }
-        // ~1 Hz semantics.
-        if now.timeIntervalSince(lastSlowRun) >= slowInterval {
+        // ~1 Hz semantics + GPU stats.
+        if let slowInterval = cadence.slowInterval,
+           now.timeIntervalSince(lastSlowRun) >= slowInterval {
             lastSlowRun = now
-            runSlowTick(latest: latest, includeClassification: thermal != .serious)
+            await runSlowTick(latest: latest, includeClassification: cadence.includeClassification)
         }
     }
 
@@ -204,14 +233,17 @@ actor SceneSensor {
         )
     }
 
-    private func runSlowTick(latest: (buffer: CVPixelBuffer, timestamp: CMTime), includeClassification: Bool = true) {
+    private func runSlowTick(latest: (buffer: CVPixelBuffer, timestamp: CMTime), includeClassification: Bool = true) async {
         let metering = metering
         let pose = pose
+        // GPU stats are async (Metal completion arrives via continuation) —
+        // computed outside the vision queue so the actor's executor and the
+        // vision queue are never blocked.
+        let stats = await GPUStatsEngine.shared.analyze(latest.buffer)
         // Full pass without flow (the 5 Hz tick owns motion); then merge.
         // GPU stats run at this same ~1 Hz cadence — never per video frame.
         var features = visionQueue.sync {
-            let stats = GPUStatsEngine.shared.analyze(latest.buffer)
-            return SceneFeatureExtractor.extract(
+            SceneFeatureExtractor.extract(
                 pixelBuffer: latest.buffer,
                 previousPixelBuffer: nil,
                 previousTimestamp: nil,
@@ -271,9 +303,9 @@ actor SceneSensor {
         let pose = pose
         if let latest {
             let prev = previousForFlow
+            let stats = await GPUStatsEngine.shared.analyze(latest.buffer)
             var features = visionQueue.sync {
-                let stats = GPUStatsEngine.shared.analyze(latest.buffer)
-                return SceneFeatureExtractor.extract(
+                SceneFeatureExtractor.extract(
                     pixelBuffer: latest.buffer,
                     previousPixelBuffer: prev?.buffer,
                     previousTimestamp: prev?.timestamp,

@@ -29,6 +29,19 @@ enum AOPerf {
         os_signpost(.end, log: log, name: "auto_optimize", signpostID: id,
                     "outcome %{public}s", outcome)
     }
+
+    /// Per-analysis frame-stats timing (Phase 2). `gpuMs` comes from the
+    /// command buffer's `gpuStartTime`/`gpuEndTime`; nil on the CPU fallback
+    /// or when the device reports no timestamps. `wallMs` is the end-to-end
+    /// `analyze` time. Target <2 ms GPU time on A15 — **device measurement
+    /// pending** (no GPU on the build VM; CI macOS runners have no usable
+    /// GPU either, so the Metal path is exercised on-device only).
+    static func recordFrameStats(wallMs: Double, gpuMs: Double?, source: String) {
+        let gpuStr = gpuMs.map { String(format: "%.3f", $0) } ?? "n/a"
+        os_signpost(.event, log: log, name: "gpu_frame_stats",
+                    "wall_ms %f gpu_ms %{public}s source %{public}s",
+                    wallMs, gpuStr, source)
+    }
 }
 
 @MainActor

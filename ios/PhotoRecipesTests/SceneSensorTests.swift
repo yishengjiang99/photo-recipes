@@ -81,4 +81,41 @@ final class SceneSensorTests: XCTestCase {
         let snap = SceneSnapshot(features: SceneFeatures(), age: 0)
         XCTAssertTrue(snap.predatesConvergence(Date()))
     }
+
+    // MARK: - Section C: thermal cadence policy
+
+    func testThermalCadence_nominal_fullRate() {
+        let c = SceneSensor.cadence(for: .nominal)
+        XCTAssertEqual(c.motionInterval, 0.2)
+        XCTAssertEqual(c.slowInterval, 1.0)
+        XCTAssertTrue(c.includeClassification)
+    }
+
+    func testThermalCadence_fair_keepsFullRateMotion() {
+        // .fair must NOT skip motion: subject/background speed drive the
+        // blur-moving-subjects and panning-sharp-subject shutter choices.
+        let c = SceneSensor.cadence(for: .fair)
+        XCTAssertEqual(c.motionInterval, 0.2,
+                       ".fair keeps motion sensing at full rate")
+        XCTAssertEqual(c.slowInterval, 1.0)
+        XCTAssertTrue(c.includeClassification)
+    }
+
+    func testThermalCadence_serious_halvesRatesSkipsClassification() {
+        let c = SceneSensor.cadence(for: .serious)
+        XCTAssertEqual(c.motionInterval, 0.4,
+                       ".serious halves the motion rate")
+        XCTAssertEqual(c.slowInterval, 2.0)
+        XCTAssertFalse(c.includeClassification,
+                       ".serious skips Vision classification")
+    }
+
+    func testThermalCadence_critical_pausesEverything() {
+        let c = SceneSensor.cadence(for: .critical)
+        XCTAssertNil(c.motionInterval,
+                     ".critical stops motion entirely (existing fallback)")
+        XCTAssertNil(c.slowInterval,
+                     ".critical stops semantics/GPU stats too")
+        XCTAssertFalse(c.includeClassification)
+    }
 }
