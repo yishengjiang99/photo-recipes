@@ -267,7 +267,21 @@ struct SceneFeatures: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? Self.currentSchemaVersion
         capturedAt = try c.decodeIfPresent(Date.self, forKey: .capturedAt) ?? Date()
-        semanticGroups = Self.decodeSemanticGroups(from: c)
+        // `semanticGroups` is `[SemanticGroup: Float]` in code, but fixtures
+        // (and any hand-written JSON) use the natural `{"person": 0.8}` object
+        // form — which JSONDecoder won't decode into an enum-keyed dictionary
+        // (it expects the alternating-key array form there). Accept the object
+        // form first (unknown group names are dropped), falling back to the
+        // native encoding.
+        if let object = try? c.decode([String: Float].self, forKey: .semanticGroups) {
+            var groups: [SemanticGroup: Float] = [:]
+            for (key, value) in object {
+                if let group = SemanticGroup(rawValue: key) { groups[group] = value }
+            }
+            semanticGroups = groups
+        } else {
+            semanticGroups = (try? c.decode([SemanticGroup: Float].self, forKey: .semanticGroups)) ?? [:]
+        }
         subjectKind = try c.decodeIfPresent(SubjectKind.self, forKey: .subjectKind)
         subjectBox = try c.decodeIfPresent(NormalizedBox.self, forKey: .subjectBox)
         subjectAreaFraction = try c.decodeIfPresent(Float.self, forKey: .subjectAreaFraction) ?? 0
@@ -290,25 +304,6 @@ struct SceneFeatures: Codable, Equatable {
         cameraElevationDegrees = try c.decodeIfPresent(Float.self, forKey: .cameraElevationDegrees) ?? 0
         handShakeRadPerSec = try c.decodeIfPresent(Float.self, forKey: .handShakeRadPerSec) ?? 0
         recipeIntent = try c.decodeIfPresent(RecipeIntent.self, forKey: .recipeIntent)
-    }
-
-    /// `semanticGroups` is `[SemanticGroup: Float]` in code, but fixtures (and
-    /// any hand-written JSON) use the natural `{"person": 0.8}` object form —
-    /// which JSONDecoder won't decode into an enum-keyed dictionary (it
-    /// expects the alternating-key array form there). Accept the object form
-    /// first (unknown group names are dropped), falling back to the native
-    /// encoding.
-    private static func decodeSemanticGroups(
-        from c: KeyedDecodingContainer<CodingKeys>
-    ) -> [SemanticGroup: Float] {
-        if let object = try? c.decode([String: Float].self, forKey: .semanticGroups) {
-            var groups: [SemanticGroup: Float] = [:]
-            for (key, value) in object {
-                if let group = SemanticGroup(rawValue: key) { groups[group] = value }
-            }
-            return groups
-        }
-        return (try? c.decode([SemanticGroup: Float].self, forKey: .semanticGroups)) ?? [:]
     }
 }
 
