@@ -111,6 +111,12 @@ struct CameraView: View {
             if session.auth == .authorized {
                 await session.start()
                 horizon.start()
+                // Pass 1 ML: feed video frames to the scene sensor.
+                session.frameConsumer = { buffer, timestamp in
+                    Task { await SceneSensor.shared.ingestFrame(buffer, at: timestamp) }
+                }
+                await SceneSensor.shared.start()
+                await SceneSensor.shared.setVisible(true)
             }
             applyStagingIfNeeded()
             if CameraCoachMarksStore.shouldShow {
@@ -170,6 +176,7 @@ struct CameraView: View {
             applyBurstTask?.cancel()
             captureFeedbackTask?.cancel()
             savedChipTask?.cancel()
+            Task { await SceneSensor.shared.setVisible(false) }
             session.stop()
             horizon.stop()
         }
@@ -726,6 +733,49 @@ struct CameraView: View {
                 .padding(.horizontal, hPad)
             }
 
+            // Also-try chip: runner-up recipe when the top score was uncertain.
+            if let alsoId = optimizer.alsoTryRecipeId, !optimizer.phase.isRunning {
+                Button {
+                    Analytics.shared.track("also_try_tap", props: [
+                        "recipe_id": alsoId,
+                        "run_id": optimizer.lastRunId ?? "",
+                    ])
+                    session.appliedRecipeId = nil
+                    router.stagedRecipeId = alsoId
+                    Task { await runOptimize(trigger: "also_try") }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "shuffle")
+                        Text("Also try: \(optimizer.alsoTryRecipeTitle ?? alsoId)")
+                            .font(AppTheme.caption())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(AppTheme.agentStatusBg))
+                }
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal, hPad)
+            }
+
+            // Scene changed after Ready — re-run only on tap, never silently.
+            if let suggestion = optimizer.sceneChangedSuggestion, !optimizer.phase.isRunning {
+                Button {
+                    optimizer.sceneChangedSuggestion = nil
+                    Task { await runOptimize(trigger: "scene_changed") }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text(suggestion)
+                            .font(AppTheme.caption())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(AppTheme.accentSoft))
+                }
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal, hPad)
+            }
+
             if let lookToast, !isStatusBusy {
                 Text(lookToast)
                     .font(AppTheme.caption())
@@ -1121,8 +1171,8 @@ struct CameraView: View {
         if auto {
             // Automatic probes never clobber text the user typed themselves.
             if !sceneNote.isEmpty && !sceneFromViewfinder { return }
-            // One automatic probe per camera visit is enough — tab switches
-            // must not re-capture, re-describe, or burn assist quota.
+            // One automatic caption per camera visit is enough — tab switches
+            // must not re-sense or burn anything.
             if let last = lastSceneDescribeAt, Date().timeIntervalSince(last) < 30 { return }
         }
         describeTask?.cancel()
@@ -1130,30 +1180,24 @@ struct CameraView: View {
         let task = Task { @MainActor in
             isDescribingScene = true
             defer { isDescribingScene = false }
-            do {
-                let raw = try await session.captureProbeFrame()
-                let jpeg: Data
-                if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
-                    jpeg = c
-                } else {
-                    jpeg = raw
+            // Local only: caption from the on-device scene sensor.
+            // No probe capture, no network — the Grok auto-upload is gone.
+            var features = await SceneSensor.shared.current().features
+            if await SceneSensor.shared.current().age > 1.0 {
+                let metering = session.meteringSample()
+                if let fresh = await SceneSensor.shared.refreshNow(metering: metering, note: sceneNote) {
+                    features = fresh.features
                 }
-                try Task.checkCancellation()
-                let caption = try await APIClient.shared.describeScene(imageJPEGData: jpeg)
-                try Task.checkCancellation()
-                let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return }
-                // Never clobber live STT / typed note while mic is active.
-                if case .recording = voice.phase { return }
-                if case .uploading = voice.phase { return }
-                if case .requestingPermission = voice.phase { return }
-                if sceneNote.isEmpty || sceneFromViewfinder {
-                    sceneNote = trimmed
-                    sceneFromViewfinder = true
-                }
-            } catch is CancellationError {
-                return
-            } catch {}
+            }
+            let caption = SceneChipText.make(features: features)
+            // Never clobber live STT / typed note while mic is active.
+            if case .recording = voice.phase { return }
+            if case .uploading = voice.phase { return }
+            if case .requestingPermission = voice.phase { return }
+            if sceneNote.isEmpty || sceneFromViewfinder {
+                sceneNote = caption
+                sceneFromViewfinder = true
+            }
         }
         describeTask = task
         await task.value
@@ -1183,7 +1227,8 @@ struct CameraView: View {
             entitlements: entitlements,
             preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId,
             sceneNote: sceneNote,
-            devicePitchDegrees: horizon.isAvailable ? horizon.pitchDegrees : nil,
+            elevationDegrees: horizon.isAvailable ? horizon.cameraElevationDegrees : nil,
+            handShake: horizon.isAvailable ? horizon.handShakeRadPerSec : nil,
             trigger: trigger
         )
         // applyFeedbackToken / phase drive burst, toast, or error pill — never silent.

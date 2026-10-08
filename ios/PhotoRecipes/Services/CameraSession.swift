@@ -1316,6 +1316,33 @@ final class CameraSession: NSObject, ObservableObject {
         return fov > 0 ? fov : nil
     }
 
+    /// Width (px) of the active video frame — the reference width the solver's
+    /// motion speeds are expressed in.
+    var videoFrameWidth: Double? {
+        guard let device = input?.device else { return nil }
+        let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        return dims.width > 0 ? Double(dims.width) : nil
+    }
+
+    /// Metering snapshot for the scene sensor: current exposure state before
+    /// the solver writes custom exposure.
+    struct MeteringSample {
+        var exposureSeconds: Double?
+        var iso: Float?
+        var exposureWasCustom: Bool
+        var exposureTargetOffset: Float
+    }
+
+    func meteringSample() -> MeteringSample {
+        refreshReadouts()
+        return MeteringSample(
+            exposureSeconds: exposureSeconds > 0 ? exposureSeconds : nil,
+            iso: iso > 0 ? iso : nil,
+            exposureWasCustom: readbackState().exposureMode == "custom",
+            exposureTargetOffset: readbackState().exposureTargetOffset
+        )
+    }
+
     private func configure(_ device: AVCaptureDevice, _ block: () throws -> Void) {
         do {
             try device.lockForConfiguration()
