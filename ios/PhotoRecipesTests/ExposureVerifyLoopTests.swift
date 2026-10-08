@@ -347,7 +347,7 @@ final class ExposureVerifyLoopTests: XCTestCase {
             isoRange: 50...3200, shutterRange: 1.0 / 8000...1.0)
         let cap = ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 4.0)
         let r = await ExposureVerifyLoop.run(
-            targetEV: 0, priority: .auto, shutterCapSeconds: nil,
+            targetEV: 0, priority: .auto(shutterCapSeconds: nil), shutterCapSeconds: nil,
             maxIterations: cap, clock: device)
         XCTAssertLessThanOrEqual(r.iterations, 1,
                                  "dim-light cap: at most one correction write")
