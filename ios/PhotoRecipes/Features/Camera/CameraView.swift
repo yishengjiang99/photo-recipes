@@ -1187,7 +1187,7 @@ struct CameraView: View {
             if await SceneSensor.shared.current().age > 1.0 {
                 let metering = session.meteringSample()
                 if let fresh = await SceneSensor.shared.refreshNow(metering: metering, note: sceneNote) {
-                    features = fresh.features
+                    features = fresh
                 }
             }
             let caption = SceneChipText.make(features: features)

@@ -682,7 +682,7 @@ enum LuminanceHistogram {
         var matrix: [Int16] = [54, 183, 18, 0]
         let mErr = matrix.withUnsafeMutableBufferPointer { mPtr in
             vImageMatrixMultiply_ARGB8888ToPlanar8(
-                &src, &yBuf, mPtr.baseAddress!, 256, nil, 0, vImage_Flags(kvImageNoFlags)
+                &src, &yBuf, mPtr.baseAddress!, 256, nil, vImage_Flags(kvImageNoFlags)
             )
         }
         guard mErr == kvImageNoError else { return nil }
@@ -698,9 +698,15 @@ enum LuminanceHistogram {
 
         // Warm bias from channel means.
         var warm: Float = 0
-        var argb: [[vImagePixelCount]] = Array(repeating: [vImagePixelCount](repeating: 0, count: 256), count: 4)
+        // One backing store per channel — Array(repeating:) would alias all
+        // four histograms to the same bins and kill warmBias.
+        var argb: [[vImagePixelCount]] = (0..<4).map { _ in [vImagePixelCount](repeating: 0, count: 256) }
         let cErr: vImage_Error = argb.withUnsafeMutableBufferPointer { outer in
-            var ptrs: [UnsafeMutablePointer<vImagePixelCount>?] = outer.map { $0.baseAddress }
+            var ptrs: [UnsafeMutablePointer<vImagePixelCount>?] = []
+            ptrs.reserveCapacity(4)
+            for i in 0..<4 {
+                ptrs.append(outer[i].withUnsafeMutableBufferPointer { $0.baseAddress })
+            }
             return ptrs.withUnsafeMutableBufferPointer { pBuf in
                 vImageHistogramCalculation_ARGB8888(&src, pBuf.baseAddress!, vImage_Flags(kvImageNoFlags))
             }

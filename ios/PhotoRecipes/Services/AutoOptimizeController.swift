@@ -351,7 +351,7 @@ final class AutoOptimizeController: ObservableObject {
                     AOPerf.end(perfId, outcome: "no-frame")
                     return
                 }
-                snapshot = fresh
+                snapshot = SceneSnapshot(features: fresh, age: 0)
             }
             var f = snapshot.features
             // Stamp tap-time state: the note (intent) the user typed, the live
@@ -360,7 +360,7 @@ final class AutoOptimizeController: ObservableObject {
             f.meteredExposureSeconds = metering.exposureSeconds
             f.meteredISO = metering.iso
             f.exposureTargetOffset = metering.exposureTargetOffset
-            f.exposureWasCustom = metering.exposureWasCustom
+            f.exposureWasCustom = metering.wasCustom
             if let elevationDegrees { f.cameraElevationDegrees = Float(elevationDegrees) }
             if let handShake { f.handShakeRadPerSec = Float(handShake) }
             features = f

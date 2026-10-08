@@ -351,8 +351,10 @@ enum SettingsSolver {
 
         default:
             // Unknown id — treat as sharp-front-to-back (server fallback agrees).
-            return solve(recipeId: "sharp-front-to-back", features: features,
-                         capabilities: capabilities, context: context)
+            var fallback = solve(recipeId: "sharp-front-to-back", features: features,
+                                 capabilities: capabilities, context: context)
+            fallback.extraTips = tips + fallback.extraTips
+            return fallback
         }
     }
 

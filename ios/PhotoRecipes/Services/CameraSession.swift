@@ -1325,21 +1325,20 @@ final class CameraSession: NSObject, ObservableObject {
     }
 
     /// Metering snapshot for the scene sensor: current exposure state before
-    /// the solver writes custom exposure.
-    struct MeteringSample {
-        var exposureSeconds: Double?
-        var iso: Float?
-        var exposureWasCustom: Bool
-        var exposureTargetOffset: Float
-    }
-
+    /// the solver writes custom exposure. Uses the top-level `MeteringSample`
+    /// (SceneFeatures.swift) so the sensor and controller share one type.
     func meteringSample() -> MeteringSample {
         refreshReadouts()
+        let device = input?.device
+        let rb = readbackState()
         return MeteringSample(
             exposureSeconds: exposureSeconds > 0 ? exposureSeconds : nil,
             iso: iso > 0 ? iso : nil,
-            exposureWasCustom: readbackState().exposureMode == "custom",
-            exposureTargetOffset: readbackState().exposureTargetOffset
+            aperture: device.map { Float($0.lensAperture) },
+            exposureTargetOffset: rb.exposureTargetOffset,
+            wasCustom: rb.exposureMode == "custom",
+            fieldOfViewDegrees: activeFieldOfViewDegrees(),
+            fullFrameWidthPx: videoFrameWidth
         )
     }
 

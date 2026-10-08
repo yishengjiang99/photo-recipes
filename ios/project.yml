@@ -90,7 +90,11 @@ targets:
           # Fixtures + dummy Core ML model ship as bundle resources, not sources.
           - "Resources/**"
     resources:
-      - path: PhotoRecipesTests/Resources
+      # Explicit sub-paths so the bundle layout is deterministic regardless
+      # of how the build system treats folder references:
+      #   Fixtures/scene-features/*.json + DummyScorer.mlmodel at bundle root.
+      - path: PhotoRecipesTests/Resources/Fixtures
+      - path: PhotoRecipesTests/Resources/DummyScorer.mlmodel
     dependencies:
       - target: PhotoRecipes
     settings:

@@ -180,7 +180,7 @@ final class SettingsSolverTests: XCTestCase {
         let sol = SettingsSolver.solve(
             recipeId: "hdr-brights-darks", features: f,
             capabilities: caps, context: ctx)
-        if case .gains(let r, let g, let b) = sol.phoneTargets.whiteBalance {
+        if case .gains(let r, let g, let b)? = sol.phoneTargets.whiteBalance {
             XCTAssertEqual(r ?? -1, 1.2, accuracy: 0.001)
             XCTAssertEqual(g ?? -1, 1.0, accuracy: 0.001)
             XCTAssertEqual(b ?? -1, 1.5, accuracy: 0.001)

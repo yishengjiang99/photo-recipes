@@ -69,6 +69,8 @@ final class CoreMLRecipeScorer: RecipeScoring {
         let vector = features.featureVector()
         // Map model class labels → candidate recipe ids. A trained model uses
         // the recipe ids as its class labels; unknown labels score zero.
+        // predictProbabilities returns probabilities in ascending-label order,
+        // so sort the model's labels identically before zipping.
         guard let model,
               let probs = predictProbabilities(vector),
               let classLabels = model.modelDescription.classLabels as? [String],
@@ -77,8 +79,9 @@ final class CoreMLRecipeScorer: RecipeScoring {
             // No (usable) model — fall back to the hand-tuned JSON scorer.
             return JSONRecipeScorer().score(features)
         }
+        let sortedLabels = classLabels.sorted()
         var rows: [RecipeScore] = []
-        for (label, p) in zip(classLabels, probs) {
+        for (label, p) in zip(sortedLabels, probs) {
             guard candidateIds.contains(label) else { continue }
             rows.append(RecipeScore(recipeId: label, probability: p, topFeatures: []))
         }
