@@ -251,8 +251,8 @@ final class AutoOptimizeController: ObservableObject {
     }
 
     /// Deltas between the AO-applied dials and the user's override.
-    /// Pure — unit-tested.
-    static func dialDeltaProps(applied: AppliedDials, current: AppliedDials) -> [String: String] {
+    /// Pure and nonisolated — unit-tested.
+    nonisolated static func dialDeltaProps(applied: AppliedDials, current: AppliedDials) -> [String: String] {
         var p: [String: String] = [:]
         p["ev_delta"] = String(format: "%+.1f", current.ev - applied.ev)
         if applied.shutterSec > 0, current.shutterSec > 0 {

@@ -79,7 +79,9 @@ final class AOBracketCapture {
     /// UserDefaults key for the "Help improve Auto Optimize" opt-in.
     /// Default OFF: `bool(forKey:)` returns false when unset.
     static let optInDefaultsKey = "autoOptimize.improveOptIn"
-    static var optedIn: Bool {
+    /// Nonisolated: plain UserDefaults access (thread-safe), reachable from
+    /// Settings and unit tests without a MainActor hop.
+    nonisolated static var optedIn: Bool {
         get { UserDefaults.standard.bool(forKey: optInDefaultsKey) }
         set { UserDefaults.standard.set(newValue, forKey: optInDefaultsKey) }
     }
@@ -143,8 +145,8 @@ final class AOBracketCapture {
 
     /// Pure construction of the 5 manual-exposure bracket settings, scaling
     /// the shutter by 2^offset at constant ISO, clamped to device limits.
-    /// Unit-testable: no hardware touched.
-    static func bracketedSettings(
+    /// Unit-testable: no hardware touched. Nonisolated: pure function.
+    nonisolated static func bracketedSettings(
         baseShutter: Double,
         baseISO: Float,
         offsets: [Float],
