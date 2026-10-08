@@ -99,6 +99,12 @@ final class AutoOptimizeController: ObservableObject {
     private(set) var lastTrigger: String = "manual"
     /// Run id for which a manual dial override was already tracked (one per run).
     private var overrideTrackedForRun: String?
+    /// Numeric dial state at AO Ready (post-verify read-back) — the baseline
+    /// for override deltas in `optimize_dial_override`.
+    private var appliedDialsAtReady: AppliedDials?
+    /// 30 s capture-window task: fires `optimize_capture_abandoned` when the
+    /// window closes without a capture.
+    private var captureWindowTask: Task<Void, Never>?
 
     /// Set when the user undoes an Auto Optimize — never auto-run again for this install.
     static let userUndidKey = "autoOptimize.userUndid"
@@ -200,22 +206,75 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
     }
 
-    func markDirty() {
+    func markDirty(session: CameraSession? = nil) {
         isDirtyOverride = true
         // Manual dial override after an optimize — outcome of that run, once per run.
+        // Deltas are computed against the post-verify read-back at Ready: the
+        // first correction after AO is the residual learning signal.
         if let runId = lastRunId, overrideTrackedForRun != runId {
             overrideTrackedForRun = runId
-            Analytics.shared.track("optimize_dial_override", props: [
+            var props: [String: String] = [
                 "recipe_id": chosenRecipeId ?? "",
                 "trigger": lastTrigger,
                 "run_id": runId,
-            ])
+            ]
+            if let session, let applied = appliedDialsAtReady {
+                let current = AppliedDials(
+                    shutterSec: session.exposureSeconds,
+                    iso: session.iso,
+                    ev: session.evBias,
+                    wbKelvin: session.currentWhiteBalanceKelvin(),
+                    recipeId: chosenRecipeId ?? "")
+                props.merge(Self.dialDeltaProps(applied: applied, current: current)) { _, new in new }
+            }
+            Analytics.shared.track("optimize_dial_override", props: props)
         }
+    }
+
+    /// Numeric dial state (Phase 3 outcome telemetry).
+    struct AppliedDials: Equatable {
+        var shutterSec: Double
+        var iso: Float
+        var ev: Float
+        var wbKelvin: Float?
+        var recipeId: String
+    }
+
+    /// Snapshot the post-verify dial state at Ready (call after read-backs refresh).
+    private func captureAppliedDials(session: CameraSession, recipeId: String) {
+        appliedDialsAtReady = AppliedDials(
+            shutterSec: session.exposureSeconds,
+            iso: session.iso,
+            ev: session.evBias,
+            wbKelvin: session.currentWhiteBalanceKelvin(),
+            recipeId: recipeId)
+    }
+
+    /// Deltas between the AO-applied dials and the user's override.
+    /// Pure — unit-tested.
+    static func dialDeltaProps(applied: AppliedDials, current: AppliedDials) -> [String: String] {
+        var p: [String: String] = [:]
+        p["ev_delta"] = String(format: "%+.1f", current.ev - applied.ev)
+        if applied.shutterSec > 0, current.shutterSec > 0 {
+            p["shutter_delta_stops"] = String(format: "%+.2f", log2(current.shutterSec / applied.shutterSec))
+        }
+        if applied.iso > 0, current.iso > 0 {
+            p["iso_delta_stops"] = String(format: "%+.2f", log2(Double(current.iso / applied.iso)))
+        }
+        if let a = applied.wbKelvin, let c = current.wbKelvin, a > 0, c > 0 {
+            p["wb_kelvin_delta"] = String(format: "%+.0f", c - a)
+        }
+        p["recipe_unchanged"] = (applied.recipeId == current.recipeId) ? "1" : "0"
+        return p
     }
 
     func dismissSuggestedLook() {
         if let look = suggestedLook {
-            Analytics.shared.track("look_dismissed", props: ["look_id": look.id, "source": "suggested"])
+            Analytics.shared.track("look_dismissed", props: [
+                "look_id": look.id,
+                "source": "suggested",
+                "run_id": lastRunId ?? "",
+            ])
         }
         suggestedLook = nil
     }
@@ -235,6 +294,7 @@ final class AutoOptimizeController: ObservableObject {
                 "auto_applied": "1",
                 "rank": "1",
                 "source": "undo",
+                "run_id": lastRunId ?? "",
             ])
         }
         UserDefaults.standard.set(true, forKey: Self.userUndidKey)
@@ -244,7 +304,13 @@ final class AutoOptimizeController: ObservableObject {
 
     func applySuggestedLook(session: CameraSession) {
         guard let look = suggestedLook else { return }
-        Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "suggested", "rank": "1", "auto_applied": "0"])
+        Analytics.shared.track("look_applied", props: [
+            "look_id": look.id,
+            "source": "suggested",
+            "rank": "1",
+            "auto_applied": "0",
+            "run_id": lastRunId ?? "",
+        ])
         session.setActiveLook(look)
         suggestedLook = nil
         phase = .ready
@@ -255,6 +321,8 @@ final class AutoOptimizeController: ObservableObject {
         cloudRefineTask = nil
         sceneWatchTask?.cancel()
         sceneWatchTask = nil
+        captureWindowTask?.cancel()
+        captureWindowTask = nil
         isCloudRefining = false
         runGeneration &+= 1
         phase = .idle
@@ -308,6 +376,8 @@ final class AutoOptimizeController: ObservableObject {
         cloudRefineTask?.cancel()
         isCloudRefining = false
         sceneWatchTask?.cancel()
+        captureWindowTask?.cancel()
+        captureWindowTask = nil
         runGeneration &+= 1
         let generation = runGeneration
         lastTrigger = trigger
@@ -447,12 +517,13 @@ final class AutoOptimizeController: ObservableObject {
             afterSnapshot = recommendedSnapshot(from: solution, session: session)
             agentBaseline = afterSnapshot
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
-            publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session)
+            publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId)
             phase = .ready
             applyFeedbackToken &+= 1
+            captureAppliedDials(session: session, recipeId: recipe.id)
             let latencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             log.info("ready (coach-only) recipe=\(recipe.id, privacy: .public) latency=\(latencyMs)ms")
-            Analytics.shared.track("auto_optimize_success", props: [
+            var successProps: [String: String] = [
                 "recipe_id": recipe.id,
                 "latency_ms": "\(latencyMs)",
                 "path": "local",
@@ -465,9 +536,20 @@ final class AutoOptimizeController: ObservableObject {
                 "thermal_state": Self.thermalStateName,
                 "gpu_stats": Self.gpuStatsProvenance(features),
                 "scene_label_top": features.sceneLabels?.first?.identifier ?? "",
-            ])
+            ]
+            successProps.merge(Self.telemetryV2Props(
+                features: features,
+                solution: solution,
+                residualEV: nil,
+                verifyIterations: 0,
+                lensDeviceType: session.readbackState().lensDeviceType
+            )) { _, new in new }
+            Analytics.shared.track("auto_optimize_success", props: successProps)
             AOPerf.end(perfId, outcome: "ready-coach-only")
             consumeSharedFreeIfNeeded(entitlements)
+            scheduleCaptureWindowCheck(runId: runId, recipeId: recipe.id)
+            maybeCaptureOptInBracket(session: session, runId: runId, recipeId: recipe.id,
+                                     features: features, coachOnly: true)
             return
         }
 
@@ -479,11 +561,16 @@ final class AutoOptimizeController: ObservableObject {
         // write to land (completion + ~2 frames), compare exposureTargetOffset,
         // correct ISO while |offset − targetEV| > 0.3 EV (≤2 iterations).
         // Replaces the old single >1-stop nudge.
+        // The residual is hoisted into the AO Ready telemetry (Phase 3).
+        var verifyResidualEV: Double? = nil
+        var verifyIterations = 0
         if let targetEV = solution.targetEV,
            solution.phoneTargets.exposureDurationSec != nil,
            entitlements.canApplyDials {
             let v = await session.verifyExposure(targetEV: targetEV)
+            verifyIterations = v.iterations
             if v.verified {
+                verifyResidualEV = v.residualEV
                 if v.iterations > 0 {
                     verifyNotes.append(String(format:
                         "Exposure was %+.1f EV off target — corrected in %d iteration(s); residual %+.1f EV.",
@@ -534,14 +621,15 @@ final class AutoOptimizeController: ObservableObject {
         diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
         advancedDiffs = buildAdvancedDiffs(session: session)
 
-        publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session)
+        publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId)
 
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
+        captureAppliedDials(session: session, recipeId: recipe.id)
         let latencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
         log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets) latency=\(latencyMs)ms")
-        Analytics.shared.track("auto_optimize_success", props: [
+        var successProps: [String: String] = [
             "recipe_id": recipe.id,
             "latency_ms": "\(latencyMs)",
             "path": "local",
@@ -554,10 +642,21 @@ final class AutoOptimizeController: ObservableObject {
             "thermal_state": Self.thermalStateName,
             "gpu_stats": Self.gpuStatsProvenance(features),
             "scene_label_top": features.sceneLabels?.first?.identifier ?? "",
-        ])
+        ]
+        successProps.merge(Self.telemetryV2Props(
+            features: features,
+            solution: solution,
+            residualEV: verifyResidualEV,
+            verifyIterations: verifyIterations,
+            lensDeviceType: readback.lensDeviceType
+        )) { _, new in new }
+        Analytics.shared.track("auto_optimize_success", props: successProps)
         AOPerf.end(perfId, outcome: "ready")
         consumeSharedFreeIfNeeded(entitlements)
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
+        scheduleCaptureWindowCheck(runId: runId, recipeId: recipe.id)
+        maybeCaptureOptInBracket(session: session, runId: runId, recipeId: recipe.id,
+                                 features: features, coachOnly: false)
 
         // Pass 2: refine the LOCKED recipe with one still JPEG (never pixels for Pass 1).
         guard allowCloudRefine else {
@@ -583,7 +682,8 @@ final class AutoOptimizeController: ObservableObject {
         recipe: Recipe,
         features: SceneFeatures,
         solution: SettingsSolver.Solution,
-        session: CameraSession
+        session: CameraSession,
+        runId: String
     ) {
         chosenRecipeId = decision.recipeId
         chosenRecipeTitle = decision.recipeTitle
@@ -616,6 +716,7 @@ final class AutoOptimizeController: ObservableObject {
                     "rank": "1",
                     "auto_applied": "1",
                     "confidence": String(format: "%.2f", suggested.confidence),
+                    "run_id": runId,
                 ])
             } else {
                 suggestedLook = suggested.look
@@ -651,6 +752,68 @@ final class AutoOptimizeController: ObservableObject {
     /// GPU stats provenance for the run: "metal", "cpu", or "none".
     static func gpuStatsProvenance(_ features: SceneFeatures) -> String {
         features.gpuStatsFresh ? (features.gpuStatsSource ?? "unknown") : "none"
+    }
+
+    /// Phase 3 telemetry props for `auto_optimize_success` (additive — the
+    /// caller keeps every existing key). Numeric only, never pixels; the
+    /// 45-dim `featureVector()` contract is untouched.
+    static func telemetryV2Props(
+        features: SceneFeatures,
+        solution: SettingsSolver.Solution,
+        residualEV: Double?,
+        verifyIterations: Int,
+        lensDeviceType: String
+    ) -> [String: String] {
+        AOTelemetrySerializer.readyProps(
+            features: features,
+            planShutterSec: solution.phoneTargets.exposureDurationSec,
+            planISO: solution.phoneTargets.iso,
+            planTargetEV: solution.targetEV,
+            residualEV: residualEV,
+            verifyIterations: verifyIterations,
+            lensDeviceType: lensDeviceType
+        )
+    }
+
+    /// After Ready, wait out the 30 s capture window: when it closes with no
+    /// capture (the run id was never consumed by `takeRecentRunIdForCapture`),
+    /// log `optimize_capture_abandoned` — the capture-vs-abandon outcome label.
+    /// Cancelled by a newer run, `clear()`, or undo.
+    private func scheduleCaptureWindowCheck(runId: String, recipeId: String) {
+        captureWindowTask?.cancel()
+        captureWindowTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 31_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            guard self.lastRunId == runId else { return } // captured or superseded
+            self.lastRunId = nil // close the window
+            Analytics.shared.track("optimize_capture_abandoned", props: [
+                "run_id": runId,
+                "recipe_id": recipeId,
+                "trigger": self.lastTrigger,
+            ])
+        }
+    }
+
+    /// Phase 3 opt-in bracket: off the AO critical path (the capture module
+    /// adds its own post-Ready delay). No-op when the toggle is off.
+    private func maybeCaptureOptInBracket(
+        session: CameraSession,
+        runId: String,
+        recipeId: String,
+        features: SceneFeatures,
+        coachOnly: Bool
+    ) {
+        AOBracketCapture.shared.maybeCaptureBracket(
+            session: session,
+            run: AOBracketRun(
+                runId: runId,
+                recipeId: recipeId,
+                capturedAt: Date(),
+                coachOnly: coachOnly,
+                features: features,
+                isCurrent: { [weak self] in self?.lastRunId == runId }
+            )
+        )
     }
 
     /// Returns the last run id when a photo is captured within 30 s of a

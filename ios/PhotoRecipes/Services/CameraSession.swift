@@ -1130,6 +1130,55 @@ final class CameraSession: NSObject, ObservableObject {
         return results
     }
 
+    /// Strong refs to in-flight bracket delegates (AVFoundation does not
+    /// retain the delegate passed to `capturePhoto`).
+    private var activeBracketDelegates: [AOBracketPhotoDelegate] = []
+
+    /// Phase 3 opt-in bracket: frames at the given EV offsets via
+    /// AVCapturePhotoBracketSettings + AVCaptureManualExposureBracketedStillImageSettings.
+    /// Uses its own delegate — never touches the normal capture path's
+    /// `photoCont`. Throws when the session isn't running or the bracket fails.
+    ///
+    /// Assumed-but-unverified on device: bracketed frames each deliver one
+    /// `didFinishProcessingPhoto` before `didFinishCaptureFor`; the
+    /// per-frame EV offset is read back from EXIF (order-independent).
+    func captureExposureBracket(evOffsets: [Float]) async throws -> [Data] {
+        let baseShutter = exposureSeconds
+        let baseISO = iso
+        let caps = capabilities
+        let maxQuality = photoOutput.maxPhotoQualityPrioritization
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[Data], Error>) in
+            queue.async { [weak self] in
+                guard let self else { cont.resume(throwing: CamError.noDevice); return }
+                guard self.session.isRunning else {
+                    cont.resume(throwing: CamError.captureFailed); return
+                }
+                guard !self.photoOutput.connections.isEmpty else {
+                    cont.resume(throwing: CamError.badOutput); return
+                }
+                let manual = AOBracketCapture.bracketedSettings(
+                    baseShutter: baseShutter,
+                    baseISO: baseISO,
+                    offsets: evOffsets,
+                    minShutter: caps.minExposureSeconds,
+                    maxShutter: caps.maxExposureSeconds)
+                guard !manual.isEmpty else { cont.resume(throwing: CamError.captureFailed); return }
+                let settings = AVCapturePhotoBracketSettings(
+                    bracketedSettings: manual, lensStabilization: [:])
+                // Must match photoOutput.maxPhotoQualityPrioritization or AVFoundation aborts (SIGABRT).
+                settings.photoQualityPrioritization = maxQuality
+                let delegate = AOBracketPhotoDelegate(continuation: cont)
+                delegate.onDone = { [weak self, weak delegate] in
+                    Task { @MainActor in
+                        self?.activeBracketDelegates.removeAll { $0 === delegate }
+                    }
+                }
+                self.activeBracketDelegates.append(delegate)
+                self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+            }
+        }
+    }
+
 
     // MARK: - Creative Look (user apply) + lens pick
 
@@ -1313,6 +1362,13 @@ final class CameraSession: NSObject, ObservableObject {
         guard let device = input?.device else { return nil }
         let g = device.deviceWhiteBalanceGains
         return (Double(g.redGain), Double(g.greenGain), Double(g.blueGain))
+    }
+
+    /// Current white-balance color temperature estimate (Kelvin), for Phase 3
+    /// override-delta telemetry. Nil without a device.
+    func currentWhiteBalanceKelvin() -> Float? {
+        guard let device = input?.device else { return nil }
+        return device.temperatureAndTintValues(for: device.deviceWhiteBalanceGains).temperature
     }
 
     /// Field of view of the active format, in degrees (for px/rad conversions).
