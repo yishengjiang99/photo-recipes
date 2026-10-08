@@ -7,11 +7,10 @@ import XCTest
 ///
 /// Meter model: `offset = log2(programmedProduct / sceneProduct)`.
 ///
-/// POLARITY NOTE (A7 owns the device truth): positive offset is reported when
-/// the programmed exposure EXCEEDS what the scene needs. That is the polarity
-/// the loop's correction math (`2^(−error)`, kept as Phase 1 wrote it)
-/// converges under. If the A7 sign-convention fix flips the correction sign,
-/// negate this model's offset.
+/// POLARITY (A7-resolved): positive offset is reported when the programmed
+/// exposure EXCEEDS what the scene needs (positive = overexposed — brighter
+/// than target). The loop's correction math (`2^(−error)`) converges under
+/// this polarity, which matches the device truth.
 @MainActor
 final class FakeExposureDevice: ExposureWriteClock {
     /// Exposure product the scene needs for a correct exposure at targetEV 0.

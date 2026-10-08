@@ -132,9 +132,10 @@ enum ExposureVerifyLoop {
     /// - `.systemAuto`: never write (verify only runs on custom exposure);
     ///   report clamped.
     ///
-    /// Sign convention: `factor = 2^(−error)` is kept exactly as the Phase 1
-    /// code had it. The device polarity of `exposureTargetOffset` is owned by
-    /// the A7 sign-convention fix — do not flip the sign here.
+    /// Sign convention (A7-resolved): positive `exposureTargetOffset` means
+    /// overexposed — brighter than target — so `error > 0` calls for less
+    /// exposure and `factor = 2^(−error)` is correct as written. Do not flip
+    /// the sign here.
     static func correctionTarget(
         error: Double,
         priority: ExposurePlanner.Priority?,
@@ -144,7 +145,7 @@ enum ExposureVerifyLoop {
         isoRange: ClosedRange<Float>,
         shutterRange: ClosedRange<Double>
     ) -> Correction {
-        // A7 owns the sign convention; kept as Phase 1 wrote it.
+        // A7-resolved: positive offset = overexposed, so 2^(−error) is correct.
         let factor = pow(2.0, -error)
         let wantISO = currentISO * Float(factor)
         let clampedISO = min(max(wantISO, isoRange.lowerBound), isoRange.upperBound)

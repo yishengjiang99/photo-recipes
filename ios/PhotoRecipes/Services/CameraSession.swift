@@ -1512,7 +1512,9 @@ final class CameraSession: NSObject, ObservableObject {
 
     /// Closed-loop verify + correct after a custom-exposure apply.
     struct ExposureVerifyResult {
-        /// Final `offset − targetEV`, in stops (+ means under).
+        /// Final `offset − targetEV`, in stops (+ means over — brighter than
+        /// target; − means under). Same sign convention as
+        /// `ExposurePlanner.Plan.residualEV`.
         var residualEV: Double
         var iterations: Int
         var clamped: Bool
