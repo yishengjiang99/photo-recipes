@@ -15,7 +15,7 @@ final class ExposurePlannerTests: XCTestCase {
     override func setUp() {
         super.setUp()
         limits = ExposurePlanner.DeviceLimits(
-            minShutterSeconds: 1 / 8000,
+            minShutterSeconds: 1.0 / 8000,
             maxShutterSeconds: 1,
             minISO: 50,
             maxISO: 3200
@@ -34,13 +34,13 @@ final class ExposurePlannerTests: XCTestCase {
         // (brightness01 ~0.45 in both) — the light level lives in E_auto.
         // Dim indoor: AE converged at 1/30 s × ISO 1600.
         let dim = ExposurePlanner.plan(
-            eAuto: (1 / 30) * 1600, targetEV: 0,
-            priority: .auto(shutterCapSeconds: 1 / 60),
+            eAuto: (1.0 / 30) * 1600, targetEV: 0,
+            priority: .auto(shutterCapSeconds: 1.0 / 60),
             motion: motion, limits: limits)
         // Bright outdoor: AE converged at 1/2000 s × ISO 50.
         let bright = ExposurePlanner.plan(
-            eAuto: (1 / 2000) * 50, targetEV: 0,
-            priority: .auto(shutterCapSeconds: 1 / 60),
+            eAuto: (1.0 / 2000) * 50, targetEV: 0,
+            priority: .auto(shutterCapSeconds: 1.0 / 60),
             motion: motion, limits: limits)
 
         XCTAssertGreaterThan(
@@ -51,9 +51,9 @@ final class ExposurePlannerTests: XCTestCase {
         // Both conserve the metered product (dim hits the max-ISO clamp but
         // still lands exactly on E_target here).
         XCTAssertEqual(
-            dim.shutterSeconds * Double(dim.iso), (1 / 30) * 1600, accuracy: 0.01)
+            dim.shutterSeconds * Double(dim.iso), (1.0 / 30) * 1600, accuracy: 0.01)
         XCTAssertEqual(
-            bright.shutterSeconds * Double(bright.iso), (1 / 2000) * 50, accuracy: 1e-6)
+            bright.shutterSeconds * Double(bright.iso), (1.0 / 2000) * 50, accuracy: 1e-6)
         XCTAssertFalse(dim.clamped)
         XCTAssertFalse(bright.clamped)
     }
@@ -65,10 +65,10 @@ final class ExposurePlannerTests: XCTestCase {
         let targetEV = 0.3
         let plan = ExposurePlanner.plan(
             eAuto: eAuto, targetEV: targetEV,
-            priority: .shutter(seconds: 1 / 30),
+            priority: .shutter(seconds: 1.0 / 30),
             motion: motion, limits: limits)
         let eTarget = eAuto * pow(2, targetEV)
-        XCTAssertEqual(plan.shutterSeconds, 1 / 30, accuracy: 1e-9)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 30, accuracy: 1e-9)
         XCTAssertEqual(
             plan.shutterSeconds * Double(plan.iso), eTarget,
             accuracy: eTarget * 0.01, "shutter × ISO must equal E_target within 1%")
@@ -80,16 +80,16 @@ final class ExposurePlannerTests: XCTestCase {
     func testClamping_reportsResidualEV() {
         // A 20 s "trails"-style target against a 1/3 s device max shutter.
         var shortLimits = limits!
-        shortLimits.maxShutterSeconds = 1 / 3
+        shortLimits.maxShutterSeconds = 1.0 / 3
         // E_target is 3 stops beyond what max shutter × max ISO can deliver.
-        let eAuto = (1 / 3) * 3200 * 8
+        let eAuto = (1.0 / 3) * 3200 * 8
         let plan = ExposurePlanner.plan(
             eAuto: eAuto, targetEV: 0,
             priority: .shutter(seconds: 20),
             motion: motion, limits: shortLimits)
 
         XCTAssertTrue(plan.clamped)
-        XCTAssertEqual(plan.shutterSeconds, 1 / 3, accuracy: 1e-9)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 3, accuracy: 1e-9)
         XCTAssertEqual(plan.iso, 3200)
         XCTAssertEqual(plan.residualEV, 3.0, accuracy: 0.01)
         XCTAssertEqual(plan.clampMessages.count, 1)
@@ -102,7 +102,7 @@ final class ExposurePlannerTests: XCTestCase {
         // Blazing scene, fixed 1/2 s shutter: ISO bottoms out, residual < 0.
         let plan = ExposurePlanner.plan(
             eAuto: 10, targetEV: 0,
-            priority: .shutter(seconds: 1 / 2),
+            priority: .shutter(seconds: 1.0 / 2),
             motion: motion, limits: limits)
         XCTAssertTrue(plan.clamped)
         XCTAssertEqual(plan.iso, 50)
@@ -117,11 +117,11 @@ final class ExposurePlannerTests: XCTestCase {
     func testFaceEVOffset_scalesExposureByTwoToThePointSeven() {
         let base = ExposurePlanner.plan(
             eAuto: 1.0, targetEV: 0,
-            priority: .shutter(seconds: 1 / 60),
+            priority: .shutter(seconds: 1.0 / 60),
             motion: motion, limits: limits)
         let face = ExposurePlanner.plan(
             eAuto: 1.0, targetEV: 0.7,
-            priority: .shutter(seconds: 1 / 60),
+            priority: .shutter(seconds: 1.0 / 60),
             motion: motion, limits: limits)
         let baseE = base.shutterSeconds * Double(base.iso)
         let faceE = face.shutterSeconds * Double(face.iso)
@@ -161,7 +161,7 @@ final class ExposurePlannerTests: XCTestCase {
     func testHandheldLimit_oneOverTwoF() {
         // 70° (horizontal) FOV → f_35 ≈ 25.7 mm → 1/(2f) ≈ 1/51 s.
         let hl = ExposurePlanner.handheldLimitSeconds(fieldOfViewDegrees: 70)
-        XCTAssertEqual(hl, 1 / 51.4, accuracy: 0.002)
+        XCTAssertEqual(hl, 1.0 / 51.4, accuracy: 0.002)
     }
 
     func testMotionLimit_blurBudgetOverOmegaFocalPx() {
@@ -212,7 +212,7 @@ final class ExposurePlannerTests: XCTestCase {
             supportsExposureTargetBias: true,
             supportsWhiteBalanceLock: true,
             supportsFocusLock: true,
-            minExposureSeconds: 1 / 8000,
+            minExposureSeconds: 1.0 / 8000,
             maxExposureSeconds: 1,
             minISO: 50,
             maxISO: 3200,
@@ -223,7 +223,7 @@ final class ExposurePlannerTests: XCTestCase {
 
     private func solverFeatures() -> SceneFeatures {
         var f = SceneFeatures()
-        f.meteredExposureSeconds = 1 / 60
+        f.meteredExposureSeconds = 1.0 / 60
         f.meteredISO = 800
         f.sceneEV100 = 4.6
         f.handShakeRadPerSec = 0.01
