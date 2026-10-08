@@ -93,8 +93,12 @@ final class AutoOptimizeController: ObservableObject {
     @Published var sceneChangedSuggestion: String?
     /// Monotonic id of the last run (ties outcome telemetry to the run).
     private(set) var lastRunId: String?
+    /// When the last run finished — photo-captured outcomes count within 30 s.
+    private(set) var lastRunDate: Date?
     /// Trigger of the last run: manual / auto_first_capture / subject_change / voice / deep_link / teach.
     private(set) var lastTrigger: String = "manual"
+    /// Run id for which a manual dial override was already tracked (one per run).
+    private var overrideTrackedForRun: String?
 
     /// Set when the user undoes an Auto Optimize — never auto-run again for this install.
     static let userUndidKey = "autoOptimize.userUndid"
@@ -125,8 +129,8 @@ final class AutoOptimizeController: ObservableObject {
     private var runGeneration = 0
     private var cloudRefineTask: Task<Void, Never>?
     private var sceneWatchTask: Task<Void, Never>?
-    /// The scorer behind Pass 1 (JSON v1; Core ML later behind the same protocol).
-    private let scorer: RecipeScoring = JSONRecipeScorer()
+    /// The scorer behind Pass 1 (JSON v1 default; Core ML opt-in via Settings).
+    private let scorer: RecipeScoring = RecipeScorerSelector.scorer()
 
     var teachOneLiner: String? {
         let tw = teachWhy?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -196,7 +200,18 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
     }
 
-    func markDirty() { isDirtyOverride = true }
+    func markDirty() {
+        isDirtyOverride = true
+        // Manual dial override after an optimize — outcome of that run, once per run.
+        if let runId = lastRunId, overrideTrackedForRun != runId {
+            overrideTrackedForRun = runId
+            Analytics.shared.track("optimize_dial_override", props: [
+                "recipe_id": chosenRecipeId ?? "",
+                "trigger": lastTrigger,
+                "run_id": runId,
+            ])
+        }
+    }
 
     func dismissSuggestedLook() {
         if let look = suggestedLook {
@@ -273,7 +288,8 @@ final class AutoOptimizeController: ObservableObject {
         sceneNote: String = "",
         elevationDegrees: Double? = nil,
         handShake: Double? = nil,
-        trigger: String = "manual"
+        trigger: String = "manual",
+        parentRunId: String? = nil
     ) async {
         guard !phase.isRunning else {
             log.info("run skipped — already running")
@@ -295,6 +311,7 @@ final class AutoOptimizeController: ObservableObject {
         let startedAt = Date()
         let runId = UUID().uuidString
         lastRunId = runId
+        lastRunDate = Date()
         let perfId = AOPerf.begin(runId: runId)
         let isFirstSuccessPending = !UserDefaults.standard.bool(
             forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
@@ -412,6 +429,10 @@ final class AutoOptimizeController: ObservableObject {
                 "path": "local",
                 "coach_only": "1",
                 "run_id": runId,
+                "parent_run_id": parentRunId ?? "",
+                "features_v": "\(SceneFeatures.currentSchemaVersion)",
+                "feature_vector": Self.quantizedVector(features),
+                "top3": Self.top3Scores(scores),
             ])
             AOPerf.end(perfId, outcome: "ready-coach-only")
             consumeSharedFreeIfNeeded(entitlements)
@@ -474,6 +495,10 @@ final class AutoOptimizeController: ObservableObject {
             "path": "local",
             "trigger": trigger,
             "run_id": runId,
+            "parent_run_id": parentRunId ?? "",
+            "features_v": "\(SceneFeatures.currentSchemaVersion)",
+            "feature_vector": Self.quantizedVector(features),
+            "top3": Self.top3Scores(scores),
         ])
         AOPerf.end(perfId, outcome: "ready")
         consumeSharedFreeIfNeeded(entitlements)
@@ -541,6 +566,29 @@ final class AutoOptimizeController: ObservableObject {
                 suggestedLook = suggested.look
             }
         }
+    }
+
+    // MARK: - Outcome telemetry (same run id)
+
+    /// The 45-dim feature vector quantized to 2 decimals for telemetry.
+    /// Numeric features only — Pass 1 telemetry never carries pixels.
+    static func quantizedVector(_ features: SceneFeatures) -> String {
+        features.featureVector().map { String(format: "%.2f", $0) }.joined(separator: ",")
+    }
+
+    static func top3Scores(_ scores: [RecipeScore]) -> String {
+        scores.prefix(3)
+            .map { "\($0.recipeId):\(String(format: "%.2f", $0.probability))" }
+            .joined(separator: ",")
+    }
+
+    /// Returns the last run id when a photo is captured within 30 s of a
+    /// successful optimize (consumed — one capture per run).
+    func takeRecentRunIdForCapture() -> String? {
+        guard let id = lastRunId, let at = lastRunDate,
+              Date().timeIntervalSince(at) <= 30 else { return nil }
+        lastRunId = nil
+        return id
     }
 
     // MARK: - Scene-change watch (never a silent re-run)

@@ -736,13 +736,14 @@ struct CameraView: View {
             // Also-try chip: runner-up recipe when the top score was uncertain.
             if let alsoId = optimizer.alsoTryRecipeId, !optimizer.phase.isRunning {
                 Button {
+                    let parent = optimizer.lastRunId
                     Analytics.shared.track("also_try_tap", props: [
                         "recipe_id": alsoId,
-                        "run_id": optimizer.lastRunId ?? "",
+                        "run_id": parent ?? "",
                     ])
                     session.appliedRecipeId = nil
                     router.stagedRecipeId = alsoId
-                    Task { await runOptimize(trigger: "also_try") }
+                    Task { await runOptimize(trigger: "also_try", parentRunId: parent) }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "shuffle")
@@ -1203,7 +1204,7 @@ struct CameraView: View {
         await task.value
     }
 
-    private func runOptimize(trigger: String = "manual") async {
+    private func runOptimize(trigger: String = "manual", parentRunId: String? = nil) async {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // Quota exhausted (not Pro/unlimited): paywall + visible error/toast — never silent.
         // Quota counts successful optimizes only; free_quota_hit is tracked by presentHardPaywall.
@@ -1229,7 +1230,8 @@ struct CameraView: View {
             sceneNote: sceneNote,
             elevationDegrees: horizon.isAvailable ? horizon.cameraElevationDegrees : nil,
             handShake: horizon.isAvailable ? horizon.handShakeRadPerSec : nil,
-            trigger: trigger
+            trigger: trigger,
+            parentRunId: parentRunId
         )
         // applyFeedbackToken / phase drive burst, toast, or error pill — never silent.
         if case .ready = optimizer.phase {
@@ -1597,6 +1599,13 @@ struct CameraView: View {
     /// Runs on every successful `capturePhoto` return — never gated on Photos save.
     private func playCaptureFeedback(jpeg: Data) {
         captureFeedbackTask?.cancel()
+        // Outcome of the last optimize when the shutter lands within 30 s.
+        if let runId = optimizer.takeRecentRunIdForCapture() {
+            Analytics.shared.track("optimize_photo_captured", props: [
+                "recipe_id": optimizer.chosenRecipeId ?? session.appliedRecipeId ?? "",
+                "run_id": runId,
+            ])
+        }
         let freeze = UIImage(data: jpeg) ?? session.lastThumb
         // Heavy shutter thunk immediately — B20 deferred this until after library save.
         let heavy = UIImpactFeedbackGenerator(style: .heavy)
@@ -1656,6 +1665,18 @@ struct CameraView: View {
     private func applyStagingIfNeeded() {
         guard let id = router.stagedRecipeId,
               let recipe = BundledPresets.recipe(id: id) else { return }
+        // Recipe switch via Library shortly after an optimize — outcome of that run.
+        if id != optimizer.chosenRecipeId,
+           let runId = optimizer.lastRunId,
+           let at = optimizer.lastRunDate,
+           Date().timeIntervalSince(at) <= 30 {
+            Analytics.shared.track("optimize_recipe_switched", props: [
+                "from_recipe_id": optimizer.chosenRecipeId ?? "",
+                "to_recipe_id": id,
+                "source": "library",
+                "run_id": runId,
+            ])
+        }
         if router.pendingApply {
             _ = session.apply(recipe: recipe)
             if let targets = router.stagedPhoneTargets {
