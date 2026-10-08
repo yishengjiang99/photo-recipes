@@ -1142,12 +1142,12 @@ final class CameraSession: NSObject, ObservableObject {
     /// Assumed-but-unverified on device: bracketed frames each deliver one
     /// `didFinishProcessingPhoto` before `didFinishCaptureFor`; the
     /// per-frame EV offset is read back from EXIF (order-independent).
-    func captureExposureBracket(evOffsets: [Float]) async throws -> [Data] {
+    func captureExposureBracket(evOffsets: [Float]) async throws -> AOBracketFrames {
         let baseShutter = exposureSeconds
         let baseISO = iso
         let caps = capabilities
         let maxQuality = photoOutput.maxPhotoQualityPrioritization
-        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[Data], Error>) in
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AOBracketFrames, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
                 guard self.session.isRunning else {

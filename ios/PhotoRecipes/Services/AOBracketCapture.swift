@@ -163,18 +163,21 @@ final class AOBracketCapture {
 
 // MARK: - Bracket photo delegate (separate from the normal capture path)
 
+/// One captured JPEG per bracketed frame.
+typealias AOBracketFrames = [Data]
+
 /// Accumulates one `didFinishProcessingPhoto` per bracketed frame, then
 /// resolves when the bracket completes. Never touches `CameraSession.photoCont`.
 final class AOBracketPhotoDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     private let lock = NSLock()
-    private let continuation: CheckedContinuation<[Data], Error>
-    private var frames: [Data] = []
+    private let continuation: CheckedContinuation<AOBracketFrames, Error>
+    private var frames: AOBracketFrames = []
     private var errors: [Error] = []
     private var done = false
     /// Called (once) on completion so the session can drop its strong ref.
     var onDone: (() -> Void)?
 
-    init(continuation: CheckedContinuation<[Data], Error]) {
+    init(continuation: CheckedContinuation<AOBracketFrames, Error>) {
         self.continuation = continuation
     }
 
