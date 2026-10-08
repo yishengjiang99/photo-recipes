@@ -182,6 +182,10 @@ struct CameraView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.easeOut(duration: 0.22)) { keyboardHeight = 0 }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            // Keep video-output frames upright for Vision when the interface rotates.
+            session.updateVideoOutputOrientation()
+        }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -324,7 +328,14 @@ struct CameraView: View {
                 CameraPreviewView(
                     session: session.session,
                     previewLUTId: comparingOriginal ? nil : session.previewLUTId,
-                    creativeLook: comparingOriginal ? nil : session.activeCreativeLook
+                    creativeLook: comparingOriginal ? nil : session.activeCreativeLook,
+                    onPreviewLayer: { layer in
+                        // UI → device point-of-interest conversion for tap-to-focus
+                        // and Auto Optimize's Vision → device path. Also re-applies
+                        // the video-output rotation now the session is streaming.
+                        session.devicePointConverter = PreviewLayerDevicePointConverter(layer: layer)
+                        session.updateVideoOutputOrientation()
+                    }
                 )
                     .ignoresSafeArea()
                     .simultaneousGesture(
@@ -339,7 +350,9 @@ struct CameraView: View {
                                 x: value.location.x / geo.size.width,
                                 y: value.location.y / geo.size.height
                             )
-                            session.focus(at: pt, lock: entitlements.canApplyDials)
+                            // UI-space tap → device point of interest; the reticle
+                            // keeps the UI point.
+                            session.focusOnUIPoint(pt, lock: entitlements.canApplyDials)
                         }
                     )
 

@@ -49,14 +49,24 @@ final class CameraSession: NSObject, ObservableObject {
 
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "photo-recipes.camera")
+    /// Dedicated serial queue for live video-frame delivery — never the capture queue.
+    private let videoQueue = DispatchQueue(label: "photo-recipes.video-frames", qos: .userInitiated)
     private let photoOutput = AVCapturePhotoOutput()
     private let videoOutput = AVCaptureVideoDataOutput()
     /// Latest viewfinder frame for silent probes. `nonisolated(unsafe)` is sound:
-    /// every access is serialized on `queue` (delegate runs on `queue`,
-    /// readers go through `queue.sync`).
-    private nonisolated(unsafe) var latestProbePixelBuffer: CVPixelBuffer?
+    /// every access is serialized on `videoQueue` (delegate runs on `videoQueue`,
+    /// readers go through `videoQueue.sync`).
+    private nonisolated(unsafe) var latestProbeFrame: (buffer: CVPixelBuffer, timestamp: CMTime)?
     private var input: AVCaptureDeviceInput?
     private var photoCont: CheckedContinuation<Data, Error>?
+
+    /// Live-frame consumer (SceneSensor). Invoked from a Task hop off the video
+    /// delegate — never blocks the capture queue.
+    var frameConsumer: ((CVPixelBuffer, CMTime) -> Void)?
+    /// UI → device point-of-interest converter. Production sets a
+    /// `PreviewLayerDevicePointConverter` once the preview layer exists; tests
+    /// inject a mock. Nil → identity fallback.
+    var devicePointConverter: DevicePointConverter?
 
     @Published var auth: AuthState = .notDetermined
     @Published var isRunning = false
@@ -244,12 +254,21 @@ final class CameraSession: NSObject, ObservableObject {
                     session.addOutput(photoOutput)
                     photoOutput.maxPhotoQualityPrioritization = .quality
                     // Silent viewfinder frames for the scene probe — no shutter, no flash.
-                    // Delivered on `queue`; latest frame retained for probe grabs.
+                    // Delivered on `videoQueue`; latest frame retained for probe grabs.
                     videoOutput.alwaysDiscardsLateVideoFrames = true
-                    videoOutput.setSampleBufferDelegate(self, queue: queue)
+                    videoOutput.videoSettings = [
+                        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                    ]
+                    videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
                     guard session.canAddOutput(videoOutput) else { throw CamError.badOutput }
                     session.addOutput(videoOutput)
                     session.commitConfiguration()
+                    // Orientation/mirror must be set after the output joins the session
+                    // (the connection only exists then). Runs on the main actor.
+                    let output = videoOutput
+                    Task { @MainActor in
+                        self.applyVideoOutputOrientation(output: output, isFront: self.isFront)
+                    }
                     Task { @MainActor in
                         self.input = inp
                         self.configured = true
@@ -270,6 +289,59 @@ final class CameraSession: NSObject, ObservableObject {
         let types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera]
         let disc = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: pos)
         return disc.devices.first { $0.deviceType == .builtInWideAngleCamera } ?? disc.devices.first
+    }
+
+    /// Sets the video data output connection rotation so every frame handed to
+    /// Vision is upright, and mirrors the front camera. Sensor-native frames are
+    /// landscape; without this, Vision runs on sideways frames and every box it
+    /// returns is in the wrong space.
+    private func applyVideoOutputOrientation(output: AVCaptureVideoDataOutput, isFront: Bool) {
+        guard let connection = output.connection(with: .video) else { return }
+        if #available(iOS 17, *) {
+            let angle = Self.videoRotationAngle(for: Self.currentInterfaceOrientation())
+            if connection.isVideoRotationAngleSupported(angle) {
+                connection.videoRotationAngle = angle
+            }
+        } else if connection.isVideoOrientationSupported {
+            connection.videoOrientation = Self.videoOrientation(for: Self.currentInterfaceOrientation())
+        }
+        if connection.isVideoMirroringSupported {
+            connection.isVideoMirrored = isFront
+        }
+    }
+
+    /// Re-apply rotation/mirror, e.g. on interface rotation or camera flip.
+    /// Safe to call any time after `start()`.
+    func updateVideoOutputOrientation() {
+        applyVideoOutputOrientation(output: videoOutput, isFront: isFront)
+    }
+
+    /// Clockwise rotation (degrees) that makes sensor-native landscape frames upright.
+    static func videoRotationAngle(for orientation: UIInterfaceOrientation) -> CGFloat {
+        switch orientation {
+        case .portrait: return 90
+        case .portraitUpsideDown: return 270
+        case .landscapeLeft: return 180
+        case .landscapeRight: return 0
+        @unknown default: return 90
+        }
+    }
+
+    private static func videoOrientation(for orientation: UIInterfaceOrientation) -> AVCaptureVideoOrientation {
+        switch orientation {
+        case .portrait: return .portrait
+        case .portraitUpsideDown: return .portraitUpsideDown
+        case .landscapeLeft: return .landscapeLeft
+        case .landscapeRight: return .landscapeRight
+        @unknown default: return .portrait
+        }
+    }
+
+    private static func currentInterfaceOrientation() -> UIInterfaceOrientation {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return scenes.first(where: { $0.activationState == .foregroundActive })?.interfaceOrientation
+            ?? scenes.first?.interfaceOrientation
+            ?? .portrait
     }
 
     func flipCamera() {
@@ -353,17 +425,17 @@ final class CameraSession: NSObject, ObservableObject {
         if captureMode == .auto { captureMode = .manual }
     }
 
+    /// Programs the exposure-target bias WITHOUT touching `exposureMode`.
+    /// Previously this switched the device back to continuous auto-exposure,
+    /// silently discarding custom shutter/ISO written just before it.
     func setEV(_ bias: Float) {
         guard let device = input?.device else { return }
         let clamped = min(max(bias, capabilities.minEV), capabilities.maxEV)
         configure(device) {
-            if device.isExposureModeSupported(.continuousAutoExposure) {
-                device.exposureMode = .continuousAutoExposure
-            }
             device.setExposureTargetBias(clamped, completionHandler: nil)
         }
-        exposureLocked = false
         evBias = clamped
+        exposureLocked = device.exposureMode == .custom
     }
 
     func unlockExposure() {
@@ -376,10 +448,13 @@ final class CameraSession: NSObject, ObservableObject {
         exposureLocked = false
     }
 
-    func focus(at norm: CGPoint, lock: Bool) {
+    /// Applies focus + exposure point of interest. Takes a **device** point
+    /// (sensor space, 0…1) — callers must convert from UI space first via
+    /// `focusOnUIPoint(_:lock:)` or `devicePointConverter`. Never stores the
+    /// reticle: `focusPoint` is UI-space and is only written by `focusOnUIPoint`.
+    func focus(at devicePoint: CGPoint, lock: Bool) {
         guard let device = input?.device else { return }
-        let clamped = CGPoint(x: min(max(norm.x, 0), 1), y: min(max(norm.y, 0), 1))
-        focusPoint = clamped
+        let clamped = CoordinateSpaces.clamp01(devicePoint)
         configure(device) {
             if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = clamped }
             if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = clamped }
@@ -392,6 +467,22 @@ final class CameraSession: NSObject, ObservableObject {
             }
         }
         focusLocked = lock
+    }
+
+    /// UI-space entry point for tap-to-focus and Auto Optimize. Converts the
+    /// UI-normalized point (top-left origin) to a device point of interest,
+    /// applies it, and stores the **UI** point in `focusPoint` for the reticle.
+    func focusOnUIPoint(_ uiPoint: CGPoint, lock: Bool) {
+        let ui = CoordinateSpaces.clamp01(uiPoint)
+        focusPoint = ui
+        let device = devicePointConverter?.devicePoint(uiNormalized: ui) ?? ui
+        focus(at: device, lock: lock)
+    }
+
+    /// Converts a UI-normalized point (top-left origin) to a device point of
+    /// interest (sensor space). Used by Auto Optimize's Vision → device path.
+    func devicePointOfInterest(fromUINormalized uiPoint: CGPoint) -> CGPoint {
+        devicePointConverter?.devicePoint(uiNormalized: uiPoint) ?? CoordinateSpaces.clamp01(uiPoint)
     }
 
     func unlockFocus() {
@@ -433,7 +524,12 @@ final class CameraSession: NSObject, ObservableObject {
         } else if let i = mapped.iso, capabilities.supportsCustomExposure {
             setISO(i)
         }
-        if let ev = mapped.evCompensation { setEV(ev) }
+        // EV is folded into the exposure solve when custom exposure was written;
+        // programming a bias on top would fight the just-written shutter/ISO.
+        if !ExposureApplyPolicy.wroteCustomExposure(shutter: mapped.shutterSeconds, iso: mapped.iso, supported: capabilities.supportsCustomExposure),
+           let ev = mapped.evCompensation {
+            setEV(ev)
+        }
         return true
     }
 
@@ -454,20 +550,30 @@ final class CameraSession: NSObject, ObservableObject {
             ?? targets.shutter.flatMap { RecipeCameraMapper.parseShutter($0) }
         let isoVal: Float? = targets.iso.flatMap { RecipeCameraMapper.parseISO($0) }
 
+        var wroteCustomExposure = false
         if let d = durationSec, let i = isoVal, capabilities.supportsCustomExposure {
             setCustom(duration: d, iso: i)
             wrote = true
+            wroteCustomExposure = true
         } else if let d = durationSec, capabilities.supportsCustomExposure {
             setShutter(d)
             wrote = true
+            wroteCustomExposure = true
         } else if let i = isoVal, capabilities.supportsCustomExposure {
             setISO(i)
             wrote = true
+            wroteCustomExposure = true
         } else if durationSec != nil || isoVal != nil {
             clampMessages.append("Custom exposure unavailable on this lens/format — guidance only.")
         }
 
-        if let raw = targets.ev, let bias = RecipeCameraMapper.parseEV(raw) {
+        // EV is folded into the ISO solve when custom shutter/ISO was written
+        // this apply — programming a bias on top would fight the solve.
+        // (setEV itself also never leaves .custom anymore; this skips the call entirely.)
+        if let bias = ExposureApplyPolicy.evBiasToProgram(
+            evRaw: targets.ev,
+            wroteCustomExposure: wroteCustomExposure
+        ) {
             setEV(bias)
             wrote = true
         }
@@ -478,12 +584,13 @@ final class CameraSession: NSObject, ObservableObject {
 
         if let fp = targets.focusPoint {
             let lock = (targets.focusMode?.lowercased()).map { ["locked", "lock", "near"].contains($0) } ?? true
-            focus(at: fp.cgPoint, lock: lock)
+            // focusPoint is UI-space (top-left normalized); convert to device space.
+            focusOnUIPoint(fp.cgPoint, lock: lock)
             wrote = true
         } else if targets.lensPosition == nil, let focusMode = targets.focusMode?.lowercased() {
             switch focusMode {
             case "locked", "lock", "near":
-                focus(at: focusPoint ?? CGPoint(x: 0.5, y: 0.5), lock: true)
+                focusOnUIPoint(focusPoint ?? CGPoint(x: 0.5, y: 0.5), lock: true)
                 wrote = true
             case "continuous", "auto", "infinity":
                 unlockFocus()
@@ -1127,11 +1234,16 @@ final class CameraSession: NSObject, ObservableObject {
         throw CamError.noFrame
     }
 
+    /// Latest viewfinder frame + presentation timestamp, or nil if the camera
+    /// isn't streaming yet. Serialized on `videoQueue`.
+    func latestFrame() -> (buffer: CVPixelBuffer, timestamp: CMTime)? {
+        videoQueue.sync { latestProbeFrame }
+    }
+
     /// Latest viewfinder frame as a small JPEG, or nil if the camera isn't streaming yet.
-    /// Called from Tasks; pixel buffer is retained/released on `queue`.
+    /// Called from Tasks; pixel buffer is retained/released on `videoQueue`.
     private func viewfinderJPEG(maxDimension: CGFloat = 768, quality: CGFloat = 0.6) -> Data? {
-        let pixelBuffer: CVPixelBuffer? = queue.sync { latestProbePixelBuffer }
-        guard let pixelBuffer else { return nil }
+        guard let pixelBuffer = latestFrame()?.buffer else { return nil }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let extent = ciImage.extent
         let longest = max(extent.width, extent.height)
@@ -1159,6 +1271,51 @@ final class CameraSession: NSObject, ObservableObject {
         return "\(captureMode.shortLabel)\(f) · \(RecipeCameraMapper.formatShutter(exposureSeconds)) · ISO \(Int(iso.rounded()))"
     }
 
+    /// Reads the live device state back after an apply — the verify step
+    /// compares this against what the solver asked for.
+    func readbackState() -> DeviceReadback {
+        guard let device = input?.device else { return .unknown }
+        let exposureMode: String = {
+            switch device.exposureMode {
+            case .custom: return "custom"
+            case .locked: return "locked"
+            case .autoExpose: return "autoExpose"
+            case .continuousAutoExposure: return "continuousAutoExposure"
+            @unknown default: return "unknown"
+            }
+        }()
+        let focusMode: String = {
+            switch device.focusMode {
+            case .locked: return "locked"
+            case .autoFocus: return "autoFocus"
+            case .continuousAutoFocus: return "continuousAutoFocus"
+            @unknown default: return "unknown"
+            }
+        }()
+        return DeviceReadback(
+            exposureMode: exposureMode,
+            exposureDuration: CMTimeGetSeconds(device.exposureDuration),
+            iso: device.iso,
+            focusMode: focusMode,
+            lensDeviceType: device.deviceType.rawValue,
+            exposureTargetOffset: device.exposureTargetOffset
+        )
+    }
+
+    /// Current white-balance gains (for HDR bracket consistency). Nil without a device.
+    func currentWhiteBalanceGains() -> (red: Double, green: Double, blue: Double)? {
+        guard let device = input?.device else { return nil }
+        let g = device.deviceWhiteBalanceGains
+        return (Double(g.redGain), Double(g.greenGain), Double(g.blueGain))
+    }
+
+    /// Field of view of the active format, in degrees (for px/rad conversions).
+    func activeFieldOfViewDegrees() -> Double? {
+        guard let device = input?.device else { return nil }
+        let fov = Double(device.activeFormat.videoFieldOfView)
+        return fov > 0 ? fov : nil
+    }
+
     private func configure(_ device: AVCaptureDevice, _ block: () throws -> Void) {
         do {
             try device.lockForConfiguration()
@@ -1181,6 +1338,45 @@ final class CameraSession: NSObject, ObservableObject {
             }
         }
     }
+}
+
+/// Pure policy for the exposure seam: EV bias is folded into the ISO solve when
+/// custom shutter/ISO was written in the same apply; programming a bias on top
+/// would fight the solve (and the old `setEV` even reset the exposure mode).
+/// Unit-tested — this is the seam that proves `setEV` is never called after
+/// `setCustom` in one apply.
+enum ExposureApplyPolicy {
+    /// Returns the bias to program via `setEV`, or nil to skip the call.
+    static func evBiasToProgram(evRaw: String?, wroteCustomExposure: Bool) -> Float? {
+        guard !wroteCustomExposure else { return nil }
+        guard let raw = evRaw else { return nil }
+        return RecipeCameraMapper.parseEV(raw)
+    }
+
+    /// `apply(recipe:)` variant — same rule from mapped dial values.
+    static func wroteCustomExposure(shutter: Double?, iso: Float?, supported: Bool) -> Bool {
+        guard supported else { return false }
+        return shutter != nil || iso != nil
+    }
+}
+
+/// Live device state read back after an apply (verify step).
+struct DeviceReadback: Equatable {
+    var exposureMode: String
+    var exposureDuration: Double
+    var iso: Float
+    var focusMode: String
+    var lensDeviceType: String
+    var exposureTargetOffset: Float
+
+    static let unknown = DeviceReadback(
+        exposureMode: "unknown",
+        exposureDuration: 0,
+        iso: 0,
+        focusMode: "unknown",
+        lensDeviceType: "unknown",
+        exposureTargetOffset: 0
+    )
 }
 
 extension CameraSession: AVCapturePhotoCaptureDelegate {
@@ -1211,10 +1407,15 @@ extension CameraSession: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        // Runs on `queue`. Storing into the strong var retains the frame
+        // Runs on `videoQueue`. Storing into the strong var retains the frame
         // (Swift retains the unretained Get-rule return); the previous frame
         // is released by ARC, keeping memory flat.
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        latestProbePixelBuffer = pixelBuffer
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        latestProbeFrame = (buffer: pixelBuffer, timestamp: timestamp)
+        // Hop to the consumer off the capture path — Vision never blocks frames.
+        Task { @MainActor [weak self] in
+            self?.frameConsumer?(pixelBuffer, timestamp)
+        }
     }
 }

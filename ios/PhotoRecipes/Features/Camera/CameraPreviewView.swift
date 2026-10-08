@@ -8,6 +8,9 @@ struct CameraPreviewView: UIViewRepresentable {
     var previewLUTId: String? = nil
     /// Active Creative Look — tint overlay approximates bake until Metal live pipeline.
     var creativeLook: CreativeLook? = nil
+    /// Called once with the live preview layer so the session can convert
+    /// UI points → device points of interest (tap-to-focus, AO focus).
+    var onPreviewLayer: ((AVCaptureVideoPreviewLayer) -> Void)? = nil
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
@@ -15,6 +18,7 @@ struct CameraPreviewView: UIViewRepresentable {
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
         view.applyPreviewLUT(previewLUTId)
         view.applyCreativeLook(creativeLook)
+        onPreviewLayer?(view.videoPreviewLayer)
         return view
     }
 
