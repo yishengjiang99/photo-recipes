@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "person": 0.8,
+    "bicycleOrSport": 0.85
+  },
+  "subjectKind": "human",
+  "subjectBox": {
+    "x": 0.35,
+    "y": 0.35,
+    "width": 0.3,
+    "height": 0.4
+  },
+  "subjectAreaFraction": 0.12,
+  "subjectSpeedPxPerSec": 1500,
+  "backgroundSpeedPxPerSec": 1400,
+  "subjectRelativeSpeedPxPerSec": 120,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0.05,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 13,
+  "highlightClipFraction": 0.0,
+  "shadowCrushFraction": 0.0,
+  "percentileSpreadStops": 5,
+  "subjectDeltaStops": null,
+  "warmBias": 0.0,
+  "cameraElevationDegrees": 0,
+  "handShakeRadPerSec": 0.05,
+  "recipeIntent": null
+}

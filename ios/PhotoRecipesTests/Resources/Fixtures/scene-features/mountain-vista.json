@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "landscape": 0.9,
+    "sky": 0.7
+  },
+  "subjectKind": null,
+  "subjectBox": null,
+  "subjectAreaFraction": 0.0,
+  "subjectSpeedPxPerSec": 0,
+  "backgroundSpeedPxPerSec": 0,
+  "subjectRelativeSpeedPxPerSec": 0,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 14,
+  "highlightClipFraction": 0.0,
+  "shadowCrushFraction": 0.0,
+  "percentileSpreadStops": 6,
+  "subjectDeltaStops": null,
+  "warmBias": 0.0,
+  "cameraElevationDegrees": 0,
+  "handShakeRadPerSec": 0.008,
+  "recipeIntent": null
+}

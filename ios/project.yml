@@ -41,12 +41,14 @@ targets:
           # Pass 1 ML data files: resources only (JSON/TXT must not hit the Swift compiler).
           - "Resources/scene-label-groups.json"
           - "Resources/vision-labels.txt"
+          - "Resources/recipe-scorer-v1.json"
     resources:
       - path: PhotoRecipes/Resources/Products.storekit
       - path: PhotoRecipes/Resources/PrivacyInfo.xcprivacy
-      # On-device Pass 1 ML: Vision label mapping (data, not code).
+      # On-device Pass 1 ML: Vision label mapping + recipe scorer weights (data, not code).
       - path: PhotoRecipes/Resources/scene-label-groups.json
       - path: PhotoRecipes/Resources/vision-labels.txt
+      - path: PhotoRecipes/Resources/recipe-scorer-v1.json
     dependencies:
       - package: FacebookSDK
         product: FacebookCore
@@ -84,6 +86,11 @@ targets:
     platform: iOS
     sources:
       - path: PhotoRecipesTests
+        excludes:
+          # Fixtures + dummy Core ML model ship as bundle resources, not sources.
+          - "Resources/**"
+    resources:
+      - path: PhotoRecipesTests/Resources
     dependencies:
       - target: PhotoRecipes
     settings:

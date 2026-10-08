@@ -213,11 +213,16 @@ struct SceneFeatures: Codable, Equatable {
         case "subject.kind.salientObject": return subjectKind == .salientObject ? 1 : 0
         case "subject.areaFraction": return Double(subjectAreaFraction)
         case "subject.centerX": return Double(subjectBox?.centerX ?? 0.5)
-        case "subject.centerY": return Double(subjectCenterY)
+        // Centered encoding: 0 = mid-frame, +1 = bottom edge, −1 = top edge.
+        // A subject low in frame (high UI y) scores positive.
+        case "subject.centerY": return Double((subjectCenterY - 0.5) * 2)
         case "motion.logSubjectSpeed": return Self.logNorm(subjectSpeedPxPerSec)
         case "motion.logBackgroundSpeed": return Self.logNorm(backgroundSpeedPxPerSec)
         case "motion.logRelativeSpeed": return Self.logNorm(subjectRelativeSpeedPxPerSec)
         case "motion.panMatchesSubject":
+            // Gated on real subject motion: a still scene must not read as
+            // "pan matching the subject".
+            guard subjectSpeedPxPerSec > 50 else { return 0 }
             let s = max(subjectSpeedPxPerSec, 1)
             return Double(1 - min(1, subjectRelativeSpeedPxPerSec / s))
         case "motion.directionX": return Double(motionDirectionX)

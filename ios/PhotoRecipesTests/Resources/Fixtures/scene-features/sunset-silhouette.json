@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "sunsetOrSunrise": 0.85,
+    "sky": 0.7
+  },
+  "subjectKind": "face",
+  "subjectBox": {
+    "x": 0.42,
+    "y": 0.3,
+    "width": 0.16,
+    "height": 0.2
+  },
+  "subjectAreaFraction": 0.032,
+  "subjectSpeedPxPerSec": 0,
+  "backgroundSpeedPxPerSec": 0,
+  "subjectRelativeSpeedPxPerSec": 0,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 10,
+  "highlightClipFraction": 0.08,
+  "shadowCrushFraction": 0.12,
+  "percentileSpreadStops": 11,
+  "subjectDeltaStops": -2.5,
+  "warmBias": 0.2,
+  "cameraElevationDegrees": 0,
+  "handShakeRadPerSec": 0.01,
+  "recipeIntent": null
+}
