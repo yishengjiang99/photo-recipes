@@ -1117,7 +1117,10 @@ struct CameraView: View {
         await optimizer.run(
             session: session,
             entitlements: entitlements,
-            preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId,
+            preferStagedRecipeId: AutoOptimizeController.pinnedRecipeId(
+                staged: router.stagedRecipeId,
+                applied: session.appliedRecipeId,
+                aoChosen: optimizer.chosenRecipeId),
             sceneNote: sceneNote,
             elevationDegrees: horizon.isAvailable ? horizon.cameraElevationDegrees : nil,
             handShake: horizon.isAvailable ? horizon.handShakeRadPerSec : nil,

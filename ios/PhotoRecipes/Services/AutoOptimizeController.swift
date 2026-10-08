@@ -450,6 +450,19 @@ final class AutoOptimizeController: ObservableObject {
         applyFeedbackToken = 0
     }
 
+    // MARK: - Staged recipe pinning
+
+    /// Which recipe, if any, pins the run and skips scoring. Only a recipe
+    /// the *user* picked may pin: AO's own previous pick is also written to
+    /// `session.appliedRecipeId`, and feeding that back as "staged" skipped
+    /// scoring forever — one Panning pick then stuck across every scene,
+    /// re-run and camera flip.
+    static func pinnedRecipeId(staged: String?, applied: String?, aoChosen: String?) -> String? {
+        if let staged { return staged }
+        guard let applied else { return nil }
+        return applied == aoChosen ? nil : applied
+    }
+
     // MARK: - Pass 1 (on-device ML loop: features → score → solve → apply → verify)
 
     /// Local-first Auto Optimize. The happy path never calls the network.
