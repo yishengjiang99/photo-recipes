@@ -7,6 +7,8 @@ struct OptimizeResultRow: View {
     var canCompare: Bool
     @Binding var comparing: Bool
     var onUndo: () -> Void
+    /// Phase 3: ties the hold-to-compare outcome to the AO run.
+    var runId: String? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -28,7 +30,10 @@ struct OptimizeResultRow: View {
                                 guard !comparing else { return }
                                 comparing = true
                                 UISelectionFeedbackGenerator().selectionChanged()
-                                Analytics.shared.track("optimize_compare", props: ["source": "hold"])
+                                Analytics.shared.track("optimize_compare", props: [
+                                    "source": "hold",
+                                    "run_id": runId ?? "",
+                                ])
                             }
                             .onEnded { _ in comparing = false }
                     )

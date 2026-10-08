@@ -93,7 +93,7 @@ struct ManualDialsSheet: View {
                         if enabled {
                             session.captureMode = mode
                             if mode == .auto { session.unlockExposure() }
-                            optimizer.markDirty()
+                            optimizer.markDirty(session: session)
                         } else {
                             entitlements.presentHardPaywall(trigger: "dials_locked")
                         }
@@ -120,7 +120,7 @@ struct ManualDialsSheet: View {
                 Button {
                     guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                     session.setShutter(s)
-                    optimizer.markDirty()
+                    optimizer.markDirty(session: session)
                 } label: {
                     Text(RecipeCameraMapper.formatShutter(s))
                         .font(AppTheme.monoSm())
@@ -139,7 +139,7 @@ struct ManualDialsSheet: View {
                 Button {
                     guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                     session.setISO(v)
-                    optimizer.markDirty()
+                    optimizer.markDirty(session: session)
                 } label: {
                     Text("\(Int(v))")
                         .font(AppTheme.monoSm())
@@ -172,7 +172,7 @@ struct ManualDialsSheet: View {
                     set: { newVal in
                         guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                         session.setEV(Float(newVal))
-                        optimizer.markDirty()
+                        optimizer.markDirty(session: session)
                     }
                 ),
                 in: Double(session.capabilities.minEV)...Double(session.capabilities.maxEV),

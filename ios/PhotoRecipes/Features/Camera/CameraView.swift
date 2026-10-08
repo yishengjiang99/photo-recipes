@@ -773,6 +773,7 @@ struct CameraView: View {
                     let parent = optimizer.lastRunId
                     Analytics.shared.track("also_try_tap", props: [
                         "recipe_id": alsoId,
+                        "from_recipe_id": optimizer.chosenRecipeId ?? "",
                         "run_id": parent ?? "",
                     ])
                     session.appliedRecipeId = nil
@@ -1030,6 +1031,12 @@ struct CameraView: View {
                     LongPressGesture(minimumDuration: 0.4).onEnded { _ in
                         guard session.activeCreativeLook != nil || session.previewLUTId != nil else { return }
                         comparingOriginal = true
+                        // Phase 3 outcome label: user inspected before vs after.
+                        Analytics.shared.track("optimize_beforeafter_toggle", props: [
+                            "expanded": "1",
+                            "recipe_id": optimizer.chosenRecipeId ?? "",
+                            "run_id": optimizer.lastRunId ?? "",
+                        ])
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 )
@@ -1555,9 +1562,12 @@ struct CameraView: View {
         captureFeedbackTask?.cancel()
         // Outcome of the last optimize when the shutter lands within 30 s.
         if let runId = optimizer.takeRecentRunIdForCapture() {
+            let secondsAfterReady = optimizer.lastRunDate
+                .map { max(0, Int(Date().timeIntervalSince($0))) } ?? -1
             Analytics.shared.track("optimize_photo_captured", props: [
                 "recipe_id": optimizer.chosenRecipeId ?? session.appliedRecipeId ?? "",
                 "run_id": runId,
+                "seconds_after_ready": "\(secondsAfterReady)",
             ])
         }
         let freeze = UIImage(data: jpeg) ?? session.lastThumb

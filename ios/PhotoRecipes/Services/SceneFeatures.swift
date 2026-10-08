@@ -202,6 +202,10 @@ struct SceneFeatures: Codable, Equatable {
     var gradientScores: [Float]?
     /// Vision top-5 classification labels (raw identifiers + confidence).
     var sceneLabels: [SceneLabel]?
+    /// Number of faces `VNDetectFaceRectanglesRequest` found in the frame
+    /// (0 when none; nil when the payload predates this field). Appended
+    /// Phase 3 — NOT part of the 45-dim Core ML vector.
+    var faceCount: Int?
 
     /// Subject center Y in UI space (0 top … 1 bottom). Low-in-frame subjects
     /// have high values — a strong get-down-low signal with a tilted-up camera.
@@ -324,6 +328,7 @@ struct SceneFeatures: Codable, Equatable {
         case lumaContrast
         case gradientScores
         case sceneLabels
+        case faceCount
     }
 
     /// All-defaults init (the custom `init(from:)` below suppresses the
@@ -375,7 +380,8 @@ struct SceneFeatures: Codable, Equatable {
         cameraElevationDegrees = try c.decodeIfPresent(Float.self, forKey: .cameraElevationDegrees) ?? 0
         handShakeRadPerSec = try c.decodeIfPresent(Float.self, forKey: .handShakeRadPerSec) ?? 0
         recipeIntent = try c.decodeIfPresent(RecipeIntent.self, forKey: .recipeIntent)
-        // Schema v3 (Phase 2) — all tolerant; v2 payloads decode with defaults.
+        // Schema v3 (Phase 2) + Phase 3 appended `faceCount` — all tolerant;
+        // older payloads decode with defaults.
         gpuStatsFresh = try c.decodeIfPresent(Bool.self, forKey: .gpuStatsFresh) ?? false
         gpuStatsSource = try c.decodeIfPresent(String.self, forKey: .gpuStatsSource)
         lumaHistogram64 = try c.decodeIfPresent([Int].self, forKey: .lumaHistogram64)
@@ -385,6 +391,8 @@ struct SceneFeatures: Codable, Equatable {
         lumaContrast = try c.decodeIfPresent(Float.self, forKey: .lumaContrast)
         gradientScores = try c.decodeIfPresent([Float].self, forKey: .gradientScores)
         sceneLabels = try c.decodeIfPresent([SceneLabel].self, forKey: .sceneLabels)
+        // Phase 3 appended field — tolerant; older payloads decode to nil.
+        faceCount = try c.decodeIfPresent(Int.self, forKey: .faceCount)
     }
 }
 
@@ -935,6 +943,7 @@ enum SceneFeatureExtractor {
         // highest-confidence salient object. Boxes converted to UI space.
         let subject = detectPrimarySubject(pixelBuffer: small)
         features.subjectKind = subject.kind
+        features.faceCount = subject.faceCount
         if let box = subject.box {
             let uiBox = CoordinateSpaces.visionRectToUI(box)
             features.subjectBox = NormalizedBox(uiBox)
@@ -1019,6 +1028,7 @@ enum SceneFeatureExtractor {
     private struct DetectedSubject {
         var kind: SubjectKind?
         var box: CGRect? // Vision space (bottom-left origin)
+        var faceCount: Int = 0
     }
 
     private static func detectPrimarySubject(pixelBuffer: CVPixelBuffer) -> DetectedSubject {
@@ -1036,22 +1046,22 @@ enum SceneFeatureExtractor {
 
         if let faces = faceReq.results, !faces.isEmpty,
            let best = faces.max(by: { $0.boundingBox.area < $1.boundingBox.area }) {
-            return DetectedSubject(kind: .face, box: best.boundingBox)
+            return DetectedSubject(kind: .face, box: best.boundingBox, faceCount: faces.count)
         }
         if let humans = humanReq.results, !humans.isEmpty,
            let best = humans.max(by: { $0.boundingBox.area < $1.boundingBox.area }) {
-            return DetectedSubject(kind: .human, box: best.boundingBox)
+            return DetectedSubject(kind: .human, box: best.boundingBox, faceCount: faceReq.results?.count ?? 0)
         }
         if let animals = animalReq.results, !animals.isEmpty,
            let best = animals.max(by: { $0.boundingBox.area < $1.boundingBox.area }) {
-            return DetectedSubject(kind: .animal, box: best.boundingBox)
+            return DetectedSubject(kind: .animal, box: best.boundingBox, faceCount: faceReq.results?.count ?? 0)
         }
         if let obs = saliencyReq.results?.first as? VNSaliencyImageObservation,
            let objects = obs.salientObjects,
            let top = objects.max(by: { $0.confidence < $1.confidence }) {
-            return DetectedSubject(kind: .salientObject, box: top.boundingBox)
+            return DetectedSubject(kind: .salientObject, box: top.boundingBox, faceCount: faceReq.results?.count ?? 0)
         }
-        return DetectedSubject()
+        return DetectedSubject(faceCount: faceReq.results?.count ?? 0)
     }
 
     // MARK: motion
