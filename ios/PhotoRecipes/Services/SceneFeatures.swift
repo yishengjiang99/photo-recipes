@@ -863,6 +863,32 @@ enum SceneFeatureExtractor {
 
     // MARK: motion
 
+    /// Motion-only pass for the sensor's 5 Hz tick. Returns nil when the frame
+    /// pair is unusable (dt out of range, flow failed).
+    static func extractMotion(
+        previousPixelBuffer: CVPixelBuffer,
+        previousTimestamp: CMTime,
+        pixelBuffer: CVPixelBuffer,
+        timestamp: CMTime,
+        subjectBox: NormalizedBox?,
+        fullFrameWidthPx: Double?
+    ) -> MotionFeatures? {
+        let dt = timestamp.seconds - previousTimestamp.seconds
+        guard dt >= 0.05, dt <= 0.5 else { return nil }
+        guard let prevTiny = FrameDownsampler.downsample(previousPixelBuffer, maxLongSide: 256),
+              let tiny = FrameDownsampler.downsample(pixelBuffer, maxLongSide: 256)
+        else { return nil }
+        let width = fullFrameWidthPx ?? Double(CVPixelBufferGetWidth(pixelBuffer))
+        let motion = computeMotion(
+            previous: prevTiny, current: tiny, dt: dt,
+            subjectBox: subjectBox?.cgRect,
+            fullFrameWidthPx: width
+        )
+        // Distinguish "flow failed" (all zeros) from real stillness: flow
+        // failure is rare; treat all-zero as a valid still reading.
+        return motion
+    }
+
     private static func computeMotion(
         previous: CVPixelBuffer,
         current: CVPixelBuffer,
