@@ -6,6 +6,8 @@ struct BeforeAfterChip: View {
     var hasMoreAdvanced: Bool = false
     var onTap: () -> Void
     var onMore: (() -> Void)? = nil
+    /// Phase 3 outcome telemetry: fired on expand/collapse with the new state.
+    var onToggle: ((Bool) -> Void)? = nil
 
     @State private var expanded = false
 
@@ -14,6 +16,7 @@ struct BeforeAfterChip: View {
             VStack(alignment: .leading, spacing: 6) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() }
+                    onToggle?(expanded)
                 } label: {
                     HStack(spacing: 8) {
                         if let recipeTitle {

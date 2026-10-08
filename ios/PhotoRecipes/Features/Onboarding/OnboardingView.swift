@@ -13,7 +13,7 @@ struct OnboardingView: View {
     private static let tips: [Tip] = [
         Tip(
             title: "Auto Optimize",
-            body: "Point at the shot — we write shutter, ISO, EV, WB & focus."
+            body: "Point at the shot — we write shutter, ISO, EV, WB & focus. A Settings opt-in can keep sample frames on-device to improve future results — nothing ever uploads on its own."
         ),
         Tip(
             title: "Recommend & Looks",

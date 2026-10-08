@@ -2,6 +2,7 @@ import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
+import UniformTypeIdentifiers
 import os.log
 
 // MARK: - Phase 3 opt-in exposure bracket
@@ -236,7 +237,7 @@ enum AOBracketDownsampler {
         }
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(
-            out, kUTTypeJPEG as String, 1, nil) else { return nil }
+            out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dest, thumb, [
             kCGImageDestinationLossyCompressionQuality: jpegQuality,
         ] as CFDictionary)

@@ -746,6 +746,7 @@ struct CameraView: View {
                     let parent = optimizer.lastRunId
                     Analytics.shared.track("also_try_tap", props: [
                         "recipe_id": alsoId,
+                        "from_recipe_id": optimizer.chosenRecipeId ?? "",
                         "run_id": parent ?? "",
                     ])
                     session.appliedRecipeId = nil
@@ -833,7 +834,8 @@ struct CameraView: View {
                 OptimizeResultRow(
                     canCompare: session.activeCreativeLook != nil || session.previewLUTId != nil,
                     comparing: $comparingOriginal,
-                    onUndo: { undoOptimize() }
+                    onUndo: { undoOptimize() },
+                    runId: optimizer.lastRunId
                 )
             }
 
@@ -852,6 +854,13 @@ struct CameraView: View {
                     onMore: {
                         controlsTab = .light
                         showDials = true
+                    },
+                    onToggle: { expanded in
+                        Analytics.shared.track("optimize_beforeafter_toggle", props: [
+                            "expanded": expanded ? "1" : "0",
+                            "recipe_id": optimizer.chosenRecipeId ?? "",
+                            "run_id": optimizer.lastRunId ?? "",
+                        ])
                     }
                 )
             }
@@ -1570,9 +1579,12 @@ struct CameraView: View {
         captureFeedbackTask?.cancel()
         // Outcome of the last optimize when the shutter lands within 30 s.
         if let runId = optimizer.takeRecentRunIdForCapture() {
+            let secondsAfterReady = optimizer.lastRunDate
+                .map { max(0, Int(Date().timeIntervalSince($0))) } ?? -1
             Analytics.shared.track("optimize_photo_captured", props: [
                 "recipe_id": optimizer.chosenRecipeId ?? session.appliedRecipeId ?? "",
                 "run_id": runId,
+                "seconds_after_ready": "\(secondsAfterReady)",
             ])
         }
         let freeze = UIImage(data: jpeg) ?? session.lastThumb

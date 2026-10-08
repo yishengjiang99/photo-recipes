@@ -9,6 +9,25 @@ struct SettingsView: View {
     @State private var isChecking = false
     @State private var deepCoachEnabled = AutoOptimizeController.deepCoachEnabled
     @State private var useCoreMLScorer = RecipeScorerSelector.useCoreML
+    @State private var improveOptIn = AOBracketCapture.optedIn
+    @State private var bracketSetCount = 0
+    @State private var bracketTotalBytes: Int64 = 0
+    @State private var showBracketUploadConfirm = false
+    @State private var bracketUploadNote: String? = nil
+
+    private func refreshBracketInfo() {
+        let sets = AOBracketStore.shared.pendingSets()
+        bracketSetCount = sets.count
+        bracketTotalBytes = sets.reduce(0) { $0 + $1.bytes }
+    }
+
+    private static func formatBytes(_ bytes: Int64) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 {
+            return String(format: "%.1f KB", Double(bytes) / 1024)
+        }
+        return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
+    }
 
     var body: some View {
         NavigationStack {
@@ -86,6 +105,55 @@ struct SettingsView: View {
                         Text("Experimental. Scores Auto Optimize recipes with a Core ML model instead of the hand-tuned JSON weights. No trained model ships yet — until one is bundled the JSON scorer is used either way.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Toggle("Help improve Auto Optimize", isOn: $improveOptIn)
+                            .onChange(of: improveOptIn) { _, on in
+                                AOBracketCapture.optedIn = on
+                                refreshBracketInfo()
+                                Analytics.shared.track("ao_improve_optin", props: ["on": on ? "1" : "0"])
+                            }
+                        Text("Off by default. When on, each Auto Optimize stores five downsampled exposure-bracket frames (−2…+2 EV) plus exposure stats on this device only, to improve future results. Nothing is ever uploaded without your explicit consent — review and upload from the row below.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if improveOptIn {
+                            HStack {
+                                Text("Bracket captures on this device")
+                                Spacer()
+                                Text("\(bracketSetCount) sets · \(Self.formatBytes(bracketTotalBytes))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button("Review & upload my bracket captures") {
+                                showBracketUploadConfirm = true
+                            }
+                            .disabled(bracketSetCount == 0)
+                            if let note = bracketUploadNote {
+                                Text(note)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .onAppear { refreshBracketInfo() }
+                    .confirmationDialog(
+                        "Upload bracket captures?",
+                        isPresented: $showBracketUploadConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Upload \(bracketSetCount) sets") {
+                            // Explicit-consent gate: the user tapped twice. The
+                            // manifest of what WOULD upload is built here; the
+                            // transport itself is a declared stub until the
+                            // server endpoint exists — nothing leaves the device.
+                            _ = AOBracketStore.shared.pendingUploadManifest()
+                            bracketUploadNote = "Uploads aren't available yet — your captures stay on this device."
+                            Analytics.shared.track("ao_bracket_upload_consented", props: [
+                                "sets": "\(bracketSetCount)",
+                                "bytes": "\(bracketTotalBytes)",
+                            ])
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This would send \(bracketSetCount) downsampled bracket sets (\(Self.formatBytes(bracketTotalBytes))) to help improve Auto Optimize. Frames are 640px, keep no location data, and are never linked to your identity.")
                     }
 
                     Section("Voice") {

@@ -68,7 +68,12 @@
 				<string>NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising</string>
 			</array>
 		</dict>
-		<!-- Recommend / Auto Optimize vision frames, sent per request only -->
+		<!-- Recommend / Auto Optimize vision frames, sent per request only.
+		     Phase 3 "Help improve Auto Optimize" (Settings opt-in, default OFF)
+		     stores downsampled exposure-bracket frames + exposure stats in
+		     Application Support on-device only. Nothing uploads without an
+		     explicit in-app tap + confirmation, so no new collected-data type
+		     is declared for the local-only store. -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>

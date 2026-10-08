@@ -63,6 +63,12 @@ Notes on the choices:
 - **Linked = Yes** for Meta data because it is keyed to device / app-instance identifiers.
 - Photos, audio and scene text are sent for a single request and are not stored or tied to an
   identity (unchanged from 1.1).
+- Phase 3 (in development, not yet submitted): the optional **"Help improve Auto Optimize"**
+  Settings toggle (default OFF) stores downsampled exposure-bracket frames (−2…+2 EV, 640px)
+  plus exposure stats in Application Support **on-device only**. Upload requires an explicit
+  in-app tap + confirmation ("Review & upload my bracket captures"); there is currently no
+  upload transport, so nothing leaves the device. No new App Privacy data type is needed for
+  the local-only store — Photos or Videos stays "per request, App Functionality, not linked".
 - `PrivacyInfo.xcprivacy` declares `NSPrivacyTracking=true` with tracking domain
   `ep1.facebook.com` only (ITMS-91064).
 
