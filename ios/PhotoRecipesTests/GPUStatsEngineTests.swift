@@ -151,7 +151,11 @@ final class GPUStatsEngineTests: XCTestCase {
         XCTAssertEqual(Double(stats.contrast), naive.contrast, accuracy: 1e-3, file: file, line: line)
         XCTAssertEqual(stats.gradientScores.count, 13, file: file, line: line)
         for (a, b) in zip(stats.gradientScores, naive.scores) {
-            XCTAssertEqual(Double(a), b, accuracy: 1e-3,
+            // Gradient scores are large unnormalized sums (~1e5 over 49k
+            // pixels); the reference output is Float32, whose rounding
+            // (~1e-7 relative) dominates an absolute 1e-3. Assert relative
+            // parity at 1e-5 with a 1e-3 floor for near-zero scores.
+            XCTAssertEqual(Double(a), b, accuracy: max(1e-3, abs(b) * 1e-5),
                            "gradient score mismatch: \(a) vs \(b)", file: file, line: line)
         }
     }
