@@ -81,7 +81,7 @@ final class JSONRecipeScorer: RecipeScoring {
         return Model(
             schemaVersion: 1,
             temperature: 1.0,
-            intentBonus: 3.0,
+            intentBonus: 4.0,
             featureOrder: SceneFeatures.vectorFeatureNames,
             recipes: Dictionary(
                 uniqueKeysWithValues: SceneFeatures.autoSelectCandidates.map {
@@ -94,7 +94,7 @@ final class JSONRecipeScorer: RecipeScoring {
     func score(_ features: SceneFeatures) -> [RecipeScore] {
         let x = features.featureVector()
         // Phase 2: Vision scene labels contribute alongside the typed note.
-        // Label boosts are capped at 1.0 < intentBonus 3.0, so an explicit
+        // Label boosts are capped at 1.0 < intentBonus 4.0, so an explicit
         // note always wins over label evidence.
         let labelEvidence = SceneLabelRecipeMapper.boosts(
             labels: features.sceneLabels ?? [], features: features)

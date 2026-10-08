@@ -78,7 +78,7 @@ scorer = {
                 "card and must never be auto-selected.",
     "schemaVersion": 1,
     "temperature": 1.0,
-    "intentBonus": 3.0,
+    "intentBonus": 4.0,
     "featureOrder": FEATURE_ORDER,
     "recipes": RECIPES,
 }
