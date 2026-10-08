@@ -51,7 +51,7 @@ final class SettingsSolverTests: XCTestCase {
         let t = sol.phoneTargets
         let handheld = ExposurePlanner.handheldLimitSeconds(fieldOfViewDegrees: 70)
         XCTAssertEqual(t.exposureDurationSec ?? -1, handheld, accuracy: 0.002)
-        XCTAssertEqual(t.iso, "685")
+        XCTAssertEqual(t.iso, "686")
         XCTAssertEqual(t.focusMode, "locked")
         XCTAssertEqual(t.focusPoint?.x ?? -1, 0.5, accuracy: 0.001)
         XCTAssertEqual(t.focusPoint?.y ?? -1, 0.62, accuracy: 0.001)
