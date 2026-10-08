@@ -119,8 +119,10 @@ struct ManualDialsSheet: View {
             ForEach(shutterStops, id: \.self) { s in
                 Button {
                     guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
-                    session.setShutter(s)
-                    optimizer.markDirty(session: session)
+                    Task { @MainActor in
+                        await session.setShutter(s)
+                        optimizer.markDirty(session: session)
+                    }
                 } label: {
                     Text(RecipeCameraMapper.formatShutter(s))
                         .font(AppTheme.monoSm())
@@ -138,8 +140,10 @@ struct ManualDialsSheet: View {
             ForEach(isoStops, id: \.self) { v in
                 Button {
                     guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
-                    session.setISO(v)
-                    optimizer.markDirty(session: session)
+                    Task { @MainActor in
+                        await session.setISO(v)
+                        optimizer.markDirty(session: session)
+                    }
                 } label: {
                     Text("\(Int(v))")
                         .font(AppTheme.monoSm())

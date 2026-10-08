@@ -199,7 +199,7 @@ final class AutoOptimizeController: ObservableObject {
     func resetToAgent(session: CameraSession) {
         guard agentBaseline != nil else { return }
         if let id = chosenRecipeId, let recipe = BundledPresets.recipe(id: id) {
-            _ = session.apply(recipe: recipe)
+            Task { _ = await session.apply(recipe: recipe) }
         }
         afterSnapshot = agentBaseline
         isDirtyOverride = false
@@ -359,6 +359,7 @@ final class AutoOptimizeController: ObservableObject {
         sceneNote: String = "",
         elevationDegrees: Double? = nil,
         handShake: Double? = nil,
+        isTripodSteady: Bool? = nil,
         trigger: String = "manual",
         parentRunId: String? = nil
     ) async {
@@ -409,8 +410,13 @@ final class AutoOptimizeController: ObservableObject {
         // Thermal .critical: rules scorer + system auto exposure (no custom).
         let thermalCritical = ProcessInfo.processInfo.thermalState == .critical
         phase = .sensing("Reading light…")
+        // Hoisted: the snapshot's frame timestamp must postdate convergence
+        // (A5) — frames exposed under a previous run's custom exposure would
+        // anchor E_auto to the wrong light level.
+        var convergedAt = Date.distantPast
         do {
             let converge = try await session.convergeAutoExposure()
+            convergedAt = converge.convergedAt
             if converge.timedOut {
                 Analytics.shared.track("ae_converge_timeout", props: [
                     "run_id": runId,
@@ -435,8 +441,12 @@ final class AutoOptimizeController: ObservableObject {
         let features: SceneFeatures
         do {
             var snapshot = await SceneSensor.shared.current()
-            if snapshot.age > 1.0 {
-                // Snapshot older than 1 s — one synchronous full pass before scoring.
+            // A5: the snapshot must postdate AE convergence — a 1 Hz tick
+            // that ran during convergence saw frames exposed under the
+            // previous run's custom exposure. refreshNow is already budgeted.
+            if snapshot.age > 1.0 || snapshot.predatesConvergence(convergedAt) {
+                // Snapshot older than 1 s or predating convergence — one
+                // synchronous full pass before scoring.
                 phase = .sensing("Reading light…")
                 guard let fresh = await SceneSensor.shared.refreshNow(metering: metering, note: sceneNote) else {
                     phase = .error("Camera not ready — try again")
@@ -447,7 +457,7 @@ final class AutoOptimizeController: ObservableObject {
                     AOPerf.end(perfId, outcome: "no-frame")
                     return
                 }
-                snapshot = SceneSnapshot(features: fresh, age: 0)
+                snapshot = SceneSnapshot(features: fresh, age: 0, frameAt: Date())
             }
             var f = snapshot.features
             // Stamp tap-time state: the note (intent) the user typed, the live
@@ -459,6 +469,7 @@ final class AutoOptimizeController: ObservableObject {
             f.exposureWasCustom = metering.wasCustom
             if let elevationDegrees { f.cameraElevationDegrees = Float(elevationDegrees) }
             if let handShake { f.handShakeRadPerSec = Float(handShake) }
+            if let isTripodSteady { f.isTripodSteady = isTripodSteady }
             features = f
         }
 
@@ -508,7 +519,7 @@ final class AutoOptimizeController: ObservableObject {
         beforeSnapshot = snap(session)
         var wroteTargets = false
         if entitlements.canApplyDials {
-            wroteTargets = session.applyPhoneTargets(solution.phoneTargets)
+            wroteTargets = await session.applyPhoneTargets(solution.phoneTargets)
         }
         session.clampMessages.append(contentsOf: solution.clampMessages)
 
@@ -567,7 +578,10 @@ final class AutoOptimizeController: ObservableObject {
         if let targetEV = solution.targetEV,
            solution.phoneTargets.exposureDurationSec != nil,
            entitlements.canApplyDials {
-            let v = await session.verifyExposure(targetEV: targetEV)
+            let v = await session.verifyExposure(
+                targetEV: targetEV,
+                priority: solution.priority,
+                shutterCapSeconds: solution.shutterCapSeconds)
             verifyIterations = v.iterations
             if v.verified {
                 verifyResidualEV = v.residualEV
@@ -777,6 +791,7 @@ final class AutoOptimizeController: ObservableObject {
             planShutterSec: solution.phoneTargets.exposureDurationSec,
             planISO: solution.phoneTargets.iso,
             planTargetEV: solution.targetEV,
+            planResidualEV: solution.residualEV,
             residualEV: residualEV,
             verifyIterations: verifyIterations,
             lensDeviceType: lensDeviceType
@@ -974,7 +989,7 @@ final class AutoOptimizeController: ObservableObject {
                 let notesBefore = session.applyNotes
                 // Refine dials when server allows free phoneTargets (or Pro).
                 if entitlements.canApplyDials {
-                    _ = session.applyPhoneTargets(targets)
+                    _ = await session.applyPhoneTargets(targets)
                 }
                 // Look: auto-apply when Pass 1 left none; otherwise keep Pass 1 look.
                 if session.activeCreativeLook == nil,

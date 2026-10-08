@@ -393,40 +393,44 @@ final class CameraSession: NSObject, ObservableObject {
         )
     }
 
-    func setShutter(_ seconds: Double) {
+    /// Writes the shutter and returns the completion handler's syncTime
+    /// (`.invalid` when the write couldn't be issued). Await the write before
+    /// metering — see `issueExposureWrite`.
+    @discardableResult
+    func setShutter(_ seconds: Double) async -> CMTime {
         guard let device = input?.device, device.isExposureModeSupported(.custom) else {
             clampMessages.append("Shutter lock unavailable on this lens/format.")
-            return
+            return .invalid
         }
         let clamped = min(max(seconds, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
         if clamped != seconds {
             clampMessages.append("Shutter clamped to \(RecipeCameraMapper.formatShutter(clamped)).")
         }
-        configure(device) {
-            let t = CMTime(seconds: clamped, preferredTimescale: 1_000_000)
-            device.setExposureModeCustom(duration: t, iso: device.iso, completionHandler: { [weak self] _ in
-                Task { @MainActor in self?.lastExposureWriteDate = Date() }
-            })
-        }
+        let sync = await issueExposureWrite(
+            duration: CMTime(seconds: clamped, preferredTimescale: 1_000_000),
+            iso: device.iso)
         exposureLocked = true
         exposureSeconds = clamped
         if captureMode == .auto || captureMode == .program { captureMode = .shutter }
+        return sync
     }
 
-    func setISO(_ value: Float) {
+    /// Writes the ISO and returns the completion handler's syncTime
+    /// (`.invalid` when the write couldn't be issued).
+    @discardableResult
+    func setISO(_ value: Float) async -> CMTime {
         guard let device = input?.device, device.isExposureModeSupported(.custom) else {
             clampMessages.append("ISO lock unavailable on this lens/format.")
-            return
+            return .invalid
         }
         let clamped = min(max(value, capabilities.minISO), capabilities.maxISO)
-        configure(device) {
-            device.setExposureModeCustom(duration: device.exposureDuration, iso: clamped, completionHandler: { [weak self] _ in
-                Task { @MainActor in self?.lastExposureWriteDate = Date() }
-            })
-        }
+        let sync = await issueExposureWrite(
+            duration: device.exposureDuration,
+            iso: clamped)
         exposureLocked = true
         iso = clamped
         if captureMode == .auto { captureMode = .manual }
+        return sync
     }
 
     /// Programs the exposure-target bias WITHOUT touching `exposureMode`.
@@ -504,7 +508,7 @@ final class CameraSession: NSObject, ObservableObject {
     /// Soft paywall is Optimize quota (`AutoOptimizeController.canRun`), not dial writes.
     /// Coach-only levers (aperture / ND / tripod) stay guidance via mapper notes — never forced as phone settings.
     @discardableResult
-    func apply(recipe: Recipe, dials: DialSettings? = nil) -> Bool {
+    func apply(recipe: Recipe, dials: DialSettings? = nil) async -> Bool {
         let dials = dials ?? recipe.dials
         appliedRecipeId = recipe.id
         appliedRecipeTitle = recipe.title
@@ -522,11 +526,11 @@ final class CameraSession: NSObject, ObservableObject {
         }
 
         if let s = mapped.shutterSeconds, let i = mapped.iso, capabilities.supportsCustomExposure {
-            setCustom(duration: s, iso: i)
+            await setCustom(duration: s, iso: i)
         } else if let s = mapped.shutterSeconds, capabilities.supportsCustomExposure {
-            setShutter(s)
+            await setShutter(s)
         } else if let i = mapped.iso, capabilities.supportsCustomExposure {
-            setISO(i)
+            await setISO(i)
         }
         // EV is folded into the exposure solve when custom exposure was written;
         // programming a bias on top would fight the just-written shutter/ISO.
@@ -542,7 +546,7 @@ final class CameraSession: NSObject, ObservableObject {
     /// Always writes phone-settable levers (Free Peek + Pro). Capability-gate every lever;
     /// skip unsupported; never pretend aperture was set. Quota lives in AutoOptimizeController.
     @discardableResult
-    func applyPhoneTargets(_ targets: PhoneTargets, autoApplyLook: Bool = false) -> Bool {
+    func applyPhoneTargets(_ targets: PhoneTargets, autoApplyLook: Bool = false) async -> Bool {
         var wrote = false
 
         // Prefer optical cameraDevice over zoom-only.
@@ -556,15 +560,15 @@ final class CameraSession: NSObject, ObservableObject {
 
         var wroteCustomExposure = false
         if let d = durationSec, let i = isoVal, capabilities.supportsCustomExposure {
-            setCustom(duration: d, iso: i)
+            await setCustom(duration: d, iso: i)
             wrote = true
             wroteCustomExposure = true
         } else if let d = durationSec, capabilities.supportsCustomExposure {
-            setShutter(d)
+            await setShutter(d)
             wrote = true
             wroteCustomExposure = true
         } else if let i = isoVal, capabilities.supportsCustomExposure {
-            setISO(i)
+            await setISO(i)
             wrote = true
             wroteCustomExposure = true
         } else if durationSec != nil || isoVal != nil {
@@ -725,19 +729,68 @@ final class CameraSession: NSObject, ObservableObject {
         unlockFocus()
     }
 
-    private func setCustom(duration: Double, iso isoVal: Float) {
-        guard let device = input?.device, device.isExposureModeSupported(.custom) else { return }
+    /// Writes shutter + ISO together and returns the completion handler's
+    /// syncTime (`.invalid` when the write couldn't be issued).
+    @discardableResult
+    private func setCustom(duration: Double, iso isoVal: Float) async -> CMTime {
+        guard let device = input?.device, device.isExposureModeSupported(.custom) else { return .invalid }
         let d = min(max(duration, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
         let i = min(max(isoVal, capabilities.minISO), capabilities.maxISO)
-        configure(device) {
-            let t = CMTime(seconds: d, preferredTimescale: 1_000_000)
-            device.setExposureModeCustom(duration: t, iso: i, completionHandler: { [weak self] _ in
-                Task { @MainActor in self?.lastExposureWriteDate = Date() }
-            })
-        }
+        let sync = await issueExposureWrite(
+            duration: CMTime(seconds: d, preferredTimescale: 1_000_000),
+            iso: i)
         exposureLocked = true
         exposureSeconds = d
         iso = i
+        return sync
+    }
+
+    // MARK: - Awaitable exposure writes (A1)
+
+    /// Epoch of the most recently *issued* custom-exposure write, plus the
+    /// task that resolves with its completion-handler syncTime. Assigned
+    /// synchronously when the write is issued — `verifyExposure` awaits this
+    /// instead of a timestamp left over from an earlier write.
+    private var exposureWriteEpoch: UInt64 = 0
+    private var inFlightExposureWrite: (epoch: UInt64, task: Task<CMTime, Never>)?
+
+    /// Issues one custom-exposure write and returns the completion handler's
+    /// syncTime. The write is tracked by epoch so a later `verifyExposure`
+    /// awaits exactly the write its iteration issued.
+    ///
+    /// The write itself is issued by a task created synchronously with the
+    /// epoch bump (no suspension between the two, so ordering is exact);
+    /// the task resolves with the `setExposureModeCustom` completion
+    /// handler's syncTime.
+    private func issueExposureWrite(duration: CMTime, iso: Float) async -> CMTime {
+        exposureWriteEpoch &+= 1
+        let epoch = exposureWriteEpoch
+        let task = Task<CMTime, Never> { @MainActor [weak self] in
+            await withCheckedContinuation { (c: CheckedContinuation<CMTime, Never>) in
+                guard let self, let device = self.input?.device else {
+                    c.resume(returning: .invalid)
+                    return
+                }
+                self.configure(device) {
+                    device.setExposureModeCustom(duration: duration, iso: iso) { syncTime in
+                        c.resume(returning: syncTime)
+                    }
+                }
+            }
+        }
+        inFlightExposureWrite = (epoch: epoch, task: task)
+        let syncTime = await task.value
+        if inFlightExposureWrite?.epoch == epoch { inFlightExposureWrite = nil }
+        return syncTime
+    }
+
+    /// Awaits the most recently issued exposure write when it is still in
+    /// flight (covers fire-and-forget issuers such as dial taps). Normally a
+    /// no-op: awaited issuers have already completed.
+    private func awaitInFlightExposureWrite() async {
+        if let inFlight = inFlightExposureWrite {
+            _ = await inFlight.task.value
+        }
     }
 
 
@@ -1410,15 +1463,15 @@ final class CameraSession: NSObject, ObservableObject {
 
     // MARK: - Phase 1: closed-loop exposure (converge → plan → verify)
 
-    /// When the last custom-exposure write's completion handler fired. The
-    /// verify step waits for this + ~2 frames before reading back.
-    private var lastExposureWriteDate: Date?
-
     /// Metered exposure product from a converged AE state.
     struct AEConvergeResult {
         var exposureSeconds: Double
         var iso: Float
         var timedOut: Bool
+        /// When convergence finished — the controller requires the sensor
+        /// snapshot's frame timestamp to be later than this (frames exposed
+        /// under a previous run's custom exposure must not anchor `E_auto`).
+        var convergedAt: Date = Date()
         /// `exposureSeconds × iso` — the anchor for the exposure planner.
         var eAuto: Double { exposureSeconds * Double(iso) }
     }
@@ -1439,6 +1492,14 @@ final class CameraSession: NSObject, ObservableObject {
         configure(device) {
             if device.isExposureModeSupported(.continuousAutoExposure) {
                 device.exposureMode = .continuousAutoExposure
+            }
+            // Reset the metering point to frame center so E_auto is metered
+            // from a known point: a stale face/spot POI from a previous run
+            // would bias the convergence and double-count the face EV that
+            // is applied after custom exposure. Face stays the *focus* point
+            // only.
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
             }
             let zeroBias = min(max(Float(0), capabilities.minEV), capabilities.maxEV)
             device.setExposureTargetBias(zeroBias, completionHandler: nil)
@@ -1463,7 +1524,9 @@ final class CameraSession: NSObject, ObservableObject {
 
     /// Closed-loop verify + correct after a custom-exposure apply.
     struct ExposureVerifyResult {
-        /// Final `offset − targetEV`, in stops (+ means under).
+        /// Final `offset − targetEV`, in stops (+ means over — brighter than
+        /// target; − means under). Same sign convention as
+        /// `ExposurePlanner.Plan.residualEV`.
         var residualEV: Double
         var iterations: Int
         var clamped: Bool
@@ -1473,77 +1536,84 @@ final class CameraSession: NSObject, ObservableObject {
         var verified: Bool
     }
 
-    /// Waits for the last custom-exposure write to land (completion handler +
-    /// ~2 frames), reads `exposureTargetOffset` — which stays valid as a
-    /// meter reading in custom mode — and computes `error = offset − targetEV`.
-    /// While |error| > 0.3 EV it corrects ISO by 2^(−error), falling back to
-    /// the shutter when ISO clamps, with at most `maxIterations` corrections.
-    func verifyExposure(targetEV: Double, maxIterations: Int = 2) async -> ExposureVerifyResult {
-        await settleLastExposureWrite()
-        var iterations = 0
-        var clamped = false
-        var error = currentExposureError(targetEV: targetEV)
-        let initialError = error ?? 0
-        while let e = error, abs(e) > 0.3, iterations < maxIterations, !Task.isCancelled {
-            clamped = applyExposureCorrection(error: e) || clamped
-            iterations += 1
-            await settleLastExposureWrite()
-            error = currentExposureError(targetEV: targetEV)
-        }
+    /// Closed-loop verify + correct after a custom-exposure apply.
+    ///
+    /// Awaits the exact write each iteration issues (tracked by epoch in
+    /// `issueExposureWrite` — never a timestamp left over from an earlier
+    /// write), settles `2 × max(activeVideoMaxFrameDuration, exposureDuration)`
+    /// (≤ 1.2 s) for the meter to catch up, then reads `exposureTargetOffset`.
+    /// While |offset − targetEV| > 0.3 EV it corrects per the recipe's
+    /// `priority` (A6), with at most `maxIterations` correction writes.
+    /// The loop itself lives in `ExposureVerifyLoop` (unit-testable via the
+    /// `ExposureWriteClock` seam); this is the thin device-backed entry point.
+    func verifyExposure(
+        targetEV: Double,
+        priority: ExposurePlanner.Priority?,
+        shutterCapSeconds: Double?,
+        maxIterations: Int = 2
+    ) async -> ExposureVerifyResult {
+        // Normally a no-op: applyPhoneTargets awaited its writes before verify
+        // started. Covers fire-and-forget issuers (dial taps) otherwise.
+        await awaitInFlightExposureWrite()
+        let r = await ExposureVerifyLoop.run(
+            targetEV: targetEV, priority: priority,
+            shutterCapSeconds: shutterCapSeconds,
+            maxIterations: maxIterations, clock: self)
         refreshReadouts()
         return ExposureVerifyResult(
-            residualEV: error ?? 0, iterations: iterations,
-            clamped: clamped, initialError: initialError,
-            verified: error != nil)
+            residualEV: r.residualEV, iterations: r.iterations,
+            clamped: r.clamped, initialError: r.initialError,
+            verified: r.verified)
     }
 
-    /// `exposureTargetOffset − targetEV` in custom mode; nil when custom
-    /// exposure isn't held (nothing meaningful to verify).
-    private func currentExposureError(targetEV: Double) -> Double? {
-        refreshReadouts()
-        let rb = readbackState()
-        guard rb.exposureMode == "custom" else { return nil }
-        return Double(rb.exposureTargetOffset) - targetEV
+    // MARK: - ExposureWriteClock (A1 test seam)
+
+    /// Device-backed `ExposureWriteClock`: issue-write → await sync → settle →
+    /// read offset. The verify loop (`ExposureVerifyLoop.run`) drives these;
+    /// tests substitute a fake device.
+    func issueWrite(durationSeconds: Double, iso: Float) async -> CMTime {
+        let d = min(max(durationSeconds, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
+        let i = min(max(iso, capabilities.minISO), capabilities.maxISO)
+        // No clamp banners here: corrections are internal; the loop reports
+        // `clamped` and the controller turns it into a single verify note.
+        let sync = await issueExposureWrite(
+            duration: CMTime(seconds: d, preferredTimescale: 1_000_000), iso: i)
+        exposureLocked = true
+        exposureSeconds = d
+        self.iso = i
+        return sync
     }
 
-    /// One correction step for `error` (in stops). Corrects ISO by 2^(−error);
-    /// when ISO clamps, moves the shutter instead to hold the product.
-    /// Returns true when a device limit clamped the correction.
-    private func applyExposureCorrection(error: Double) -> Bool {
-        let rb = readbackState()
-        let factor = pow(2.0, -error)
-        let wantISO = rb.iso * Float(factor)
-        let clampedISO = min(max(wantISO, capabilities.minISO), capabilities.maxISO)
-        if clampedISO == wantISO {
-            setISO(clampedISO)
-            return false
-        }
-        if capabilities.supportsCustomExposure {
-            let wantShutter = rb.exposureDuration * factor
-            let clampedShutter = min(max(wantShutter, capabilities.minExposureSeconds),
-                                     capabilities.maxExposureSeconds)
-            if clampedShutter == wantShutter {
-                setShutter(clampedShutter)
-                return false
-            }
-        }
-        setISO(clampedISO)
-        return true
+    func settleAfterWrite(exposureDurationSeconds: Double) async {
+        // ~2 frames at the active frame duration; in dim scenes the frame
+        // duration is the shutter itself (1/8 s+), not 1/30 s. Bounded ≤ 1.2 s.
+        let frame = activeVideoMaxFrameDurationSeconds()
+        let wait = min(2 * max(frame, exposureDurationSeconds), 1.2)
+        guard wait > 0 else { return }
+        try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
     }
 
-    /// Waits for the last custom-exposure write to land: completion-handler
-    /// timestamp + ~2 frames, bounded. Falls back to a fixed 300 ms settle
-    /// when no write was recorded.
-    private func settleLastExposureWrite() async {
-        if let at = lastExposureWriteDate {
-            let waitUntil = at.addingTimeInterval(0.07) // ~2 frames at 30 fps
-            let remaining = waitUntil.timeIntervalSinceNow
-            if remaining > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
-            }
-        } else {
-            try? await Task.sleep(nanoseconds: 300_000_000)
+    func readExposureOffset() -> Float? {
+        guard let device = input?.device, device.exposureMode == .custom else { return nil }
+        return device.exposureTargetOffset
+    }
+
+    func currentExposure() -> (shutterSeconds: Double, iso: Float) {
+        if let device = input?.device {
+            let s = CMTimeGetSeconds(device.exposureDuration)
+            if s > 0 { return (s, device.iso) }
         }
+        return (exposureSeconds, iso)
+    }
+
+    var isoRange: ClosedRange<Float> { capabilities.minISO...capabilities.maxISO }
+    var shutterRange: ClosedRange<Double> { capabilities.minExposureSeconds...capabilities.maxExposureSeconds }
+
+    /// Active video max frame duration in seconds; 1/30 s when unavailable.
+    private func activeVideoMaxFrameDurationSeconds() -> Double {
+        guard let device = input?.device else { return 1 / 30 }
+        let s = CMTimeGetSeconds(device.activeVideoMaxFrameDuration)
+        return s > 0 ? s : 1 / 30
     }
 
     private func configure(_ device: AVCaptureDevice, _ block: () throws -> Void) {
@@ -1569,6 +1639,9 @@ final class CameraSession: NSObject, ObservableObject {
         }
     }
 }
+
+/// CameraSession is the production `ExposureWriteClock` (A1 seam).
+extension CameraSession: ExposureWriteClock {}
 
 /// Pure policy for the exposure seam: EV bias is folded into the ISO solve when
 /// custom shutter/ISO was written in the same apply; programming a bias on top

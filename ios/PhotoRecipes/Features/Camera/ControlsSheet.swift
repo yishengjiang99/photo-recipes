@@ -184,7 +184,10 @@ struct ControlsSheet: View {
                 ForEach(shutterStops, id: \.self) { s in
                     dialChip(RecipeCameraMapper.formatShutter(s)) {
                         guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
-                        session.setShutter(s); optimizer.markDirty(session: session)
+                        Task { @MainActor in
+                            await session.setShutter(s)
+                            optimizer.markDirty(session: session)
+                        }
                     }
                 }
             }
@@ -192,7 +195,10 @@ struct ControlsSheet: View {
                 ForEach(isoStops, id: \.self) { v in
                     dialChip("\(Int(v))") {
                         guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
-                        session.setISO(v); optimizer.markDirty(session: session)
+                        Task { @MainActor in
+                            await session.setISO(v)
+                            optimizer.markDirty(session: session)
+                        }
                     }
                 }
             }

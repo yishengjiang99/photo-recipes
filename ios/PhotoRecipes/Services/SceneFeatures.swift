@@ -177,6 +177,11 @@ struct SceneFeatures: Codable, Equatable {
     var cameraElevationDegrees: Float = 0
     /// Smoothed rotation-rate magnitude, rad/s (hand shake).
     var handShakeRadPerSec: Float = 0
+    /// True when the gyro stayed < 0.005 rad/s for ≥ 1.5 s (tripod-steady) —
+    /// the exposure planner drops the shake-derived shutter limits. Stamped
+    /// at tap time from the motion monitor's gyro history; NOT part of the
+    /// 45-dim Core ML vector.
+    var isTripodSteady: Bool = false
 
     // MARK: user intent (local note only)
     var recipeIntent: RecipeIntent?
@@ -329,6 +334,7 @@ struct SceneFeatures: Codable, Equatable {
         case gradientScores
         case sceneLabels
         case faceCount
+        case isTripodSteady
     }
 
     /// All-defaults init (the custom `init(from:)` below suppresses the
@@ -393,6 +399,9 @@ struct SceneFeatures: Codable, Equatable {
         sceneLabels = try c.decodeIfPresent([SceneLabel].self, forKey: .sceneLabels)
         // Phase 3 appended field — tolerant; older payloads decode to nil.
         faceCount = try c.decodeIfPresent(Int.self, forKey: .faceCount)
+        // Tripod-steady flag (A2 review fix) — appended at the end per the
+        // schema rule; older payloads decode to false.
+        isTripodSteady = try c.decodeIfPresent(Bool.self, forKey: .isTripodSteady) ?? false
     }
 }
 

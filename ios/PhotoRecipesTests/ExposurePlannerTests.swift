@@ -93,7 +93,9 @@ final class ExposurePlannerTests: XCTestCase {
         XCTAssertTrue(plan.clamped)
         XCTAssertEqual(plan.shutterSeconds, 1.0 / 3, accuracy: 1e-9)
         XCTAssertEqual(plan.iso, 3200)
-        XCTAssertEqual(plan.residualEV, 3.0, accuracy: 0.01)
+        // New sign convention: + = brighter than target, so an unreachable
+        // 3-stop underexposure is −3.0.
+        XCTAssertEqual(plan.residualEV, -3.0, accuracy: 0.01)
         XCTAssertEqual(plan.clampMessages.count, 1)
         XCTAssertEqual(
             plan.clampMessages[0],
@@ -101,14 +103,15 @@ final class ExposurePlannerTests: XCTestCase {
     }
 
     func testClamping_overexposedAtMinISO() {
-        // Blazing scene, fixed 1/2 s shutter: ISO bottoms out, residual < 0.
+        // Blazing scene, fixed 1/2 s shutter: ISO bottoms out, residual > 0
+        // (+ = brighter than target).
         let plan = ExposurePlanner.plan(
             eAuto: 10, targetEV: 0,
             priority: .shutter(seconds: 1.0 / 2),
             motion: motion, limits: limits)
         XCTAssertTrue(plan.clamped)
         XCTAssertEqual(plan.iso, 50)
-        XCTAssertLessThan(plan.residualEV, 0)
+        XCTAssertGreaterThan(plan.residualEV, 0)
         XCTAssertTrue(
             plan.clampMessages[0].contains("Overexposed"),
             "got: \(plan.clampMessages)")
@@ -197,15 +200,96 @@ final class ExposurePlannerTests: XCTestCase {
         XCTAssertTrue(plan.clampMessages.isEmpty)
     }
 
-    func testAuto_recipeCap_overridesDerivedLimits() {
-        // The solver passes its own motion objective (min(tShake, tMotion));
-        // the planner must honor it instead of deriving its own cap.
+    // MARK: - A2: the recipe cap can only shorten the shutter
+
+    func testAuto_recipeCap_cannotLengthenBeyondDerivedLimits() {
+        // The solver passes its own motion objective (min(tShake, tMotion))
+        // as the cap — but a cap LONGER than the derived handheld/motion
+        // limits must not lengthen the shutter (that was the A2 bug).
+        // handShake 0.01, 70° FOV, 4032 px → derived cap = 1/(2f) ≈ 1/51 s.
         let plan = ExposurePlanner.plan(
             eAuto: 13.333, targetEV: 0,
             priority: .auto(shutterCapSeconds: 0.052),
             motion: motion, limits: limits)
-        XCTAssertEqual(plan.shutterSeconds, 0.052, accuracy: 1e-9)
+        let handheld = ExposurePlanner.handheldLimitSeconds(fieldOfViewDegrees: 70)
+        XCTAssertLessThanOrEqual(plan.shutterSeconds, handheld + 1e-9)
+        XCTAssertEqual(plan.shutterSeconds, handheld, accuracy: 0.002)
+        XCTAssertEqual(plan.shutterCapSeconds ?? -1, handheld, accuracy: 0.002)
         XCTAssertEqual(plan.shutterSeconds * Double(plan.iso), 13.333, accuracy: 0.01)
+    }
+
+    func testAuto_recipeCap_canShortenShutter() {
+        // A cap shorter than the derived limits is honored.
+        let plan = ExposurePlanner.plan(
+            eAuto: 13.333, targetEV: 0,
+            priority: .auto(shutterCapSeconds: 1.0 / 125),
+            motion: motion, limits: limits)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 125, accuracy: 1e-9)
+        XCTAssertEqual(plan.shutterCapSeconds ?? -1, 1.0 / 125, accuracy: 1e-9)
+        XCTAssertEqual(plan.shutterSeconds * Double(plan.iso), 13.333, accuracy: 0.01)
+    }
+
+    func testAuto_nilGyro_usesTypicalHandheldShake() {
+        // Unavailable gyro (0) must not balloon the cap to many seconds —
+        // it is treated as 0.03 rad/s typical handheld, and the shutter stays
+        // within the 1/(2f) limit.
+        var noGyro = motion!
+        noGyro.handShakeRadPerSec = 0
+        let plan = ExposurePlanner.plan(
+            eAuto: 13.333, targetEV: 0,
+            priority: .auto(),
+            motion: noGyro, limits: limits)
+        let handheld = ExposurePlanner.handheldLimitSeconds(fieldOfViewDegrees: 70)
+        XCTAssertLessThanOrEqual(plan.shutterSeconds, handheld + 1e-9)
+        // 0.03 rad/s at 4032 px / 70° → 1/(0.03 × 2879 px) ≈ 0.0116 s.
+        XCTAssertEqual(plan.shutterSeconds, 0.0116, accuracy: 0.001)
+        XCTAssertEqual(plan.shutterCapSeconds ?? -1, 0.0116, accuracy: 0.001)
+    }
+
+    func testAuto_tripodSteady_allowsLongShutter() {
+        // Tripod-steady drops the shake-derived limits: the shutter may run
+        // to the device max (1 s here), with a truthful clamp message.
+        var tripod = motion!
+        tripod.isTripodSteady = true
+        let plan = ExposurePlanner.plan(
+            eAuto: 100, targetEV: 0,
+            priority: .auto(),
+            motion: tripod, limits: limits)
+        XCTAssertEqual(plan.shutterSeconds, 1.0, accuracy: 1e-9)
+        XCTAssertEqual(plan.shutterCapSeconds ?? -1, 1.0, accuracy: 1e-9)
+        XCTAssertTrue(
+            plan.clampMessages.contains("Tripod detected — long shutter"),
+            "got: \(plan.clampMessages)")
+    }
+
+    func testAuto_tripodSteady_recipeCapStillBounds() {
+        // On a tripod the recipe's own motion objective still applies — e.g.
+        // freezing subject motion at 1/125 s.
+        var tripod = motion!
+        tripod.isTripodSteady = true
+        let plan = ExposurePlanner.plan(
+            eAuto: 100, targetEV: 0,
+            priority: .auto(shutterCapSeconds: 1.0 / 125),
+            motion: tripod, limits: limits)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 125, accuracy: 1e-9)
+    }
+
+    func testShutterCapSeconds_nilForNonAutoPriorities() {
+        let shutterPlan = ExposurePlanner.plan(
+            eAuto: 2.0, targetEV: 0,
+            priority: .shutter(seconds: 1.0 / 30),
+            motion: motion, limits: limits)
+        XCTAssertNil(shutterPlan.shutterCapSeconds)
+        let isoPlan = ExposurePlanner.plan(
+            eAuto: 2.0, targetEV: 0,
+            priority: .iso(value: 100),
+            motion: motion, limits: limits)
+        XCTAssertNil(isoPlan.shutterCapSeconds)
+        let autoPlan = ExposurePlanner.plan(
+            eAuto: 2.0, targetEV: 0,
+            priority: .systemAuto,
+            motion: motion, limits: limits)
+        XCTAssertNil(autoPlan.shutterCapSeconds)
     }
 
     // MARK: - solver integration (targetEV composition + Phase 4 hook)

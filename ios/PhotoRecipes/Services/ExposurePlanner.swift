@@ -38,6 +38,10 @@ enum ExposurePlanner {
         /// Active-format field of view, degrees. Treated as the horizontal
         /// FOV, matching the solver's px/rad conversions.
         var fieldOfViewDegrees: Double
+        /// True when the gyro stayed < 0.005 rad/s for ≥ 1.5 s (tripod) —
+        /// the shake-derived limits are dropped and the shutter may run to
+        /// the device max.
+        var isTripodSteady: Bool = false
     }
 
     /// How the recipe wants `E_target` split into shutter × ISO.
@@ -51,8 +55,13 @@ enum ExposurePlanner {
         case iso(value: Float)
         /// Longest motion-safe shutter first, then gain. `shutterCapSeconds`
         /// lets the recipe pass its own motion objective (e.g. the solver's
-        /// `min(tShake, tMotion)`); when nil the planner derives the cap from
-        /// the 1/(2f) handheld rule and the gyro motion limit.
+        /// `min(tShake, tMotion)`); it can only *shorten* the shutter — the
+        /// planner always also applies the 1/(2f) handheld limit and the gyro
+        /// motion limit, and the recipe cap never overrides them. When nil
+        /// the planner derives the cap from those two limits alone.
+        /// Tripod-steady (`MotionContext.isTripodSteady`) drops the
+        /// shake-derived limits: the shutter may run to the device max,
+        /// bounded only by the recipe cap.
         case auto(shutterCapSeconds: Double? = nil)
         /// Keep system auto exposure (HDR): no custom shutter/ISO is written;
         /// brackets are relative to the converged `E_auto`.
@@ -68,10 +77,15 @@ enum ExposurePlanner {
         var iso: Float
         /// The composed offset this plan targets (recipe + face + learned).
         var targetEV: Double
-        /// `log2(E_target / achieved)`: + means under, − means over.
+        /// `log2(achieved / E_target)`: + means brighter than target (over),
+        /// − means under. Same sign convention as the verify residual.
         var residualEV: Double
         var clamped: Bool
         var clampMessages: [String]
+        /// The effective shutter cap applied for `.auto` (nil for other
+        /// priorities) — consumed by the verify step via
+        /// `SettingsSolver.Solution.shutterCapSeconds`.
+        var shutterCapSeconds: Double? = nil
     }
 
     // MARK: - Safe-shutter limits
@@ -88,6 +102,10 @@ enum ExposurePlanner {
     /// Slowest shutter keeping hand shake under `blurBudgetPx` px:
     /// `blurBudgetPx / (|ω| × focalLengthPx)` with
     /// `focalLengthPx = (width/2) / tan(fov/2)`.
+    ///
+    /// A zero/negative gyro reading means the sensor was unavailable — it is
+    /// NOT "perfectly still" (that would balloon the cap to many seconds).
+    /// `effectiveShakeRadPerSec` substitutes 0.03 rad/s typical handheld.
     static func motionLimitSeconds(
         handShakeRadPerSec: Double,
         frameWidthPx: Double,
@@ -96,8 +114,15 @@ enum ExposurePlanner {
     ) -> Double {
         let fovRad = max(fieldOfViewDegrees, 1) * .pi / 180
         let focalPx = (frameWidthPx / 2) / max(tan(fovRad / 2), 1e-6)
-        let omega = max(abs(handShakeRadPerSec), 1e-4)
+        let omega = max(effectiveShakeRadPerSec(handShakeRadPerSec), 1e-4)
         return blurBudgetPx / (omega * focalPx)
+    }
+
+    /// Nil/unavailable gyro reads as 0 — treat it as 0.03 rad/s typical
+    /// handheld, never as zero.
+    static func effectiveShakeRadPerSec(_ raw: Double) -> Double {
+        let mag = abs(raw)
+        return mag > 0 ? mag : 0.03
     }
 
     // MARK: - Plan
@@ -143,23 +168,39 @@ enum ExposurePlanner {
                 shutter: shutter, iso: iso, eTarget: eTarget,
                 targetEV: targetEV, limits: limits)
         case .auto(let cap):
-            let derivedCap = min(
-                handheldLimitSeconds(fieldOfViewDegrees: motion.fieldOfViewDegrees),
-                motionLimitSeconds(
-                    handShakeRadPerSec: motion.handShakeRadPerSec,
-                    frameWidthPx: motion.frameWidthPx,
-                    fieldOfViewDegrees: motion.fieldOfViewDegrees)
-            )
-            let safeCap = cap ?? derivedCap
+            let handheldLimit = handheldLimitSeconds(
+                fieldOfViewDegrees: motion.fieldOfViewDegrees)
+            let gyroLimit = motionLimitSeconds(
+                handShakeRadPerSec: motion.handShakeRadPerSec,
+                frameWidthPx: motion.frameWidthPx,
+                fieldOfViewDegrees: motion.fieldOfViewDegrees)
+            let safeCap: Double
+            var tripodNote: String? = nil
+            if motion.isTripodSteady {
+                // Tripod: drop the shake-derived limits — the recipe's own
+                // motion cap and the device max shutter still bound the
+                // exposure.
+                let derivedCap = min(handheldLimit, gyroLimit)
+                safeCap = min(cap ?? .infinity, limits.maxShutterSeconds)
+                if safeCap > derivedCap {
+                    tripodNote = "Tripod detected — long shutter"
+                }
+            } else {
+                // The recipe cap can only shorten the shutter: it never
+                // overrides the derived handheld/motion limits.
+                safeCap = min(min(cap ?? .infinity, handheldLimit), gyroLimit)
+            }
             var shutter = min(
                 safeCap, max(eTarget / Double(limits.minISO), limits.minShutterSeconds))
             shutter = clamp(
                 shutter, min: limits.minShutterSeconds, max: limits.maxShutterSeconds)
             let iso = clamp(
                 Float(eTarget / shutter), min: limits.minISO, max: limits.maxISO)
-            return finish(
+            var plan = finish(
                 shutter: shutter, iso: iso, eTarget: eTarget,
-                targetEV: targetEV, limits: limits)
+                targetEV: targetEV, limits: limits, shutterCapSeconds: safeCap)
+            if let note = tripodNote { plan.clampMessages.append(note) }
+            return plan
         }
     }
 
@@ -170,10 +211,12 @@ enum ExposurePlanner {
         iso: Float,
         eTarget: Double,
         targetEV: Double,
-        limits: DeviceLimits
+        limits: DeviceLimits,
+        shutterCapSeconds: Double? = nil
     ) -> Plan {
         let achieved = shutter * Double(iso)
-        let residual = log2(eTarget / max(achieved, 1e-12))
+        // + means the achieved exposure is BRIGHTER than target (over).
+        let residual = log2(max(achieved, 1e-12) / eTarget)
         var messages: [String] = []
         var clamped = false
         if abs(residual) > 0.05 {
@@ -184,11 +227,15 @@ enum ExposurePlanner {
         return Plan(
             useCustomExposure: true, shutterSeconds: shutter, iso: iso,
             targetEV: targetEV, residualEV: residual,
-            clamped: clamped, clampMessages: messages)
+            clamped: clamped, clampMessages: messages,
+            shutterCapSeconds: shutterCapSeconds)
     }
 
     /// Truthful copy for unreachable targets — the UI must say what couldn't
     /// be reached, not silently underexpose.
+    ///
+    /// Sign convention (matches the verify residual): + means the achieved
+    /// exposure is brighter than target (over), − means under.
     private static func clampMessage(
         residualEV: Double,
         shutter: Double,
@@ -197,18 +244,18 @@ enum ExposurePlanner {
     ) -> String {
         let stops = String(format: "%.1f", abs(residualEV))
         if residualEV > 0 {
-            // Underexposed: E_target unreachable from below.
-            if shutter >= limits.maxShutterSeconds {
-                return "Max shutter \(RecipeCameraMapper.formatShutter(limits.maxShutterSeconds))" +
-                    " on this lens — \(stops) stops short; tripod + Night mode recommended."
+            // Overexposed: achieved E exceeds the target.
+            if iso <= limits.minISO {
+                return "Overexposed ~\(stops) stops at min ISO — scene too bright for this shutter."
             }
-            return "Underexposed at max ISO — add light or accept a darker frame."
+            return "Overexposed ~\(stops) stops at the fastest shutter — scene too bright."
         }
-        // Overexposed: E_target unreachable from above.
-        if iso <= limits.minISO {
-            return "Overexposed ~\(stops) stops at min ISO — scene too bright for this shutter."
+        // Underexposed: E_target unreachable from below.
+        if shutter >= limits.maxShutterSeconds {
+            return "Max shutter \(RecipeCameraMapper.formatShutter(limits.maxShutterSeconds))" +
+                " on this lens — \(stops) stops short; tripod + Night mode recommended."
         }
-        return "Overexposed ~\(stops) stops at the fastest shutter — scene too bright."
+        return "Underexposed at max ISO — add light or accept a darker frame."
     }
 
     private static func clamp<T: Comparable>(_ v: T, min: T, max: T) -> T {

@@ -56,4 +56,29 @@ final class SceneSensorTests: XCTestCase {
         await sensor.stop()
         // No crash = lifecycle is sound.
     }
+
+    // MARK: - A5: snapshot must postdate convergence
+
+    func testPredatesConvergence_frameAtOrBeforeConvergedAt_isStale() {
+        let convergedAt = Date()
+        let stale = SceneSnapshot(
+            features: SceneFeatures(), age: 0.2,
+            frameAt: convergedAt.addingTimeInterval(-0.1))
+        XCTAssertTrue(stale.predatesConvergence(convergedAt))
+        let edge = SceneSnapshot(
+            features: SceneFeatures(), age: 0.2, frameAt: convergedAt)
+        XCTAssertTrue(edge.predatesConvergence(convergedAt),
+                      "frameAt must be strictly later than convergence")
+        let fresh = SceneSnapshot(
+            features: SceneFeatures(), age: 0.2,
+            frameAt: convergedAt.addingTimeInterval(0.1))
+        XCTAssertFalse(fresh.predatesConvergence(convergedAt))
+    }
+
+    func testSnapshot_defaultFrameAt_forcesRefresh() {
+        // frameAt defaults to the distant past — a snapshot that somehow
+        // lost its timestamp is treated as stale, never trusted.
+        let snap = SceneSnapshot(features: SceneFeatures(), age: 0)
+        XCTAssertTrue(snap.predatesConvergence(Date()))
+    }
 }
