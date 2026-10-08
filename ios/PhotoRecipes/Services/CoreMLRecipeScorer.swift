@@ -45,12 +45,47 @@ final class CoreMLRecipeScorer: RecipeScoring {
 
     /// Raw class probabilities over the model's output classes, in
     /// ascending class-label order. Test seam; nil when no model loaded.
+    ///
+    /// Handles both scorer forms from the production contract: a single
+    /// multiarray input → 5-wide multiarray output (the dummy/test models),
+    /// and a classifier with f0…f44 scalar inputs and a `classProbability`
+    /// dict output.
     func predictProbabilities(_ vector: [Double]) -> [Double]? {
         guard let model else { return nil }
         guard vector.count == SceneFeatures.vectorFeatureNames.count else {
-            log.error("feature vector length \(vector.count) != 45 — model contract broken")
+            log.error("feature vector length \(vector.count) != \(SceneFeatures.vectorFeatureNames.count) — model contract broken")
             return nil
         }
+        if let probs = predictMultiArray(vector, model: model) { return probs }
+        return predictClassifier(vector, model: model)
+    }
+
+    /// Form 1: one multiarray input → one 5-wide multiarray output.
+    /// Input/output names come from the model description.
+    private func predictMultiArray(_ vector: [Double], model: MLModel) -> [Double]? {
+        let desc = model.modelDescription
+        guard let (inputName, inputDesc) = desc.inputDescriptionsByName.first,
+              desc.inputDescriptionsByName.count == 1,
+              inputDesc.type == .multiArray,
+              let array = try? MLMultiArray(
+                shape: [vector.count as NSNumber], dataType: .float32)
+        else { return nil }
+        for (i, v) in vector.enumerated() { array[i] = NSNumber(value: v) }
+        guard let provider = try? MLDictionaryFeatureProvider(
+                dictionary: [inputName: MLFeatureValue(multiArray: array)]),
+              let out = try? model.prediction(from: provider)
+        else { return nil }
+        for outputName in desc.outputDescriptionsByName.keys {
+            if let ma = out.featureValue(for: outputName)?.multiArrayValue,
+               ma.count > 0 {
+                return (0..<ma.count).map { ma[$0].doubleValue }
+            }
+        }
+        return nil
+    }
+
+    /// Form 2: classifier — f0…f44 scalar inputs, `classProbability` dict out.
+    private func predictClassifier(_ vector: [Double], model: MLModel) -> [Double]? {
         var dict: [String: MLFeatureValue] = [:]
         dict.reserveCapacity(vector.count)
         for (i, v) in vector.enumerated() {

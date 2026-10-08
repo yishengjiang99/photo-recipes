@@ -252,6 +252,41 @@ struct SceneFeatures: Codable, Equatable {
     static func logNorm(_ v: Float) -> Double {
         log1p(Double(max(v, 0))) / 8.0
     }
+
+    // MARK: - Tolerant decoding
+
+    /// Decodes with `decodeIfPresent` for every property, falling back to the
+    /// declared defaults. Fixtures and telemetry logged under older schema
+    /// versions (e.g. before `capturedAt` existed) must keep decoding after
+    /// new fields are added — the encoder always writes the full schema.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? Self.currentSchemaVersion
+        capturedAt = try c.decodeIfPresent(Date.self, forKey: .capturedAt) ?? Date()
+        semanticGroups = try c.decodeIfPresent([SemanticGroup: Float].self, forKey: .semanticGroups) ?? [:]
+        subjectKind = try c.decodeIfPresent(SubjectKind.self, forKey: .subjectKind)
+        subjectBox = try c.decodeIfPresent(NormalizedBox.self, forKey: .subjectBox)
+        subjectAreaFraction = try c.decodeIfPresent(Float.self, forKey: .subjectAreaFraction) ?? 0
+        subjectSpeedPxPerSec = try c.decodeIfPresent(Float.self, forKey: .subjectSpeedPxPerSec) ?? 0
+        backgroundSpeedPxPerSec = try c.decodeIfPresent(Float.self, forKey: .backgroundSpeedPxPerSec) ?? 0
+        subjectRelativeSpeedPxPerSec = try c.decodeIfPresent(Float.self, forKey: .subjectRelativeSpeedPxPerSec) ?? 0
+        motionDirectionX = try c.decodeIfPresent(Float.self, forKey: .motionDirectionX) ?? 1
+        motionDirectionY = try c.decodeIfPresent(Float.self, forKey: .motionDirectionY) ?? 0
+        meteredExposureSeconds = try c.decodeIfPresent(Double.self, forKey: .meteredExposureSeconds)
+        meteredISO = try c.decodeIfPresent(Float.self, forKey: .meteredISO)
+        lensAperture = try c.decodeIfPresent(Float.self, forKey: .lensAperture)
+        exposureTargetOffset = try c.decodeIfPresent(Float.self, forKey: .exposureTargetOffset)
+        exposureWasCustom = try c.decodeIfPresent(Bool.self, forKey: .exposureWasCustom) ?? false
+        sceneEV100 = try c.decodeIfPresent(Float.self, forKey: .sceneEV100)
+        highlightClipFraction = try c.decodeIfPresent(Float.self, forKey: .highlightClipFraction) ?? 0
+        shadowCrushFraction = try c.decodeIfPresent(Float.self, forKey: .shadowCrushFraction) ?? 0
+        percentileSpreadStops = try c.decodeIfPresent(Float.self, forKey: .percentileSpreadStops) ?? 0
+        subjectDeltaStops = try c.decodeIfPresent(Float.self, forKey: .subjectDeltaStops)
+        warmBias = try c.decodeIfPresent(Float.self, forKey: .warmBias) ?? 0
+        cameraElevationDegrees = try c.decodeIfPresent(Float.self, forKey: .cameraElevationDegrees) ?? 0
+        handShakeRadPerSec = try c.decodeIfPresent(Float.self, forKey: .handShakeRadPerSec) ?? 0
+        recipeIntent = try c.decodeIfPresent(RecipeIntent.self, forKey: .recipeIntent)
+    }
 }
 
 // MARK: - EV100
