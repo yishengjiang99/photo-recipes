@@ -26,14 +26,14 @@ enum SettingsSolver {
     struct Solution {
         var phoneTargets: PhoneTargets
         var clampMessages: [String] = []
-        var coachOnly: CoachOnly?
-        var panCue: PanCue?
-        var apertureGuidance: String?
-        var extraTips: [String] = []
         /// Composed exposure offset the plan targets (recipe + face + learned),
         /// in stops. Nil when no custom exposure is written (HDR, cheatsheet,
         /// thermal-critical fallback) — the verify loop skips then.
         var targetEV: Double?
+        var coachOnly: CoachOnly?
+        var panCue: PanCue?
+        var apertureGuidance: String?
+        var extraTips: [String] = []
     }
 
     // MARK: - Entry
