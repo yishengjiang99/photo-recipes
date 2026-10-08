@@ -86,7 +86,9 @@ final class AOTelemetryTests: XCTestCase {
             planResidualEV: 0.05,
             residualEV: -0.12,
             verifyIterations: 1,
-            lensDeviceType: "builtInWideAngleCamera"
+            lensDeviceType: "builtInWideAngleCamera",
+            readbackShutterSec: 1.0 / 125,
+            readbackISO: 200
         )
         XCTAssertEqual(props["telemetry_v2"], "1")
         // Raw 64-bin histogram never appears — only the 16-bin quantized form.
@@ -101,6 +103,8 @@ final class AOTelemetryTests: XCTestCase {
         XCTAssertEqual(props["plan_residual_ev"], "0.05")
         XCTAssertEqual(props["verify_residual_ev"], "-0.12")
         XCTAssertEqual(props["verify_iterations"], "1")
+        XCTAssertEqual(props["rb_shutter"], "0.008")
+        XCTAssertEqual(props["rb_iso"], "200")
 
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:.,+-_ ")
         for (k, v) in props {
@@ -137,6 +141,8 @@ final class AOTelemetryTests: XCTestCase {
         XCTAssertEqual(props["plan_shutter"], "")
         XCTAssertEqual(props["plan_residual_ev"], "")
         XCTAssertEqual(props["verify_residual_ev"], "")
+        XCTAssertEqual(props["rb_shutter"], "")
+        XCTAssertEqual(props["rb_iso"], "")
         // E_auto falls back to the 1/60 @ ISO 100 anchor.
         XCTAssertEqual(props["e_auto"], String(format: "%.4g", (1.0 / 60) * 100))
     }
