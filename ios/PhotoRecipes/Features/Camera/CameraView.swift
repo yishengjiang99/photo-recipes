@@ -855,6 +855,7 @@ struct CameraView: View {
         }
     }
 
+    private func shutterRow(compact: Bool, hPad: CGFloat) -> some View {
         let outer: CGFloat = compact ? 68 : 76
         let inner: CGFloat = compact ? 56 : 62
 
