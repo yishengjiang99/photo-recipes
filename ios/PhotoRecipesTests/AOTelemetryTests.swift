@@ -163,10 +163,10 @@ final class AOTelemetryTests: XCTestCase {
         let applied = AutoOptimizeController.AppliedDials(
             shutterSec: 1.0 / 60, iso: 100, ev: 0.3, wbKelvin: 5600, recipeId: "portrait-pop")
         let current = AutoOptimizeController.AppliedDials(
-            shutterSec: 1.0 / 125, iso: 200, ev: -0.3, wbKelvin: 5200, recipeId: "portrait-pop")
+            shutterSec: 1.0 / 120, iso: 200, ev: -0.3, wbKelvin: 5200, recipeId: "portrait-pop")
         let p = AutoOptimizeController.dialDeltaProps(applied: applied, current: current)
         XCTAssertEqual(p["ev_delta"], "-0.6")
-        XCTAssertEqual(p["shutter_delta_stops"], "-1.00") // 1/60 → 1/125
+        XCTAssertEqual(p["shutter_delta_stops"], "-1.00") // 1/60 → 1/120: exactly one stop
         XCTAssertEqual(p["iso_delta_stops"], "+1.00")
         XCTAssertEqual(p["wb_kelvin_delta"], "-400")
         XCTAssertEqual(p["recipe_unchanged"], "1")
