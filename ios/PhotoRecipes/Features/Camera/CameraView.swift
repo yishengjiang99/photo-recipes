@@ -909,7 +909,6 @@ struct CameraView: View {
     }
 
     private func shutterRow(compact: Bool, hPad: CGFloat) -> some View {
-        let side: CGFloat = compact ? 48 : 56
         let outer: CGFloat = compact ? 68 : 76
         let inner: CGFloat = compact ? 56 : 62
 
@@ -923,12 +922,7 @@ struct CameraView: View {
             }
 
             HStack(spacing: 0) {
-                // Recommend removed from the finder — kept in ··· More and on
-                // voice/Ask flows. Spacer keeps the shutter centered.
-                Spacer(minLength: 8)
-                    .frame(width: side, height: side)
-
-                Spacer(minLength: 8)
+                Spacer(minLength: 0)
 
                 Button {
                     Analytics.shared.track("shutter_tap", props: ["source": "camera"])
@@ -962,14 +956,7 @@ struct CameraView: View {
                     }
                 )
 
-                Spacer(minLength: 8)
-
-                floatingIcon("ellipsis.circle") {
-                    controlsTab = .core
-                    showDials = true
-                }
-                .frame(width: side, height: side)
-                .accessibilityLabel("Controls")
+                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, hPad)
