@@ -183,7 +183,7 @@ struct SceneFeatures: Codable, Equatable {
     /// The scorer input. Order == `vectorFeatureNames`; this is the contract
     /// the Core ML model is trained/exported against.
     func featureVector() -> [Double] {
-        vectorFeatureNames.map { value(forFeature: $0) }
+        Self.vectorFeatureNames.map { value(forFeature: $0) }
     }
 
     /// Quantized vector for telemetry (floats rounded to 2 decimals, no pixels).
@@ -499,7 +499,7 @@ enum SceneLabelMapper {
     /// device or simulator. Copy the output into
     /// `ios/PhotoRecipes/Resources/vision-labels.txt` and rebuild the mapping.
     static func dumpSupportedIdentifiers() -> String {
-        VNClassifyImageRequest().supportedIdentifiers().sorted().joined(separator: "\n")
+        (try? VNClassifyImageRequest().supportedIdentifiers())?.sorted().joined(separator: "\n") ?? ""
     }
 }
 
@@ -682,18 +682,15 @@ enum LuminanceHistogram {
         var matrix: [Int16] = [54, 183, 18, 0]
         let mErr = matrix.withUnsafeMutableBufferPointer { mPtr in
             vImageMatrixMultiply_ARGB8888ToPlanar8(
-                &src, &yBuf, mPtr.baseAddress!, 256, nil, vImage_Flags(kvImageNoFlags)
+                &src, &yBuf, mPtr.baseAddress!, 256, nil, 0, vImage_Flags(kvImageNoFlags)
             )
         }
         guard mErr == kvImageNoError else { return nil }
 
         var bins = [vImagePixelCount](repeating: 0, count: 256)
-        let hErr: vImage_Error = bins.withUnsafeMutableBufferPointer { buf in
-            var ptr: UnsafeMutablePointer<vImagePixelCount>? = buf.baseAddress
-            return withUnsafeMutablePointer(to: &ptr) { p in
-                vImageHistogramCalculation_Planar8(&yBuf, p, vImage_Flags(kvImageNoFlags))
-            }
-        }
+        // Planar8 takes a single flat histogram pointer (the ARGB8888 variant
+        // takes an array of 4) — `&bins` is already the right type.
+        let hErr = vImageHistogramCalculation_Planar8(&yBuf, &bins, vImage_Flags(kvImageNoFlags))
         guard hErr == kvImageNoError else { return nil }
 
         // Warm bias from channel means.
@@ -908,7 +905,7 @@ enum SceneFeatureExtractor {
         fullFrameWidthPx: Double
     ) -> MotionFeatures {
         do {
-            let request = VNGenerateOpticalFlowRequest(targetedPixelBuffer: current)
+            let request = VNGenerateOpticalFlowRequest(targetedCVPixelBuffer: current)
             try VNImageRequestHandler(cvPixelBuffer: previous, orientation: .up, options: [:])
                 .perform([request])
             guard let flowPB = (request.results?.first as? VNPixelBufferObservation)?.pixelBuffer else {

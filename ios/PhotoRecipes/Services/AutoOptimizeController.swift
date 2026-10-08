@@ -33,7 +33,7 @@ enum AOPerf {
 
 @MainActor
 final class AutoOptimizeController: ObservableObject {
-    enum Phase {
+    enum Phase: Equatable {
         case idle
         case sensing(String)
         case reasoning(String)
