@@ -70,7 +70,9 @@ enum AOTelemetrySerializer {
         planResidualEV: Double?,
         residualEV: Double?,
         verifyIterations: Int,
-        lensDeviceType: String
+        lensDeviceType: String,
+        readbackShutterSec: Double? = nil,
+        readbackISO: Float? = nil
     ) -> [String: String] {
         // Same formula the solver uses: metered exposure product E_auto.
         let eAuto = (features.meteredExposureSeconds ?? 1 / 60)
@@ -105,6 +107,10 @@ enum AOTelemetrySerializer {
             "plan_residual_ev": planResidualEV.map { String(format: "%.2f", $0) } ?? "",
             "verify_residual_ev": residualEV.map { String(format: "%.2f", $0) } ?? "",
             "verify_iterations": "\(verifyIterations)",
+            // Device read-back AFTER verify (Part 0.3): the actual shutter/ISO
+            // the hardware held, as opposed to plan_shutter/plan_iso above.
+            "rb_shutter": readbackShutterSec.map { String(format: "%.4g", $0) } ?? "",
+            "rb_iso": readbackISO.map { "\(Int($0.rounded()))" } ?? "",
         ]
     }
 }

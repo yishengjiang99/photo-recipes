@@ -320,4 +320,37 @@ final class ExposureVerifyLoopTests: XCTestCase {
         XCTAssertNil(solution.priority, "populated by the solver-side worker, not here")
         XCTAssertNil(solution.shutterCapSeconds, "populated by the solver-side worker, not here")
     }
+
+    // MARK: - Part 0.2: dim-light correction cap
+
+    func testDimLightAllowsAtMostOneCorrection() {
+        // Dim room: planned shutter slower than 1/15 s → 1 correction max.
+        XCTAssertEqual(ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 4.0), 1)
+        XCTAssertEqual(ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 8.0), 1)
+        XCTAssertEqual(ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 14.9), 1)
+    }
+
+    func testBrightLightKeepsTwoCorrections() {
+        XCTAssertEqual(ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 60.0), 2)
+        XCTAssertEqual(ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 15.0), 2,
+                       "the cap applies only when SLOWER than 1/15 s")
+        XCTAssertEqual(ExposureVerifyLoop.maxIterations(plannedShutterSec: nil), 2,
+                       "no planned shutter (HDR / system-auto) keeps the historical cap")
+    }
+
+    func testDimLightCapRespectedByLoop() async {
+        // A scene needing a large correction: with the dim-light cap the loop
+        // issues exactly one correction write, then reports the residual.
+        let device = FakeExposureDevice(
+            sceneProduct: (1.0 / 60.0) * 100,
+            initialShutter: 1.0 / 4.0, initialISO: 1600,
+            isoRange: 50...3200, shutterRange: 1.0 / 8000...1.0)
+        let cap = ExposureVerifyLoop.maxIterations(plannedShutterSec: 1.0 / 4.0)
+        let r = await ExposureVerifyLoop.run(
+            targetEV: 0, priority: .auto(shutterCapSeconds: nil), shutterCapSeconds: nil,
+            maxIterations: cap, clock: device)
+        XCTAssertLessThanOrEqual(r.iterations, 1,
+                                 "dim-light cap: at most one correction write")
+        XCTAssertTrue(r.verified)
+    }
 }
