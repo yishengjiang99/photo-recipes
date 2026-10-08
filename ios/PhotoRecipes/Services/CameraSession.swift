@@ -1566,7 +1566,7 @@ final class CameraSession: NSObject, ObservableObject {
             duration: CMTime(seconds: d, preferredTimescale: 1_000_000), iso: i)
         exposureLocked = true
         exposureSeconds = d
-        iso = i
+        self.iso = i
         return sync
     }
 
