@@ -54,7 +54,8 @@ struct CameraView: View {
     @FocusState private var sceneFieldFocused: Bool
     @State private var keyboardHeight: CGFloat = 0
 
-    /// Coach Recommend — primary labeled control lower-left of shutter (Library lives in ···).
+    /// Recommend state — the finder button is removed; /api/recommend stays wired
+    /// for Ask (··· → Coach) and voice flows, which drive runRecommend() directly.
     @State private var isRecommending = false
     @State private var recommendResult: RecommendResponse?
     @State private var recommendError: String?
@@ -1014,50 +1015,12 @@ struct CameraView: View {
         let side: CGFloat = compact ? 48 : 56
         let outer: CGFloat = compact ? 68 : 76
         let inner: CGFloat = compact ? 56 : 62
-        let recommendDisabled = isRecommending || optimizer.phase.isRunning
 
         return HStack(spacing: 0) {
-            // Labeled Recommend (not photo/library thumb). Library stays in ··· More.
-            Button {
-                guard !recommendDisabled else { return }
-                Task { await runRecommend() }
-            } label: {
-                VStack(spacing: 2) {
-                    if isRecommending {
-                        ProgressView()
-                            .tint(AppTheme.ink)
-                            .scaleEffect(0.75)
-                            .frame(height: 18)
-                    } else {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: compact ? 14 : 16, weight: .semibold))
-                            .foregroundStyle(AppTheme.ink)
-                    }
-                    Text(compact ? "Rec" : "Recommend")
-                        .font(AppTheme.overline())
-                        .foregroundStyle(AppTheme.inkSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
+            // Recommend removed from the finder — kept in ··· More and on
+            // voice/Ask flows. Spacer keeps the shutter centered.
+            Spacer(minLength: 8)
                 .frame(width: side, height: side)
-                .contentShape(Rectangle())
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.black.opacity(0.35))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(AppTheme.border.opacity(0.6), lineWidth: 1)
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(recommendDisabled)
-            .opacity(recommendDisabled ? 0.45 : 1)
-            .accessibilityLabel(
-                isRecommending
-                    ? (recommendStreamStatus ?? "Matching recipe")
-                    : "Recommend"
-            )
 
             Spacer(minLength: 8)
 
