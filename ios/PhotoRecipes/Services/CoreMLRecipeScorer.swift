@@ -130,6 +130,18 @@ final class CoreMLRecipeScorer: RecipeScoring {
             let sum = max(rows.reduce(0) { $0 + $1.probability }, 1e-9)
             rows = rows.map { var r = $0; r.probability /= sum; return r }
         }
+        // Phase 2: Vision scene labels nudge the Core ML probabilities too.
+        // The nudge (≤0.05) is smaller than the intent nudge (0.15) so an
+        // explicit note still wins over label evidence.
+        let labelEvidence = SceneLabelRecipeMapper.boosts(
+            labels: features.sceneLabels ?? [], features: features)
+        if !labelEvidence.boosts.isEmpty {
+            rows = rows.map { row in
+                var r = row
+                if let b = labelEvidence.boosts[row.recipeId] { r.probability += 0.05 * b }
+                return r
+            }
+        }
         return rows.sorted { $0.probability > $1.probability }
     }
 }

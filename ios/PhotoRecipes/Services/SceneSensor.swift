@@ -76,6 +76,14 @@ actor SceneSensor {
     private var loopTask: Task<Void, Never>?
     private var lastMotionRun = Date.distantPast
     private var lastSlowRun = Date.distantPast
+    /// Async probe-JPEG provider (wired by the camera view) for the
+    /// no-video-frames fallback in `refreshNow`.
+    private var probeProvider: (() async throws -> Data)?
+
+    /// Wire the probe-frame source once (e.g. `session.captureProbeFrame`).
+    func setProbeProvider(_ provider: @escaping () async throws -> Data) {
+        probeProvider = provider
+    }
 
     // MARK: - Ingest (called from the video delegate via CameraSession.frameConsumer)
 
@@ -137,20 +145,25 @@ actor SceneSensor {
     private func tick() {
         guard let latest else { return }
         let thermal = ProcessInfo.processInfo.thermalState
-        if thermal == .serious || thermal == .critical {
-            return // paused until the device cools
+        if thermal == .critical {
+            return // paused until the device cools; AO falls back to rules + system auto
         }
         let now = Date()
 
+        // .serious: halve the analysis rate AND skip Vision classification
+        // (don't just pause) — motion + GPU stats keep running at half rate.
+        let motionInterval: TimeInterval = thermal == .serious ? 0.4 : 0.2
+        let slowInterval: TimeInterval = thermal == .serious ? 2.0 : 1.0
+
         // ~5 Hz motion (skipped entirely at .fair — classification only).
-        if thermal != .fair, now.timeIntervalSince(lastMotionRun) >= 0.2 {
+        if thermal != .fair, now.timeIntervalSince(lastMotionRun) >= motionInterval {
             lastMotionRun = now
             runMotionTick(latest: latest)
         }
         // ~1 Hz semantics.
-        if now.timeIntervalSince(lastSlowRun) >= 1.0 {
+        if now.timeIntervalSince(lastSlowRun) >= slowInterval {
             lastSlowRun = now
-            runSlowTick(latest: latest)
+            runSlowTick(latest: latest, includeClassification: thermal != .serious)
         }
     }
 
@@ -180,12 +193,14 @@ actor SceneSensor {
         )
     }
 
-    private func runSlowTick(latest: (buffer: CVPixelBuffer, timestamp: CMTime)) {
+    private func runSlowTick(latest: (buffer: CVPixelBuffer, timestamp: CMTime), includeClassification: Bool = true) {
         let metering = metering
         let pose = pose
         // Full pass without flow (the 5 Hz tick owns motion); then merge.
+        // GPU stats run at this same ~1 Hz cadence — never per video frame.
         var features = visionQueue.sync {
-            SceneFeatureExtractor.extract(
+            let stats = GPUStatsEngine.shared.analyze(latest.buffer)
+            return SceneFeatureExtractor.extract(
                 pixelBuffer: latest.buffer,
                 previousPixelBuffer: nil,
                 previousTimestamp: nil,
@@ -196,11 +211,20 @@ actor SceneSensor {
                     fieldOfViewDegrees: nil, fullFrameWidthPx: nil
                 ),
                 pose: pose,
-                note: ""
+                note: "",
+                gpuStats: stats,
+                includeClassification: includeClassification
             )
         }
-        // Hysteresis on semantic groups so labels don't flicker frame to frame.
-        features.semanticGroups = hysteresis.filter(features.semanticGroups)
+        if includeClassification {
+            // Hysteresis on semantic groups so labels don't flicker frame to frame.
+            features.semanticGroups = hysteresis.filter(features.semanticGroups)
+        } else if let prev = slowFeatures {
+            // Thermal .serious: classification skipped — reuse the last labels
+            // and groups so the UI doesn't flicker to empty.
+            features.semanticGroups = prev.semanticGroups
+            features.sceneLabels = prev.sceneLabels
+        }
         // Merge the motion EMA (the authoritative motion signal).
         features.subjectSpeedPxPerSec = motionEMA.subjectSpeedPxPerSec
         features.backgroundSpeedPxPerSec = motionEMA.backgroundSpeedPxPerSec
@@ -226,38 +250,69 @@ actor SceneSensor {
         return SceneSnapshot(features: features, age: age)
     }
 
-    /// One synchronous full pass over the newest frame (classification,
-    /// subjects, flow, histogram). Used on AO tap when the snapshot is older
-    /// than 1 s — still within the tap-to-applied latency budget.
-    func refreshNow(metering: MeteringSample, note: String) -> SceneFeatures? {
-        guard let latest else {
+    /// One full pass over the newest frame (classification, subjects, flow,
+    /// GPU stats). Used on AO tap when the snapshot is older than 1 s — still
+    /// within the tap-to-applied latency budget. Falls back to a probe JPEG
+    /// (CPU feature path) when no video frames have arrived.
+    func refreshNow(metering: MeteringSample, note: String) async -> SceneFeatures? {
+        self.metering = metering
+        let pose = pose
+        if let latest {
+            let prev = previousForFlow
+            var features = visionQueue.sync {
+                let stats = GPUStatsEngine.shared.analyze(latest.buffer)
+                return SceneFeatureExtractor.extract(
+                    pixelBuffer: latest.buffer,
+                    previousPixelBuffer: prev?.buffer,
+                    previousTimestamp: prev?.timestamp,
+                    timestamp: latest.timestamp,
+                    metering: metering,
+                    pose: pose,
+                    note: note,
+                    gpuStats: stats,
+                    includeClassification: true
+                )
+            }
+            features.semanticGroups = hysteresis.filter(features.semanticGroups)
+            // Seed the EMA from the fresh reading so the next ticks are stable.
+            motionEMA = MotionFeatures(
+                subjectSpeedPxPerSec: features.subjectSpeedPxPerSec,
+                backgroundSpeedPxPerSec: features.backgroundSpeedPxPerSec,
+                subjectRelativeSpeedPxPerSec: features.subjectRelativeSpeedPxPerSec,
+                directionX: features.motionDirectionX,
+                directionY: features.motionDirectionY
+            )
+            subjectBoxForFlow = features.subjectBox
+            slowFeatures = features
+            slowFeaturesAt = Date()
+            return features
+        }
+        // Probe-JPEG fallback: no video frames (interrupted session, lens
+        // switch). CPU histogram path — gpuStatsFresh stays false.
+        guard let provider = probeProvider else {
             log.error("refreshNow with no frames — camera not streaming")
             return nil
         }
-        self.metering = metering
-        let pose = pose
-        let prev = previousForFlow
+        guard let data = try? await provider(),
+              let buffer = ProbeFrameDecoder.pixelBuffer(fromJPEG: data)
+        else {
+            log.error("refreshNow probe fallback failed")
+            return nil
+        }
         var features = visionQueue.sync {
             SceneFeatureExtractor.extract(
-                pixelBuffer: latest.buffer,
-                previousPixelBuffer: prev?.buffer,
-                previousTimestamp: prev?.timestamp,
-                timestamp: latest.timestamp,
+                pixelBuffer: buffer,
+                previousPixelBuffer: nil,
+                previousTimestamp: nil,
+                timestamp: CMTime(value: 0, timescale: 1),
                 metering: metering,
                 pose: pose,
-                note: note
+                note: note,
+                gpuStats: nil,
+                includeClassification: true
             )
         }
         features.semanticGroups = hysteresis.filter(features.semanticGroups)
-        // Seed the EMA from the fresh reading so the next ticks are stable.
-        motionEMA = MotionFeatures(
-            subjectSpeedPxPerSec: features.subjectSpeedPxPerSec,
-            backgroundSpeedPxPerSec: features.backgroundSpeedPxPerSec,
-            subjectRelativeSpeedPxPerSec: features.subjectRelativeSpeedPxPerSec,
-            directionX: features.motionDirectionX,
-            directionY: features.motionDirectionY
-        )
-        subjectBoxForFlow = features.subjectBox
         slowFeatures = features
         slowFeaturesAt = Date()
         return features

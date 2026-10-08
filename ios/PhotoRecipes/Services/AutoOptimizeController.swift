@@ -462,6 +462,9 @@ final class AutoOptimizeController: ObservableObject {
                 "features_v": "\(SceneFeatures.currentSchemaVersion)",
                 "feature_vector": Self.quantizedVector(features),
                 "top3": Self.top3Scores(scores),
+                "thermal_state": Self.thermalStateName,
+                "gpu_stats": Self.gpuStatsProvenance(features),
+                "scene_label_top": features.sceneLabels?.first?.identifier ?? "",
             ])
             AOPerf.end(perfId, outcome: "ready-coach-only")
             consumeSharedFreeIfNeeded(entitlements)
@@ -556,6 +559,9 @@ final class AutoOptimizeController: ObservableObject {
             "features_v": "\(SceneFeatures.currentSchemaVersion)",
             "feature_vector": Self.quantizedVector(features),
             "top3": Self.top3Scores(scores),
+            "thermal_state": Self.thermalStateName,
+            "gpu_stats": Self.gpuStatsProvenance(features),
+            "scene_label_top": features.sceneLabels?.first?.identifier ?? "",
         ])
         AOPerf.end(perfId, outcome: "ready")
         consumeSharedFreeIfNeeded(entitlements)
@@ -637,6 +643,22 @@ final class AutoOptimizeController: ObservableObject {
         scores.prefix(3)
             .map { "\($0.recipeId):\(String(format: "%.2f", $0.probability))" }
             .joined(separator: ",")
+    }
+
+    /// Thermal state at run time (additive telemetry only).
+    static var thermalStateName: String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: return "nominal"
+        case .fair: return "fair"
+        case .serious: return "serious"
+        case .critical: return "critical"
+        @unknown default: return "unknown"
+        }
+    }
+
+    /// GPU stats provenance for the run: "metal", "cpu", or "none".
+    static func gpuStatsProvenance(_ features: SceneFeatures) -> String {
+        features.gpuStatsFresh ? (features.gpuStatsSource ?? "unknown") : "none"
     }
 
     /// Returns the last run id when a photo is captured within 30 s of a
