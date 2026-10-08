@@ -284,6 +284,48 @@ struct SceneFeatures: Codable, Equatable {
 
     // MARK: - Tolerant decoding
 
+    /// Explicit coding keys. The custom `init(from:)` below suppresses the
+    /// synthesized `CodingKeys`, so the key list is declared by hand — it is
+    /// the schema's wire contract: add new fields only at the end (matching
+    /// the schema-version rule above). The synthesized `encode(to:)` writes
+    /// every case; `init(from:)` reads each with `decodeIfPresent`.
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case capturedAt
+        case semanticGroups
+        case subjectKind
+        case subjectBox
+        case subjectAreaFraction
+        case subjectSpeedPxPerSec
+        case backgroundSpeedPxPerSec
+        case subjectRelativeSpeedPxPerSec
+        case motionDirectionX
+        case motionDirectionY
+        case meteredExposureSeconds
+        case meteredISO
+        case lensAperture
+        case exposureTargetOffset
+        case exposureWasCustom
+        case sceneEV100
+        case highlightClipFraction
+        case shadowCrushFraction
+        case percentileSpreadStops
+        case subjectDeltaStops
+        case warmBias
+        case cameraElevationDegrees
+        case handShakeRadPerSec
+        case recipeIntent
+        case gpuStatsFresh
+        case gpuStatsSource
+        case lumaHistogram64
+        case grayWorldMeanR
+        case grayWorldMeanG
+        case grayWorldMeanB
+        case lumaContrast
+        case gradientScores
+        case sceneLabels
+    }
+
     /// All-defaults init (the custom `init(from:)` below suppresses the
     /// synthesized memberwise init, so this restores `SceneFeatures()`).
     init() {}
