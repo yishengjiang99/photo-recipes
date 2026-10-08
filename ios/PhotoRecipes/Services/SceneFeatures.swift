@@ -255,6 +255,10 @@ struct SceneFeatures: Codable, Equatable {
 
     // MARK: - Tolerant decoding
 
+    /// All-defaults init (the custom `init(from:)` below suppresses the
+    /// synthesized memberwise init, so this restores `SceneFeatures()`).
+    init() {}
+
     /// Decodes with `decodeIfPresent` for every property, falling back to the
     /// declared defaults. Fixtures and telemetry logged under older schema
     /// versions (e.g. before `capturedAt` existed) must keep decoding after
