@@ -404,7 +404,9 @@ final class CameraSession: NSObject, ObservableObject {
         }
         configure(device) {
             let t = CMTime(seconds: clamped, preferredTimescale: 1_000_000)
-            device.setExposureModeCustom(duration: t, iso: device.iso, completionHandler: nil)
+            device.setExposureModeCustom(duration: t, iso: device.iso, completionHandler: { [weak self] _ in
+                Task { @MainActor in self?.lastExposureWriteDate = Date() }
+            })
         }
         exposureLocked = true
         exposureSeconds = clamped
@@ -418,7 +420,9 @@ final class CameraSession: NSObject, ObservableObject {
         }
         let clamped = min(max(value, capabilities.minISO), capabilities.maxISO)
         configure(device) {
-            device.setExposureModeCustom(duration: device.exposureDuration, iso: clamped, completionHandler: nil)
+            device.setExposureModeCustom(duration: device.exposureDuration, iso: clamped, completionHandler: { [weak self] _ in
+                Task { @MainActor in self?.lastExposureWriteDate = Date() }
+            })
         }
         exposureLocked = true
         iso = clamped
@@ -727,7 +731,9 @@ final class CameraSession: NSObject, ObservableObject {
         let i = min(max(isoVal, capabilities.minISO), capabilities.maxISO)
         configure(device) {
             let t = CMTime(seconds: d, preferredTimescale: 1_000_000)
-            device.setExposureModeCustom(duration: t, iso: i, completionHandler: nil)
+            device.setExposureModeCustom(duration: t, iso: i, completionHandler: { [weak self] _ in
+                Task { @MainActor in self?.lastExposureWriteDate = Date() }
+            })
         }
         exposureLocked = true
         exposureSeconds = d
@@ -1340,6 +1346,144 @@ final class CameraSession: NSObject, ObservableObject {
             fieldOfViewDegrees: activeFieldOfViewDegrees(),
             fullFrameWidthPx: videoFrameWidth
         )
+    }
+
+    // MARK: - Phase 1: closed-loop exposure (converge → plan → verify)
+
+    /// When the last custom-exposure write's completion handler fired. The
+    /// verify step waits for this + ~2 frames before reading back.
+    private var lastExposureWriteDate: Date?
+
+    /// Metered exposure product from a converged AE state.
+    struct AEConvergeResult {
+        var exposureSeconds: Double
+        var iso: Float
+        var timedOut: Bool
+        /// `exposureSeconds × iso` — the anchor for the exposure planner.
+        var eAuto: Double { exposureSeconds * Double(iso) }
+    }
+
+    /// Meters from a converged auto state, before sensing.
+    ///
+    /// Switches the device to `.continuousAutoExposure` at zero bias — this
+    /// also clears any stale custom-exposure lock a previous run left behind
+    /// — then waits until `!isAdjustingExposure &&
+    /// abs(exposureTargetOffset) < 0.15 EV`, with a ~600 ms timeout. On
+    /// timeout it proceeds anyway; the caller tracks `ae_converge_timeout`.
+    ///
+    /// Never blocks the capture queue: the waits yield the actor between polls.
+    func convergeAutoExposure(timeoutNanoseconds: UInt64 = 600_000_000) async throws -> AEConvergeResult {
+        guard let device = input?.device else {
+            return AEConvergeResult(exposureSeconds: exposureSeconds, iso: iso, timedOut: true)
+        }
+        configure(device) {
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            let zeroBias = min(max(Float(0), capabilities.minEV), capabilities.maxEV)
+            device.setExposureTargetBias(zeroBias, completionHandler: nil)
+        }
+        exposureLocked = false
+
+        let deadline = Date().addingTimeInterval(Double(timeoutNanoseconds) / 1_000_000_000)
+        var converged = false
+        while Date() < deadline {
+            try Task.checkCancellation()
+            guard let device = input?.device else { break }
+            if !device.isAdjustingExposure && abs(device.exposureTargetOffset) < 0.15 {
+                converged = true
+                break
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        refreshReadouts()
+        return AEConvergeResult(
+            exposureSeconds: exposureSeconds, iso: iso, timedOut: !converged)
+    }
+
+    /// Closed-loop verify + correct after a custom-exposure apply.
+    struct ExposureVerifyResult {
+        /// Final `offset − targetEV`, in stops (+ means under).
+        var residualEV: Double
+        var iterations: Int
+        var clamped: Bool
+        /// Error measured before any correction, in stops.
+        var initialError: Double
+        /// False when the device wasn't in custom mode — nothing to verify.
+        var verified: Bool
+    }
+
+    /// Waits for the last custom-exposure write to land (completion handler +
+    /// ~2 frames), reads `exposureTargetOffset` — which stays valid as a
+    /// meter reading in custom mode — and computes `error = offset − targetEV`.
+    /// While |error| > 0.3 EV it corrects ISO by 2^(−error), falling back to
+    /// the shutter when ISO clamps, with at most `maxIterations` corrections.
+    func verifyExposure(targetEV: Double, maxIterations: Int = 2) async -> ExposureVerifyResult {
+        await settleLastExposureWrite()
+        var iterations = 0
+        var clamped = false
+        var error = currentExposureError(targetEV: targetEV)
+        let initialError = error ?? 0
+        while let e = error, abs(e) > 0.3, iterations < maxIterations, !Task.isCancelled {
+            clamped = applyExposureCorrection(error: e) || clamped
+            iterations += 1
+            await settleLastExposureWrite()
+            error = currentExposureError(targetEV: targetEV)
+        }
+        refreshReadouts()
+        return ExposureVerifyResult(
+            residualEV: error ?? 0, iterations: iterations,
+            clamped: clamped, initialError: initialError,
+            verified: error != nil)
+    }
+
+    /// `exposureTargetOffset − targetEV` in custom mode; nil when custom
+    /// exposure isn't held (nothing meaningful to verify).
+    private func currentExposureError(targetEV: Double) -> Double? {
+        refreshReadouts()
+        let rb = readbackState()
+        guard rb.exposureMode == "custom" else { return nil }
+        return Double(rb.exposureTargetOffset) - targetEV
+    }
+
+    /// One correction step for `error` (in stops). Corrects ISO by 2^(−error);
+    /// when ISO clamps, moves the shutter instead to hold the product.
+    /// Returns true when a device limit clamped the correction.
+    private func applyExposureCorrection(error: Double) -> Bool {
+        let rb = readbackState()
+        let factor = pow(2.0, -error)
+        let wantISO = rb.iso * Float(factor)
+        let clampedISO = min(max(wantISO, capabilities.minISO), capabilities.maxISO)
+        if clampedISO == wantISO {
+            setISO(clampedISO)
+            return false
+        }
+        if capabilities.supportsCustomExposure {
+            let wantShutter = rb.exposureDuration * factor
+            let clampedShutter = min(max(wantShutter, capabilities.minExposureSeconds),
+                                     capabilities.maxExposureSeconds)
+            if clampedShutter == wantShutter {
+                setShutter(clampedShutter)
+                return false
+            }
+        }
+        setISO(clampedISO)
+        return true
+    }
+
+    /// Waits for the last custom-exposure write to land: completion-handler
+    /// timestamp + ~2 frames, bounded. Falls back to a fixed 300 ms settle
+    /// when no write was recorded.
+    private func settleLastExposureWrite() async {
+        if let at = lastExposureWriteDate {
+            let waitUntil = at.addingTimeInterval(0.07) // ~2 frames at 30 fps
+            let remaining = waitUntil.timeIntervalSinceNow
+            if remaining > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            }
+        } else {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
     }
 
     private func configure(_ device: AVCaptureDevice, _ block: () throws -> Void) {

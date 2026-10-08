@@ -273,14 +273,17 @@ final class AutoOptimizeController: ObservableObject {
 
     /// Local-first Auto Optimize. The happy path never calls the network.
     ///
+    /// 0. Converge: AE to a converged auto state first — clears any stale
+    ///    custom-exposure lock and anchors E_auto to the metered light level.
     /// 1. Features: the `SceneSensor` snapshot (refreshed synchronously on tap
     ///    when stale > 1 s).
     /// 2. Score: `RecipeScorer` over all ten bundled recipes (the reference
     ///    card is never a candidate); a staged recipe skips scoring.
-    /// 3. Solve: `SettingsSolver` turns the recipe + features into dial targets.
+    /// 3. Solve: `SettingsSolver` + `ExposurePlanner` turn the recipe +
+    ///    features into dial targets from the converged E_auto.
     /// 4. Apply: `applyPhoneTargets` — never `setEV` after custom exposure.
-    /// 5. Verify: 300 ms settle + read-back; one ISO nudge when the exposure
-    ///    offset is > 1 stop off; diff chips show read-back values.
+    /// 5. Verify: closed-loop settle + read-back; ≤2 ISO corrections while
+    ///    |offset − targetEV| > 0.3 EV; diff chips show read-back values.
     func run(
         session: CameraSession,
         entitlements: EntitlementsStore,
@@ -328,6 +331,29 @@ final class AutoOptimizeController: ObservableObject {
             return true
         }
 
+        // --- 0. AE converge ----------------------------------------------------
+        // Meter from a converged auto state: continuous AE at zero bias clears
+        // any stale custom-exposure lock from a previous run, and the snapshot
+        // anchors E_auto to the metered light level — not the tone-mapped
+        // probe brightness the system AE already normalized.
+        // Thermal .critical: rules scorer + system auto exposure (no custom).
+        let thermalCritical = ProcessInfo.processInfo.thermalState == .critical
+        phase = .sensing("Reading light…")
+        do {
+            let converge = try await session.convergeAutoExposure()
+            if converge.timedOut {
+                Analytics.shared.track("ae_converge_timeout", props: [
+                    "run_id": runId,
+                    "trigger": trigger,
+                ])
+            }
+        } catch {
+            if wasCancelled(stage: "converge") { return }
+            // Task cancelled without a generation bump — stop quietly.
+            AOPerf.end(perfId, outcome: "cancelled")
+            return
+        }
+
         // --- 1. Features -----------------------------------------------------
         phase = .sensing("Reading scene…")
         let metering = session.meteringSample()
@@ -369,7 +395,9 @@ final class AutoOptimizeController: ObservableObject {
         // --- 2. Score ---------------------------------------------------------
         if wasCancelled(stage: "sense") { return }
         phase = .reasoning("Matching a recipe…")
-        let scores = scorer.score(features)
+        // Thermal .critical falls back to the rules scorer (never Core ML).
+        let runScorer: RecipeScoring = thermalCritical ? JSONRecipeScorer() : scorer
+        let scores = runScorer.score(features)
         guard let decision = RecipeDecider.decide(
             scores: scores,
             features: features,
@@ -400,7 +428,8 @@ final class AutoOptimizeController: ObservableObject {
             recipeId: recipe.id,
             features: features,
             capabilities: session.capabilities,
-            context: solveContext
+            context: solveContext,
+            forceSystemAutoExposure: thermalCritical
         )
 
         // --- 4. Apply ----------------------------------------------------------
@@ -439,13 +468,42 @@ final class AutoOptimizeController: ObservableObject {
             return
         }
 
-        // --- 5. Verify: settle + read-back -------------------------------------
+        // --- 5. Verify: closed-loop settle + read-back + correct ---------------
         phase = .verifying("Checking exposure…")
-        try? await Task.sleep(nanoseconds: 300_000_000) // let hardware settle
+        var verifyNotes: [String] = []
+
+        // Closed-loop correction against the planner's targetEV: wait for the
+        // write to land (completion + ~2 frames), compare exposureTargetOffset,
+        // correct ISO while |offset − targetEV| > 0.3 EV (≤2 iterations).
+        // Replaces the old single >1-stop nudge.
+        if let targetEV = solution.targetEV,
+           solution.phoneTargets.exposureDurationSec != nil,
+           entitlements.canApplyDials {
+            let v = await session.verifyExposure(targetEV: targetEV)
+            if v.verified {
+                if v.iterations > 0 {
+                    verifyNotes.append(String(format:
+                        "Exposure was %+.1f EV off target — corrected in %d iteration(s); residual %+.1f EV.",
+                        v.initialError, v.iterations, v.residualEV))
+                } else if abs(v.residualEV) > 0.3 {
+                    verifyNotes.append(String(format:
+                        "Exposure settled %+.1f EV from target.",
+                        v.residualEV))
+                }
+                Analytics.shared.track("auto_optimize_verify", props: [
+                    "run_id": runId,
+                    "recipe_id": recipe.id,
+                    "residual_ev": String(format: "%.2f", v.residualEV),
+                    "iterations": "\(v.iterations)",
+                    "clamped": v.clamped ? "1" : "0",
+                ])
+            }
+        } else {
+            try? await Task.sleep(nanoseconds: 300_000_000) // let hardware settle
+        }
         if wasCancelled(stage: "verify") { return }
         session.refreshReadouts()
         let readback = session.readbackState()
-        var verifyNotes: [String] = []
 
         if solution.phoneTargets.exposureDurationSec != nil {
             if readback.exposureMode != "custom" {
@@ -464,15 +522,6 @@ final class AutoOptimizeController: ObservableObject {
             }
         }
 
-        // Exposure-offset nudge: > 1 stop off after the solve → nudge ISO once.
-        // (setISO keeps the solved shutter — never touches EV after custom exposure.)
-        if abs(readback.exposureTargetOffset) > 1.0, entitlements.canApplyDials {
-            let nudgedISO = readback.iso / Float(pow(2.0, Double(readback.exposureTargetOffset)))
-            session.setISO(nudgedISO)
-            verifyNotes.append("Exposure was \(String(format: "%+.1f", readback.exposureTargetOffset)) stops off — nudged ISO once.")
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            session.refreshReadouts()
-        }
         session.clampMessages.append(contentsOf: verifyNotes)
         verifyWarning = verifyNotes.isEmpty ? nil : verifyNotes.joined(separator: " ")
 

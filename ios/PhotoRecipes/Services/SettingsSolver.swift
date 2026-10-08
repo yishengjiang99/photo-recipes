@@ -30,16 +30,10 @@ enum SettingsSolver {
         var panCue: PanCue?
         var apertureGuidance: String?
         var extraTips: [String] = []
-    }
-
-    /// Which way the shutter may move when ISO clamps.
-    enum ShutterFlex {
-        /// May go faster (shorter) when overexposed at min ISO (sharp recipes).
-        case fasterOK
-        /// May go slower (longer) when underexposed at max ISO.
-        case slowerOK
-        /// Shutter is the recipe's objective — hold it, report the error.
-        case fixed
+        /// Composed exposure offset the plan targets (recipe + face + learned),
+        /// in stops. Nil when no custom exposure is written (HDR, cheatsheet,
+        /// thermal-critical fallback) — the verify loop skips then.
+        var targetEV: Double?
     }
 
     // MARK: - Entry
@@ -48,7 +42,39 @@ enum SettingsSolver {
         recipeId: String,
         features: SceneFeatures,
         capabilities: DeviceCapabilities,
-        context: SolveContext = .default
+        context: SolveContext = .default,
+        /// Phase 4 hook: residual offset learned from user corrections
+        /// (`ExposureOffsetNet`), in stops. Clamped to ±1 EV by the caller.
+        learnedEVOffset: Double = 0,
+        /// Thermal `.critical`: the rules still pick the recipe (coaching and
+        /// tips), but exposure stays on system auto — no custom shutter/ISO.
+        forceSystemAutoExposure: Bool = false
+    ) -> Solution {
+        var solution = solveImpl(
+            recipeId: recipeId,
+            features: features,
+            capabilities: capabilities,
+            context: context,
+            learnedEVOffset: learnedEVOffset
+        )
+        if forceSystemAutoExposure {
+            solution.phoneTargets.exposureDurationSec = nil
+            solution.phoneTargets.shutter = nil
+            solution.phoneTargets.iso = nil
+            solution.phoneTargets.ev = nil
+            solution.targetEV = nil
+            solution.clampMessages.append(
+                "Thermal state critical — exposure left on system auto.")
+        }
+        return solution
+    }
+
+    private static func solveImpl(
+        recipeId: String,
+        features: SceneFeatures,
+        capabilities: DeviceCapabilities,
+        context: SolveContext,
+        learnedEVOffset: Double
     ) -> Solution {
         // Reference card — no camera changes, coach only.
         if recipeId == "exposure-triangle-cheatsheet" {
@@ -69,8 +95,6 @@ enum SettingsSolver {
         /// Shutter that freezes subject motion to ~1.5 px.
         let relSpeed = Double(features.subjectRelativeSpeedPxPerSec)
         let tMotion: Double = relSpeed > 50 ? 1.5 / relSpeed : .infinity
-        /// Metered exposure product (auto-exposure equivalent).
-        let pMeter = (features.meteredExposureSeconds ?? 1 / 60) * Double(features.meteredISO ?? 100)
         let ev100 = features.sceneEV100
         let isDim = (ev100 ?? 99) < 7
         let isVeryDim = (ev100 ?? 99) < 2
@@ -86,50 +110,38 @@ enum SettingsSolver {
             tips.append("Hand shake limits the shutter to ~\(RecipeCameraMapper.formatShutter(tShake)) — brace or use a tripod.")
         }
 
-        /// Shared exposure solve: ISO from the metered product, shutter flex on clamp.
-        func expose(targetShutter: Double, evBias: Float, flex: ShutterFlex, maxShutter: Double? = nil) -> (shutter: Double, iso: Float) {
-            var shutter = targetShutter
-            if let maxS = maxShutter { shutter = min(shutter, maxS) }
-            shutter = clamp(shutter, min: capabilities.minExposureSeconds, max: capabilities.maxExposureSeconds)
-            var iso = Float(pMeter * pow(2, Double(evBias)) / shutter)
-            if iso < capabilities.minISO {
-                let wantShutter = pMeter * pow(2, Double(evBias)) / Double(capabilities.minISO)
-                switch flex {
-                case .fasterOK where wantShutter >= capabilities.minExposureSeconds:
-                    shutter = wantShutter
-                    iso = capabilities.minISO
-                case .slowerOK where wantShutter <= capabilities.maxExposureSeconds:
-                    shutter = wantShutter
-                    iso = capabilities.minISO
-                default:
-                    iso = capabilities.minISO
-                    let stops = log2(Double(capabilities.minISO) / max(Double(iso), 1e-6))
-                    messages.append(String(format: "Overexposed ~%.1f stops at min ISO — scene too bright for this shutter.", max(0, -stops)))
-                }
-            } else if iso > capabilities.maxISO {
-                let wantShutter = pMeter * pow(2, Double(evBias)) / Double(capabilities.maxISO)
-                switch flex {
-                case .slowerOK where wantShutter <= capabilities.maxExposureSeconds:
-                    shutter = wantShutter
-                    iso = capabilities.maxISO
-                case .fasterOK where wantShutter <= min(tShake, capabilities.maxExposureSeconds):
-                    // No room: fasterOK recipes already sit at the shake limit.
-                    iso = capabilities.maxISO
-                    messages.append("Underexposed at max ISO — add light or accept a darker frame.")
-                default:
-                    iso = capabilities.maxISO
-                    messages.append("Underexposed at max ISO — add light or accept a darker frame.")
-                }
-            }
-            return (shutter, iso)
+        /// Shared exposure solve via `ExposurePlanner`: `E_target` from the
+        /// converged metered product, split into shutter × ISO by the
+        /// recipe's priority. Shutter and ISO are never chosen independently
+        /// of the metered exposure.
+        func planExposure(
+            priority: ExposurePlanner.Priority,
+            targetEV: Double
+        ) -> ExposurePlanner.Plan {
+            let eAuto = (features.meteredExposureSeconds ?? 1 / 60)
+                * Double(features.meteredISO ?? 100)
+            let motion = ExposurePlanner.MotionContext(
+                handShakeRadPerSec: max(Double(features.handShakeRadPerSec), 1e-4),
+                frameWidthPx: context.frameWidthPx,
+                fieldOfViewDegrees: context.fieldOfViewDegrees)
+            let limits = ExposurePlanner.DeviceLimits(
+                minShutterSeconds: capabilities.minExposureSeconds,
+                maxShutterSeconds: capabilities.maxExposureSeconds,
+                minISO: capabilities.minISO,
+                maxISO: capabilities.maxISO)
+            let plan = ExposurePlanner.plan(
+                eAuto: eAuto, targetEV: targetEV, priority: priority,
+                motion: motion, limits: limits, learnedEVOffset: learnedEVOffset)
+            messages.append(contentsOf: plan.clampMessages)
+            return plan
         }
 
-        func setExposure(shutter: Double, iso: Float, evBias: Float) {
-            targets.exposureDurationSec = shutter
-            targets.shutter = RecipeCameraMapper.formatShutter(shutter)
-            targets.iso = "\(Int(iso.rounded()))"
+        func setExposure(plan: ExposurePlanner.Plan) {
+            targets.exposureDurationSec = plan.shutterSeconds
+            targets.shutter = RecipeCameraMapper.formatShutter(plan.shutterSeconds)
+            targets.iso = "\(Int(plan.iso.rounded()))"
             // Folded into the ISO above — applyPhoneTargets must skip setEV.
-            targets.ev = String(format: "%+.1f", evBias)
+            targets.ev = String(format: "%+.1f", plan.targetEV)
         }
 
         let faceEV = Self.faceEVBias(features: features)
@@ -137,12 +149,14 @@ enum SettingsSolver {
 
         switch recipeId {
         case "sharp-front-to-back":
-            // Objective: slowest shutter that still freezes motion and shake —
-            // never faster than needed, so ISO stays minimal.
+            // Objective: longest motion-safe shutter first, then gain — so
+            // ISO stays minimal. (.auto with the recipe's motion cap.)
             let shutter = min(tShake, tMotion)
             let ev: Float = features.highlightClipFraction > 0.02 ? -0.3 : 0
-            let (s, iso) = expose(targetShutter: shutter, evBias: ev, flex: .fasterOK)
-            setExposure(shutter: s, iso: iso, evBias: ev)
+            let plan = planExposure(
+                priority: .auto(shutterCapSeconds: shutter),
+                targetEV: Double(ev) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.focusMode = "locked"
             targets.focusPoint = FocusPointNorm(
                 x: Double(subjectCenter?.x ?? 0.5), y: Double(subjectCenter?.y ?? 0.62))
@@ -150,6 +164,7 @@ enum SettingsSolver {
             if isVeryDim { targets.lowLightBoost = true }
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: "f/11–f/16 (guidance)", nd: nil,
                     tripod: tShake < 1 / 200,
@@ -170,8 +185,12 @@ enum SettingsSolver {
                 messages.append("No subject motion measured — using the longest shutter; re-aim at moving water or traffic.")
             }
             shutter = clamp(shutter, min: 1 / 250, max: capabilities.maxExposureSeconds)
-            let (s, iso) = expose(targetShutter: shutter, evBias: 0, flex: .fixed)
-            setExposure(shutter: s, iso: iso, evBias: 0)
+            // Shutter priority: the blur streak is the recipe's objective —
+            // hold it, report the residual when ISO clamps.
+            let plan = planExposure(
+                priority: .shutter(seconds: shutter),
+                targetEV: learnedEVOffset)
+            setExposure(plan: plan)
             // Lock focus on the static scene: the subject if it is static,
             // else frame center.
             let staticPoint: CGPoint = {
@@ -184,6 +203,7 @@ enum SettingsSolver {
                 ? "ND filter — scene too bright for silky blur at base ISO" : nil
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: nil, nd: ndNote, tripod: true,
                     notes: "Tripod keeps the static world sharp while motion blurs."
@@ -198,8 +218,12 @@ enum SettingsSolver {
             let targetStreakPx = 0.06 * context.frameWidthPx
             var shutter = panSpeed > 50 ? targetStreakPx / panSpeed : 1 / 30
             shutter = clamp(shutter, min: 1 / 125, max: 1 / 8)
-            let (s, iso) = expose(targetShutter: shutter, evBias: faceEV, flex: .fixed)
-            setExposure(shutter: s, iso: iso, evBias: faceEV)
+            // Shutter priority at 1/30 s (or the pan-derived streak): the pan
+            // blur is the recipe's objective — hold it, report the residual.
+            let plan = planExposure(
+                priority: .shutter(seconds: shutter),
+                targetEV: Double(faceEV) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.focusMode = "continuous"
             let c = subjectCenter ?? CGPoint(x: 0.5, y: 0.5)
             targets.focusPoint = FocusPointNorm(x: Double(c.x), y: Double(c.y))
@@ -208,6 +232,7 @@ enum SettingsSolver {
                 ? "horizontal" : "vertical"
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: nil, nd: nil, tripod: false,
                     notes: "Rotate your body at the same speed as the subject."
@@ -245,8 +270,10 @@ enum SettingsSolver {
             // As sharp-front-to-back, then switch to the ultra-wide.
             let shutter = min(tShake, tMotion)
             let ev: Float = features.highlightClipFraction > 0.02 ? -0.3 : 0
-            let (s, iso) = expose(targetShutter: shutter, evBias: ev, flex: .fasterOK)
-            setExposure(shutter: s, iso: iso, evBias: ev)
+            let plan = planExposure(
+                priority: .auto(shutterCapSeconds: shutter),
+                targetEV: Double(ev) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.cameraDevice = "ultraWide"
             targets.focusMode = "auto"
             let c = subjectCenter ?? CGPoint(x: 0.5, y: 0.7)
@@ -256,6 +283,7 @@ enum SettingsSolver {
             messages.append("Exposure re-checked after the ultra-wide switch (verify read-back).")
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: nil, nd: nil, tripod: false,
                     notes: "Widest angle; the foreground becomes the main subject."
@@ -267,8 +295,10 @@ enum SettingsSolver {
         case "portrait-pop":
             // Face → exposure point on the face/eyes, locked focus, 2× zoom.
             let shutter = min(tShake, tMotion)
-            let (s, iso) = expose(targetShutter: shutter, evBias: faceEV, flex: .fasterOK)
-            setExposure(shutter: s, iso: iso, evBias: faceEV)
+            let plan = planExposure(
+                priority: .auto(shutterCapSeconds: shutter),
+                targetEV: Double(faceEV) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.focusMode = "locked"
             targets.focusPoint = FocusPointNorm(x: Double(eyePoint(features: features).x),
                                                 y: Double(eyePoint(features: features).y))
@@ -282,6 +312,7 @@ enum SettingsSolver {
             }
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: "f/1.8 wide open (guidance — use Portrait mode)",
                     nd: nil, tripod: false,
@@ -294,14 +325,17 @@ enum SettingsSolver {
             // Single-point focus locked on the subject (eyes for people).
             let shutter = min(tShake, tMotion)
             let ev: Float = features.highlightClipFraction > 0.02 ? -0.3 : faceEV
-            let (s, iso) = expose(targetShutter: shutter, evBias: ev, flex: .fasterOK)
-            setExposure(shutter: s, iso: iso, evBias: ev)
+            let plan = planExposure(
+                priority: .auto(shutterCapSeconds: shutter),
+                targetEV: Double(ev) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.focusMode = "locked"
             let p = eyePoint(features: features)
             targets.focusPoint = FocusPointNorm(x: Double(p.x), y: Double(p.y))
             if isVeryDim { targets.lowLightBoost = true }
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: "high f-stop for more in focus (guidance)",
                     nd: nil, tripod: false,
@@ -314,8 +348,10 @@ enum SettingsSolver {
             // Deep focus so lines stay sharp foreground → background.
             let shutter = min(tShake, tMotion)
             let ev: Float = features.highlightClipFraction > 0.02 ? -0.3 : faceEV
-            let (s, iso) = expose(targetShutter: shutter, evBias: ev, flex: .fasterOK)
-            setExposure(shutter: s, iso: iso, evBias: ev)
+            let plan = planExposure(
+                priority: .auto(shutterCapSeconds: shutter),
+                targetEV: Double(ev) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.focusMode = "locked"
             let c = subjectCenter ?? CGPoint(x: 0.5, y: 0.5)
             targets.focusPoint = FocusPointNorm(x: Double(c.x), y: Double(c.y))
@@ -323,6 +359,7 @@ enum SettingsSolver {
             if isVeryDim { targets.lowLightBoost = true }
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: "f/11 deep focus (guidance)", nd: nil, tripod: false,
                     notes: "Turn on the thirds grid; lines should start in the foreground and point at the subject."
@@ -334,14 +371,17 @@ enum SettingsSolver {
             // Expose for mood: slight underexposure keeps blue-hour scenes moody.
             let shutter = min(tShake, tMotion)
             let ev: Float = (features.sceneEV100 ?? 99) < 8 ? -0.3 : faceEV
-            let (s, iso) = expose(targetShutter: shutter, evBias: ev, flex: .fasterOK)
-            setExposure(shutter: s, iso: iso, evBias: ev)
+            let plan = planExposure(
+                priority: .auto(shutterCapSeconds: shutter),
+                targetEV: Double(ev) + learnedEVOffset)
+            setExposure(plan: plan)
             targets.focusMode = "locked"
             let c = subjectCenter ?? CGPoint(x: 0.5, y: 0.5)
             targets.focusPoint = FocusPointNorm(x: Double(c.x), y: Double(c.y))
             if isVeryDim { targets.lowLightBoost = true }
             return Solution(
                 phoneTargets: targets, clampMessages: messages,
+                targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
                     aperture: nil, nd: nil, tripod: false,
                     notes: "Thirds grid on; one subject on a third line; blue hour (30 min after sunset) is ideal."
@@ -352,7 +392,8 @@ enum SettingsSolver {
         default:
             // Unknown id — treat as sharp-front-to-back (server fallback agrees).
             var fallback = solve(recipeId: "sharp-front-to-back", features: features,
-                                 capabilities: capabilities, context: context)
+                                 capabilities: capabilities, context: context,
+                                 learnedEVOffset: learnedEVOffset)
             fallback.extraTips = tips + fallback.extraTips
             return fallback
         }
