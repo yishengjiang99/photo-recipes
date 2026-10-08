@@ -640,6 +640,10 @@ struct CameraView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .allowsHitTesting(false)
             }
+
+            // Statuses live on top — the center of the finder stays clear.
+            // Single status line, then the chip row.
+            statusSection(compact: compact)
         }
         .padding(.horizontal, compact ? 10 : 14)
         // Sit snug under status bar / Dynamic Island (inset + ~6pt clearance).
@@ -657,16 +661,12 @@ struct CameraView: View {
         )
     }
 
-    private func bottomOverlay(compact: Bool, width: CGFloat, scrimHeight: CGFloat, bottomSafeInset: CGFloat) -> some View {
-        let hPad: CGFloat = width <= 320 ? 8 : (compact ? 12 : 16)
-        let aoH: CGFloat = compact ? 46 : 54
-
+    /// Statuses on top: single status line + chip row. The center of the
+    /// finder stays clear for the actual photography.
+    private func statusSection(compact: Bool) -> some View {
+        let hPad: CGFloat = compact ? 10 : 14
         return VStack(spacing: compact ? 6 : 8) {
-            // Single status surface: AgentStatusPill is the only live line.
-            // The old actionableClampMessage banner was deleted — it duplicated
-            // verifyWarning. Hardware clamp notes surface via verifyWarning.
-
-            // Single primary status: busy Recommend/AO, or ready warnings — not stacked with BeforeAfter.
+            // Single primary status: busy Recommend/AO, or ready warnings.
             if isStatusBusy || primaryStatusCopy != nil {
                 AgentStatusPill(
                     phase: optimizer.phase,
@@ -674,51 +674,94 @@ struct CameraView: View {
                     statusOverride: primaryStatusCopy ?? recommendChromeStatus ?? optimizer.pillStatus,
                     isBusy: isRecommending || optimizer.phase.isRunning,
                     onStop: isStatusBusy ? { optimizer.clear(); cancelInFlightVoiceIntent() } : nil,
-                    onTapDetail: {
-                        // Tap opens the teach/detail sheet — EV numbers live there,
-                        // never on the finder.
-                        showTeach = true
-                    }
+                    onTapDetail: { showTeach = true }
                 )
             }
 
-            if let mode = lookChipMode {
-                LookChip(
-                    mode: mode,
-                    onApply: {
-                        if let look = optimizer.suggestedLook {
-                            Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "chip"])
+            // One chip row: look + scene, centered.
+            HStack(spacing: 8) {
+                if let mode = lookChipMode {
+                    LookChip(
+                        mode: mode,
+                        onApply: {
+                            if let look = optimizer.suggestedLook {
+                                Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "chip"])
+                            }
+                            optimizer.applySuggestedLook(session: session)
+                        },
+                        onDismiss: {
+                            if let look = optimizer.suggestedLook {
+                                Analytics.shared.track("look_dismissed", props: ["look_id": look.id, "source": "chip"])
+                            }
+                            optimizer.dismissSuggestedLook()
+                        },
+                        onClear: {
+                            if let look = session.activeCreativeLook {
+                                let auto = look.id == optimizer.autoAppliedLookId
+                                Analytics.shared.track("look_undone", props: [
+                                    "look_id": look.id,
+                                    "auto_applied": auto ? "1" : "0",
+                                    "rank": "1",
+                                    "source": "chip",
+                                ])
+                                if auto { optimizer.autoAppliedLookId = nil }
+                            }
+                            session.clearActiveLook()
+                        },
+                        onOpenLooks: {
+                            controlsTab = .looks
+                            showDials = true
                         }
-                        optimizer.applySuggestedLook(session: session)
-                    },
-                    onDismiss: {
-                        if let look = optimizer.suggestedLook {
-                            Analytics.shared.track("look_dismissed", props: ["look_id": look.id, "source": "chip"])
-                        }
-                        optimizer.dismissSuggestedLook()
-                    },
-                    onClear: {
-                        if let look = session.activeCreativeLook {
-                            let auto = look.id == optimizer.autoAppliedLookId
-                            Analytics.shared.track("look_undone", props: [
-                                "look_id": look.id,
-                                "auto_applied": auto ? "1" : "0",
-                                "rank": "1",
-                                "source": "chip",
-                            ])
-                            if auto { optimizer.autoAppliedLookId = nil }
-                        }
-                        session.clearActiveLook()
-                    },
-                    onOpenLooks: {
-                        controlsTab = .looks
-                        showDials = true
-                    }
-                )
-                .padding(.horizontal, hPad)
+                    )
+                }
+
+                sceneChip(compact: compact)
+            }
+            .padding(.horizontal, hPad)
+        }
+    }
+
+    /// Compact scene chip for the top status section.
+    private func sceneChip(compact: Bool) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                sceneExpanded = true
+                sceneFieldFocused = true
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(sceneNote.isEmpty ? "Scene…" : sceneNote)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(sceneNote.isEmpty ? AppTheme.inkTertiary : AppTheme.ink)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkTertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(AppTheme.agentStatusBg)
+                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.7), lineWidth: 1))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func bottomOverlay(compact: Bool, width: CGFloat, scrimHeight: CGFloat, bottomSafeInset: CGFloat) -> some View {
+        let hPad: CGFloat = width <= 320 ? 8 : (compact ? 12 : 16)
+
+        return VStack(spacing: compact ? 6 : 8) {
+            // Bottom holds only controls: the expanded scene editor (when editing)
+            // and the shutter. Statuses live on top; the center stays clear.
+
+            // Scene editor expands here when the top chip is tapped.
+            if sceneExpanded || isVoiceListening {
+                sceneEditor(compact: compact)
+                    .padding(.horizontal, hPad)
             }
 
-            // Also-try chip: runner-up recipe when the top score was uncertain.
+            // Transient suggestion chips live here, above the shutter.
             if let alsoId = optimizer.alsoTryRecipeId, !optimizer.phase.isRunning {
                 Button {
                     let parent = optimizer.lastRunId
@@ -742,40 +785,6 @@ struct CameraView: View {
                 .foregroundStyle(AppTheme.ink)
                 .padding(.horizontal, hPad)
             }
-
-            // Scene changed after Ready — re-run only on tap, never silently.
-            if let suggestion = optimizer.sceneChangedSuggestion, !optimizer.phase.isRunning {
-                Button {
-                    optimizer.sceneChangedSuggestion = nil
-                    Task { await runOptimize(trigger: "scene_changed") }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                        Text(suggestion)
-                            .font(AppTheme.caption())
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(AppTheme.accentSoft))
-                }
-                .foregroundStyle(AppTheme.ink)
-                .padding(.horizontal, hPad)
-            }
-
-            if let lookToast, !isStatusBusy {
-                Text(lookToast)
-                    .font(AppTheme.caption())
-                    .foregroundStyle(AppTheme.ink)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(AppTheme.agentStatusBg))
-            }
-
-            sceneMicRow(compact: compact)
-                .padding(.horizontal, hPad)
-
-            // Auto Optimize lives in the ··· overflow sheet now — the finder
-            // keeps only the shutter as the large control.
 
             shutterRow(compact: compact, hPad: hPad)
 
@@ -807,6 +816,74 @@ struct CameraView: View {
         return false
     }
 
+    /// Scene TextField when editing — the collapsed chip lives in the top
+    /// status section. Expands here, above the shutter, when tapped.
+    private func sceneEditor(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                // Real TextField so STT partials stream into a visible text box (App Review).
+                TextField("e.g. silky waterfall, sharp rocks…", text: $sceneNote, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(AppTheme.bodySm())
+                    .foregroundStyle(AppTheme.ink)
+                    .focused($sceneFieldFocused)
+                    .submitLabel(.done)
+                    .onSubmit { dismissSceneKeyboard() }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
+                            .fill(AppTheme.agentStatusBg)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppTheme.radiusSm, style: .continuous)
+                                    .stroke(
+                                        isVoiceListening ? AppTheme.accent.opacity(0.7) : AppTheme.border.opacity(0.7),
+                                        lineWidth: 1
+                                    )
+                            )
+                    )
+                    .onChange(of: sceneNote) { _, _ in
+                        sceneFromViewfinder = false
+                    }
+                    .onChange(of: sceneFieldFocused) { _, focused in
+                        if focused, !sceneExpanded {
+                            withAnimation(.easeInOut(duration: 0.18)) { sceneExpanded = true }
+                        }
+                    }
+
+                if isDescribingScene {
+                    ProgressView().scaleEffect(0.7)
+                }
+            }
+
+            // Build 28: never stack voice error with Collapse — one row only.
+            if case .error(let msg) = voice.phase {
+                Button {
+                    voice.clearError()
+                } label: {
+                    Text(msg)
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.danger)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(msg)
+                .accessibilityHint("Dismisses the voice error")
+            } else if !isVoiceListening {
+                Button {
+                    dismissSceneKeyboard()
+                } label: {
+                    Text("Collapse")
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.inkSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @available(*, deprecated, message: "Use sceneChip (top) + sceneEditor (bottom) instead")
     private func sceneMicRow(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
