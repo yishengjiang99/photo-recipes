@@ -1,0 +1,158 @@
+{
+  "_comment": "Hand-tuned v1 recipe scorer (softmax over logits, temperature below). Feature order MUST match SceneFeatures.vectorFeatureNames. exposure-triangle-cheatsheet is intentionally absent: it is a reference card and must never be auto-selected.",
+  "schemaVersion": 1,
+  "temperature": 1.0,
+  "intentBonus": 3.0,
+  "featureOrder": [
+    "sem.person",
+    "sem.animal",
+    "sem.vehicle",
+    "sem.bicycleOrSport",
+    "sem.water",
+    "sem.food",
+    "sem.landscape",
+    "sem.sky",
+    "sem.sunsetOrSunrise",
+    "sem.nightOrLights",
+    "sem.architecture",
+    "sem.plantOrFlower",
+    "sem.indoor",
+    "subject.present",
+    "subject.kind.face",
+    "subject.kind.human",
+    "subject.kind.animal",
+    "subject.kind.salientObject",
+    "subject.areaFraction",
+    "subject.centerX",
+    "subject.centerY",
+    "motion.logSubjectSpeed",
+    "motion.logBackgroundSpeed",
+    "motion.logRelativeSpeed",
+    "motion.panMatchesSubject",
+    "motion.directionX",
+    "motion.directionY",
+    "light.ev100n",
+    "light.highlightClip",
+    "light.shadowCrush",
+    "light.spreadStopsN",
+    "light.subjectDeltaStopsN",
+    "light.warmBias",
+    "pose.elevationN",
+    "pose.shakeLog",
+    "intent.sharp-front-to-back",
+    "intent.blur-moving-subjects",
+    "intent.panning-sharp-subject",
+    "intent.get-down-low",
+    "intent.hdr-brights-darks",
+    "intent.portrait-pop",
+    "intent.sharp-and-in-focus",
+    "intent.leading-lines",
+    "intent.minimalist-photos",
+    "intent.exposure-triangle-cheatsheet"
+  ],
+  "recipes": {
+    "sharp-front-to-back": {
+      "bias": 0.2,
+      "weights": {
+        "sem.landscape": 2.0,
+        "sem.architecture": 1.0,
+        "sem.sky": 0.6,
+        "light.ev100n": 0.5,
+        "motion.logSubjectSpeed": -1.2,
+        "motion.logBackgroundSpeed": -1.0,
+        "motion.logRelativeSpeed": -0.8
+      }
+    },
+    "blur-moving-subjects": {
+      "bias": -1.5,
+      "weights": {
+        "sem.water": 1.2,
+        "sem.nightOrLights": 1.2,
+        "sem.vehicle": 0.8,
+        "motion.logSubjectSpeed": 2.5,
+        "motion.logRelativeSpeed": 1.2,
+        "motion.logBackgroundSpeed": -1.0,
+        "light.ev100n": -2.0,
+        "pose.shakeLog": -1.2
+      }
+    },
+    "panning-sharp-subject": {
+      "bias": -1.0,
+      "weights": {
+        "motion.logSubjectSpeed": 1.0,
+        "motion.panMatchesSubject": 2.4,
+        "motion.logBackgroundSpeed": 1.0,
+        "subject.present": 0.8,
+        "sem.person": 0.6,
+        "sem.animal": 0.6,
+        "sem.vehicle": 0.6,
+        "sem.bicycleOrSport": 0.8,
+        "pose.shakeLog": -0.6
+      }
+    },
+    "get-down-low": {
+      "bias": -0.8,
+      "weights": {
+        "pose.elevationN": 2.8,
+        "subject.centerY": 2.0,
+        "sem.animal": 1.0,
+        "sem.plantOrFlower": 1.2,
+        "subject.areaFraction": -1.0,
+        "subject.present": 0.8
+      }
+    },
+    "hdr-brights-darks": {
+      "bias": -0.8,
+      "weights": {
+        "light.highlightClip": 2.5,
+        "light.shadowCrush": 2.2,
+        "light.spreadStopsN": 2.0,
+        "sem.sunsetOrSunrise": 1.8,
+        "light.subjectDeltaStopsN": -1.5
+      }
+    },
+    "portrait-pop": {
+      "bias": -0.5,
+      "weights": {
+        "subject.kind.face": 3.0,
+        "subject.areaFraction": 1.5,
+        "sem.person": 1.2,
+        "light.subjectDeltaStopsN": -0.8
+      }
+    },
+    "sharp-and-in-focus": {
+      "bias": -0.8,
+      "weights": {
+        "subject.present": 1.5,
+        "subject.kind.face": 1.0,
+        "subject.kind.human": 1.2,
+        "subject.kind.animal": 1.2,
+        "sem.animal": 0.8,
+        "motion.logSubjectSpeed": -0.8,
+        "motion.logRelativeSpeed": -0.6,
+        "light.spreadStopsN": -1.0,
+        "pose.elevationN": -1.5
+      }
+    },
+    "leading-lines": {
+      "bias": -1.0,
+      "weights": {
+        "sem.architecture": 2.4,
+        "sem.landscape": 1.2,
+        "subject.present": 0.8,
+        "motion.logSubjectSpeed": -0.8
+      }
+    },
+    "minimalist-photos": {
+      "bias": -0.8,
+      "weights": {
+        "sem.nightOrLights": 2.5,
+        "light.ev100n": -2.0,
+        "sem.sky": 0.8,
+        "subject.present": 1.0,
+        "subject.areaFraction": -1.5,
+        "light.spreadStopsN": -0.8
+      }
+    }
+  }
+}

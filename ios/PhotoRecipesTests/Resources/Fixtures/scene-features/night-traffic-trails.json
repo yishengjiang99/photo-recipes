@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "nightOrLights": 0.8,
+    "vehicle": 0.7
+  },
+  "subjectKind": null,
+  "subjectBox": null,
+  "subjectAreaFraction": 0.0,
+  "subjectSpeedPxPerSec": 600,
+  "backgroundSpeedPxPerSec": 20,
+  "subjectRelativeSpeedPxPerSec": 590,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 2,
+  "highlightClipFraction": 0.0,
+  "shadowCrushFraction": 0.0,
+  "percentileSpreadStops": 8,
+  "subjectDeltaStops": null,
+  "warmBias": 0.0,
+  "cameraElevationDegrees": 0,
+  "handShakeRadPerSec": 0.004,
+  "recipeIntent": null
+}

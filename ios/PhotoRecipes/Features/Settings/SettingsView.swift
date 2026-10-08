@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var healthText = ""
     @State private var isChecking = false
     @State private var deepCoachEnabled = AutoOptimizeController.deepCoachEnabled
+    @State private var useCoreMLScorer = RecipeScorerSelector.useCoreML
 
     var body: some View {
         NavigationStack {
@@ -76,6 +77,13 @@ struct SettingsView: View {
                                 AutoOptimizeController.cloudRefineEnabled = on
                             }
                         Text("Off by default (local-first). Pass 1 Auto Optimize is always on-device (instant). Turn on to let Pass 2 optionally call /api/recommend to refine dials within the chosen recipe — never blocks shutter. Uses Ask quota when free; soft-skips on 402/offline.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Toggle("Core ML recipe scorer", isOn: $useCoreMLScorer)
+                            .onChange(of: useCoreMLScorer) { _, on in
+                                RecipeScorerSelector.useCoreML = on
+                            }
+                        Text("Experimental. Scores Auto Optimize recipes with a Core ML model instead of the hand-tuned JSON weights. No trained model ships yet — until one is bundled the JSON scorer is used either way.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

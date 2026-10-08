@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "animal": 0.85,
+    "person": 0.2
+  },
+  "subjectKind": "animal",
+  "subjectBox": {
+    "x": 0.35,
+    "y": 0.6,
+    "width": 0.3,
+    "height": 0.25
+  },
+  "subjectAreaFraction": 0.075,
+  "subjectSpeedPxPerSec": 0,
+  "backgroundSpeedPxPerSec": 0,
+  "subjectRelativeSpeedPxPerSec": 0,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 11,
+  "highlightClipFraction": 0.0,
+  "shadowCrushFraction": 0.0,
+  "percentileSpreadStops": 5,
+  "subjectDeltaStops": null,
+  "warmBias": 0.0,
+  "cameraElevationDegrees": 22,
+  "handShakeRadPerSec": 0.02,
+  "recipeIntent": null
+}

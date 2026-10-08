@@ -1,12 +1,36 @@
 import Foundation
-import UIKit
 import Combine
+import os
 import os.log
+import UIKit
 
-/// Sense → Reason → Apply → Verify (soft) → Ready
-/// Build 3 hybrid:
-///   Pass 1 — local (AVFoundation metering + Vision + heuristics) → apply → Ready (no VLM).
-///   Pass 2 — optional non-blocking `/api/recommend` refine within the chosen recipe (never blocks shutter).
+// MARK: - os_signpost latency instrumentation (tap → applied)
+//
+// PENDING device numbers: measure in Instruments with the os_signpost
+// instrument on the "AutoOptimize" category. The interval
+// `auto_optimize` spans from the Auto Optimize tap (`begin`) to the moment
+// the controller reaches Ready or Error (`end`, with the outcome attached).
+// The wall-clock tap→ready number is ALSO attached to the
+// `auto_optimize_success` analytics event as `latency_ms` so it can be read
+// from telemetry without a device in hand.
+
+enum AOPerf {
+    private static let log = OSLog(subsystem: "com.ragnus.mvp", category: "AutoOptimize")
+
+    /// Begin the tap→applied interval. Returns an opaque id for `end(_:outcome:)`.
+    static func begin(runId: String) -> OSSignpostID {
+        let id = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: "auto_optimize", signpostID: id,
+                    "tap-to-applied run %{public}s", runId)
+        return id
+    }
+
+    static func end(_ id: OSSignpostID, outcome: String) {
+        os_signpost(.end, log: log, name: "auto_optimize", signpostID: id,
+                    "outcome %{public}s", outcome)
+    }
+}
+
 @MainActor
 final class AutoOptimizeController: ObservableObject {
     enum Phase: Equatable {
@@ -18,45 +42,24 @@ final class AutoOptimizeController: ObservableObject {
         case ready
         case error(String)
 
+        var isRunning: Bool {
+            switch self {
+            case .sensing, .reasoning, .applying, .verifying: true
+            case .idle, .ready, .error: false
+            }
+        }
+
         var statusCopy: String {
             switch self {
-            case .idle: return ""
+            case .idle: return "Auto Optimize"
             case .sensing(let s): return s
             case .reasoning(let s): return s
             case .applying(let s): return s
             case .verifying(let s): return s
-            case .ready: return "Ready to capture"
-            case .error(let s): return s
+            case .ready: return "Ready"
+            case .error(let msg): return msg
             }
         }
-
-        var isRunning: Bool {
-            switch self {
-            case .sensing, .reasoning, .applying, .verifying: return true
-            default: return false
-            }
-        }
-    }
-
-    struct SettingsSnapshot: Equatable {
-        var mode: String
-        var aperture: String?
-        var shutter: String
-        var iso: String
-        var ev: String
-        var wb: String
-        var focus: String
-    }
-
-    struct DiffLine: Equatable, Identifiable {
-        var id: String { label }
-        var label: String
-        var before: String
-        var after: String
-        var clamped: Bool
-        /// Tier: core (always chips) vs advanced (Teach / More changes)
-        var tier: Tier = .core
-        enum Tier: String, Equatable { case core, advanced }
     }
 
     @Published var phase: Phase = .idle
@@ -81,15 +84,28 @@ final class AutoOptimizeController: ObservableObject {
     @Published var applyFeedbackToken: Int = 0
     /// Look id auto-applied by the last run (for look_undone telemetry).
     @Published var autoAppliedLookId: String?
+    /// Runner-up chip: one-tap switch when the top recipe is uncertain.
+    @Published var alsoTryRecipeId: String?
+    @Published var alsoTryRecipeTitle: String?
+    @Published var alsoTryProbability: Double?
+    /// Set when the scene materially changed after Ready — UI shows
+    /// "Scene changed — re-optimize?". Never triggers a silent re-run.
+    @Published var sceneChangedSuggestion: String?
+    /// Monotonic id of the last run (ties outcome telemetry to the run).
+    private(set) var lastRunId: String?
+    /// When the last run finished — photo-captured outcomes count within 30 s.
+    private(set) var lastRunDate: Date?
     /// Trigger of the last run: manual / auto_first_capture / subject_change / voice / deep_link / teach.
     private(set) var lastTrigger: String = "manual"
+    /// Run id for which a manual dial override was already tracked (one per run).
+    private var overrideTrackedForRun: String?
 
     /// Set when the user undoes an Auto Optimize — never auto-run again for this install.
     static let userUndidKey = "autoOptimize.userUndid"
 
     private let log = Logger(subsystem: "com.ragnus.mvp", category: "AutoOptimize")
 
-    /// Pass 2 cloud refine — Settings can disable. Default ON (hybrid). Never blocks AO / shutter.
+    /// Pass 2 cloud refine — Settings can disable. Default OFF (local-first).
     static let cloudRefineDefaultsKey = "autoOptimize.cloudRefineEnabled"
     /// Back-compat alias for Settings binding.
     static let deepCoachDefaultsKey = cloudRefineDefaultsKey
@@ -112,6 +128,9 @@ final class AutoOptimizeController: ObservableObject {
     /// Monotonic run id so late Pass 2 responses cannot clobber a newer Optimize.
     private var runGeneration = 0
     private var cloudRefineTask: Task<Void, Never>?
+    private var sceneWatchTask: Task<Void, Never>?
+    /// The scorer behind Pass 1 (JSON v1 default; Core ML opt-in via Settings).
+    private let scorer: RecipeScoring = RecipeScorerSelector.scorer()
 
     var teachOneLiner: String? {
         let tw = teachWhy?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -181,7 +200,18 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
     }
 
-    func markDirty() { isDirtyOverride = true }
+    func markDirty() {
+        isDirtyOverride = true
+        // Manual dial override after an optimize — outcome of that run, once per run.
+        if let runId = lastRunId, overrideTrackedForRun != runId {
+            overrideTrackedForRun = runId
+            Analytics.shared.track("optimize_dial_override", props: [
+                "recipe_id": chosenRecipeId ?? "",
+                "trigger": lastTrigger,
+                "run_id": runId,
+            ])
+        }
+    }
 
     func dismissSuggestedLook() {
         if let look = suggestedLook {
@@ -197,6 +227,7 @@ final class AutoOptimizeController: ObservableObject {
             "recipe_id": chosenRecipeId ?? "",
             "trigger": lastTrigger,
             "had_look": lookId == nil ? "0" : "1",
+            "run_id": lastRunId ?? "",
         ])
         if let lookId, lookId == autoAppliedLookId {
             Analytics.shared.track("look_undone", props: [
@@ -222,6 +253,8 @@ final class AutoOptimizeController: ObservableObject {
     func clear() {
         cloudRefineTask?.cancel()
         cloudRefineTask = nil
+        sceneWatchTask?.cancel()
+        sceneWatchTask = nil
         isCloudRefining = false
         runGeneration &+= 1
         phase = .idle
@@ -231,17 +264,35 @@ final class AutoOptimizeController: ObservableObject {
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
         autoAppliedLookId = nil
+        alsoTryRecipeId = nil; alsoTryRecipeTitle = nil; alsoTryProbability = nil
+        sceneChangedSuggestion = nil
         applyFeedbackToken = 0
     }
 
-    /// Local-first Auto Optimize. Happy path never calls the network or a VLM.
+    // MARK: - Pass 1 (on-device ML loop: features → score → solve → apply → verify)
+
+    /// Local-first Auto Optimize. The happy path never calls the network.
+    ///
+    /// 0. Converge: AE to a converged auto state first — clears any stale
+    ///    custom-exposure lock and anchors E_auto to the metered light level.
+    /// 1. Features: the `SceneSensor` snapshot (refreshed synchronously on tap
+    ///    when stale > 1 s).
+    /// 2. Score: `RecipeScorer` over all ten bundled recipes (the reference
+    ///    card is never a candidate); a staged recipe skips scoring.
+    /// 3. Solve: `SettingsSolver` + `ExposurePlanner` turn the recipe +
+    ///    features into dial targets from the converged E_auto.
+    /// 4. Apply: `applyPhoneTargets` — never `setEV` after custom exposure.
+    /// 5. Verify: closed-loop settle + read-back; ≤2 ISO corrections while
+    ///    |offset − targetEV| > 0.3 EV; diff chips show read-back values.
     func run(
         session: CameraSession,
         entitlements: EntitlementsStore,
         preferStagedRecipeId: String?,
         sceneNote: String = "",
-        devicePitchDegrees: Double? = nil,
-        trigger: String = "manual"
+        elevationDegrees: Double? = nil,
+        handShake: Double? = nil,
+        trigger: String = "manual",
+        parentRunId: String? = nil
     ) async {
         guard !phase.isRunning else {
             log.info("run skipped — already running")
@@ -256,226 +307,259 @@ final class AutoOptimizeController: ObservableObject {
 
         cloudRefineTask?.cancel()
         isCloudRefining = false
+        sceneWatchTask?.cancel()
         runGeneration &+= 1
         let generation = runGeneration
         lastTrigger = trigger
         let startedAt = Date()
+        let runId = UUID().uuidString
+        lastRunId = runId
+        lastRunDate = Date()
+        let perfId = AOPerf.begin(runId: runId)
         let isFirstSuccessPending = !UserDefaults.standard.bool(
             forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
         )
-        // Event contract: trigger (auto/manual), path (local/cloud), latency, first-run flag.
-        let runProps: [String: String] = [
-            "trigger": trigger,
-            "path": "local",
-            "is_first": isFirstSuccessPending ? "1" : "0",
-        ]
-        func latencyProps() -> [String: String] {
-            runProps.merging(["latency_ms": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"]) { _, new in new }
-        }
-        /// Stop tapped (clear() bumps runGeneration) → abandon without consuming quota.
+        let allowCloudRefine = isFirstSuccessPending || Self.cloudRefineEnabled
+
         func wasCancelled(stage: String) -> Bool {
             guard runGeneration != generation else { return false }
-            Analytics.shared.track("auto_optimize_cancel", props: latencyProps().merging(["stage": stage]) { _, new in new })
+            Analytics.shared.track("auto_optimize_cancel", props: [
+                "latency_ms": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+                "stage": stage,
+            ])
+            AOPerf.end(perfId, outcome: "cancelled")
             return true
         }
-        // First win stays local — never route it (or an auto run) through the cloud.
-        let allowCloudRefine = !isFirstSuccessPending && trigger != "auto_first_capture"
 
-        PushAnalytics.shared.track(.autoOptimizeStarted)
-        Analytics.shared.track("auto_optimize_start", props: runProps.merging(["source": "ios_hybrid_pass1"]) { _, new in new })
-        autoAppliedLookId = nil
-        verifyWarning = nil; diffs = []; advancedDiffs = []; reasonNote = nil; tips = []; isDirtyOverride = false
-        teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
-        suggestedLook = nil
-        beforeSnapshot = snap(session)
-        // Immediate UI so tap is never a silent no-op (TestFlight / App Review).
+        // --- 0. AE converge ----------------------------------------------------
+        // Meter from a converged auto state: continuous AE at zero bias clears
+        // any stale custom-exposure lock from a previous run, and the snapshot
+        // anchors E_auto to the metered light level — not the tone-mapped
+        // probe brightness the system AE already normalized.
+        // Thermal .critical: rules scorer + system auto exposure (no custom).
+        let thermalCritical = ProcessInfo.processInfo.thermalState == .critical
         phase = .sensing("Reading light…")
-        log.info("run start generation=\(generation)")
-        try? await Task.sleep(nanoseconds: 120_000_000)
-
-        // Metering first (instant) — no network.
-        session.refreshReadouts()
-        phase = .sensing("Finding subject…")
-
-        // Optional probe for Vision faces / saliency / histogram — stays on-device.
-        // Hard-cap wait so a stuck photo pipeline cannot freeze AO with no feedback.
-        var probe: Data?
-        enum ProbeRace { case data(Data); case fail(String); case timeout }
-        let race = await withTaskGroup(of: ProbeRace.self) { group -> ProbeRace in
-            group.addTask { @MainActor in
-                do {
-                    let raw = try await session.captureProbeFrame()
-                    return .data(raw)
-                } catch {
-                    return .fail(error.localizedDescription)
-                }
+        do {
+            let converge = try await session.convergeAutoExposure()
+            if converge.timedOut {
+                Analytics.shared.track("ae_converge_timeout", props: [
+                    "run_id": runId,
+                    "trigger": trigger,
+                ])
             }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                return .timeout
-            }
-            let first = await group.next() ?? .timeout
-            group.cancelAll()
-            return first
-        }
-        switch race {
-        case .data(let raw):
-            if let img = UIImage(data: raw), let c = APIClient.compressForVision(img) {
-                probe = c
-            } else {
-                probe = raw
-            }
-        case .timeout:
-            probe = nil
-            log.error("probe timed out — metering-only")
-            Analytics.shared.track("auto_optimize_probe_soft_fail", props: ["error": "timeout"])
-        case .fail(let msg):
-            probe = nil
-            log.error("probe soft-fail \(msg, privacy: .public)")
-            Analytics.shared.track("auto_optimize_probe_soft_fail", props: ["error": msg])
-        }
-
-
-        let signals = await LocalSceneAnalyzer.analyze(
-            session: session,
-            probeJPEG: probe,
-            sceneNote: sceneNote,
-            pitchDegrees: devicePitchDegrees
-        )
-        if wasCancelled(stage: "sense") { return }
-        senseSummary = signals.senseSummary
-
-        phase = .reasoning("Matching a recipe…")
-        try? await Task.sleep(nanoseconds: 80_000_000)
-
-        let local = LocalAutoOptimizeEngine.recommend(
-            signals: signals,
-            preferRecipeId: preferStagedRecipeId,
-            capabilities: session.capabilities
-        )
-
-        guard let recipe = BundledPresets.recipe(id: local.recipeId) else {
-            Analytics.shared.track("auto_optimize_fail", props: latencyProps().merging(["error_code": "no_recipe", "error_class": "no_recipe"]) { _, new in new })
-            phase = .error("Couldn’t match a recipe — try again")
+        } catch {
+            if wasCancelled(stage: "converge") { return }
+            // Task cancelled without a generation bump — stop quietly.
+            AOPerf.end(perfId, outcome: "cancelled")
             return
         }
 
-        chosenRecipeId = recipe.id
-        chosenRecipeTitle = recipe.title
-        reasonNote = local.reason
-        tips = local.tips
-        teachWhy = local.teachWhy
-        coachOnly = local.coachOnly
-        panCue = local.panCue
+        // --- 1. Features -----------------------------------------------------
+        phase = .sensing("Reading scene…")
+        let metering = session.meteringSample()
+        await SceneSensor.shared.updateMetering(metering)
+        if let elevationDegrees, let handShake {
+            await SceneSensor.shared.updatePose(elevationDegrees: elevationDegrees, handShakeRadPerSec: handShake)
+        }
 
-        phase = .applying("Applying shutter & ISO…")
-        try? await Task.sleep(nanoseconds: 120_000_000)
+        let features: SceneFeatures
+        do {
+            var snapshot = await SceneSensor.shared.current()
+            if snapshot.age > 1.0 {
+                // Snapshot older than 1 s — one synchronous full pass before scoring.
+                phase = .sensing("Reading light…")
+                guard let fresh = await SceneSensor.shared.refreshNow(metering: metering, note: sceneNote) else {
+                    phase = .error("Camera not ready — try again")
+                    Analytics.shared.track("auto_optimize_fail", props: [
+                        "error_code": "no_frame", "error_class": "no_frame",
+                        "path": "local", "trigger": trigger,
+                    ])
+                    AOPerf.end(perfId, outcome: "no-frame")
+                    return
+                }
+                snapshot = SceneSnapshot(features: fresh, age: 0)
+            }
+            var f = snapshot.features
+            // Stamp tap-time state: the note (intent) the user typed, the live
+            // metering, and the pose from this exact tap.
+            f.recipeIntent = IntentMatcher.match(note: sceneNote)
+            f.meteredExposureSeconds = metering.exposureSeconds
+            f.meteredISO = metering.iso
+            f.exposureTargetOffset = metering.exposureTargetOffset
+            f.exposureWasCustom = metering.wasCustom
+            if let elevationDegrees { f.cameraElevationDegrees = Float(elevationDegrees) }
+            if let handShake { f.handShakeRadPerSec = Float(handShake) }
+            features = f
+        }
+
+        // --- 2. Score ---------------------------------------------------------
+        if wasCancelled(stage: "sense") { return }
+        phase = .reasoning("Matching a recipe…")
+        // Thermal .critical falls back to the rules scorer (never Core ML).
+        let runScorer: RecipeScoring = thermalCritical ? JSONRecipeScorer() : scorer
+        let scores = runScorer.score(features)
+        guard let decision = RecipeDecider.decide(
+            scores: scores,
+            features: features,
+            stagedRecipeId: preferStagedRecipeId
+        ) else {
+            phase = .error("No recipe matched the scene — try again")
+            Analytics.shared.track("auto_optimize_fail", props: [
+                "error_code": "no_recipe", "error_class": "no_recipe",
+                "path": "local", "trigger": trigger,
+            ])
+            AOPerf.end(perfId, outcome: "no-recipe")
+            return
+        }
+
+        guard let recipe = BundledPresets.recipe(id: decision.recipeId) else {
+            phase = .error("Unknown recipe — try again")
+            AOPerf.end(perfId, outcome: "unknown-recipe")
+            return
+        }
+
+        // --- 3. Solve ----------------------------------------------------------
+        let solveContext = SettingsSolver.SolveContext(
+            frameWidthPx: session.videoFrameWidth ?? 1920,
+            fieldOfViewDegrees: session.activeFieldOfViewDegrees() ?? 70,
+            currentWBGains: session.currentWhiteBalanceGains()
+        )
+        let solution = SettingsSolver.solve(
+            recipeId: recipe.id,
+            features: features,
+            capabilities: session.capabilities,
+            context: solveContext,
+            forceSystemAutoExposure: thermalCritical
+        )
+
+        // --- 4. Apply ----------------------------------------------------------
         if wasCancelled(stage: "apply") { return }
-
-        let notesBefore = session.applyNotes
-        let applied = session.apply(recipe: recipe)
-        // Same apply path for button + Camera voice: overlay local phoneTargets when allowed.
-        // freePhoneTargetsEnabled (server) gates free dial writes; Pro always applies.
+        phase = .applying("Applying \(decision.recipeTitle)…")
+        beforeSnapshot = snap(session)
         var wroteTargets = false
         if entitlements.canApplyDials {
-            wroteTargets = session.applyPhoneTargets(local.phoneTargets)
-            log.info("applyPhoneTargets wrote=\(wroteTargets) recipe=\(recipe.id, privacy: .public)")
-        } else {
-            log.info("applyPhoneTargets skipped — dials locked")
+            wroteTargets = session.applyPhoneTargets(solution.phoneTargets)
         }
+        session.clampMessages.append(contentsOf: solution.clampMessages)
 
-        if let look = local.suggestedLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
-            var top = look
-            if top.intensity == nil {
-                top.intensity = CreativeLookCatalog.defaultIntensity
-            }
-            let confidence = String(format: "%.2f", local.lookConfidence)
-            if local.lookConfidence >= LocalAutoOptimizeEngine.lookAutoApplyThreshold {
-                phase = .applying("Applying look: \(top.displayName)…")
-                try? await Task.sleep(nanoseconds: 80_000_000)
-                // Auto-apply only the top *confident* look; unstyled optimize stays underneath
-                // (LookChip × / Undo).
-                session.setActiveLook(top)
-                suggestedLook = nil
-                autoAppliedLookId = top.id
-                Analytics.shared.track("look_suggested", props: [
-                    "look_id": top.id, "source": "local_auto", "rank": "1",
-                    "auto_applied": "1", "confidence": confidence,
-                ])
-                Analytics.shared.track("look_applied", props: [
-                    "look_id": top.id, "source": "local_auto", "rank": "1",
-                    "auto_applied": "1", "confidence": confidence,
-                ])
-            } else {
-                // Low confidence → suggestion chip (Apply / Dismiss), no auto-apply.
-                suggestedLook = top
-                Analytics.shared.track("look_suggested", props: [
-                    "look_id": top.id, "source": "local", "rank": "1",
-                    "auto_applied": "0", "confidence": confidence,
-                ])
-            }
-        }
-
-        session.optimizeReason = teachOneLiner ?? reasonNote
-        advancedDiffs = buildAdvancedDiffs(beforeNotes: notesBefore, afterNotes: session.applyNotes, session: session)
-
-        if !applied && !entitlements.isPro {
-            afterSnapshot = recommended(recipe, session)
-            diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
+        // Coach-only path (free tier: dials locked) — show the solved values.
+        if !entitlements.canApplyDials {
+            afterSnapshot = recommendedSnapshot(from: solution, session: session)
             agentBaseline = afterSnapshot
+            diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
+            publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session)
             phase = .ready
-            // Always bump so CameraView can show burst/toast — never silent Ready.
             applyFeedbackToken &+= 1
-            Analytics.shared.track("auto_optimize_success", props: latencyProps().merging([
+            let latencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            log.info("ready (coach-only) recipe=\(recipe.id, privacy: .public) latency=\(latencyMs)ms")
+            Analytics.shared.track("auto_optimize_success", props: [
                 "recipe_id": recipe.id,
-                "coach_only": "true",
-                "look_id": session.activeCreativeLook?.id ?? "",
-            ]) { _, new in new })
+                "latency_ms": "\(latencyMs)",
+                "path": "local",
+                "coach_only": "1",
+                "run_id": runId,
+                "parent_run_id": parentRunId ?? "",
+                "features_v": "\(SceneFeatures.currentSchemaVersion)",
+                "feature_vector": Self.quantizedVector(features),
+                "top3": Self.top3Scores(scores),
+            ])
+            AOPerf.end(perfId, outcome: "ready-coach-only")
             consumeSharedFreeIfNeeded(entitlements)
-            PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
-            guard allowCloudRefine else {
-                Analytics.shared.track("cloud_refine_skipped", props: ["reason": "first_win_local", "recipe_id": recipe.id])
-                return
-            }
-            schedulePass2CloudRefine(
-                session: session,
-                entitlements: entitlements,
-                recipe: recipe,
-                sceneNote: sceneNote,
-                probeJPEG: probe,
-                generation: generation,
-                wroteDials: false
-            )
             return
         }
 
-        session.refreshReadouts()
-        afterSnapshot = snap(session)
-        diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
-        agentBaseline = afterSnapshot
-
+        // --- 5. Verify: closed-loop settle + read-back + correct ---------------
         phase = .verifying("Checking exposure…")
-        try? await Task.sleep(nanoseconds: 150_000_000)
-        if let shutter = afterSnapshot?.shutter, let sec = RecipeCameraMapper.parseShutter(shutter), sec >= 1.0 / 60.0 {
-            verifyWarning = "Ready · watch handshake at \(shutter)"
-            phase = .verifying("Motion risk — holding shutter speed")
-            try? await Task.sleep(nanoseconds: 120_000_000)
+        var verifyNotes: [String] = []
+
+        // Closed-loop correction against the planner's targetEV: wait for the
+        // write to land (completion + ~2 frames), compare exposureTargetOffset,
+        // correct ISO while |offset − targetEV| > 0.3 EV (≤2 iterations).
+        // Replaces the old single >1-stop nudge.
+        if let targetEV = solution.targetEV,
+           solution.phoneTargets.exposureDurationSec != nil,
+           entitlements.canApplyDials {
+            let v = await session.verifyExposure(targetEV: targetEV)
+            if v.verified {
+                if v.iterations > 0 {
+                    verifyNotes.append(String(format:
+                        "Exposure was %+.1f EV off target — corrected in %d iteration(s); residual %+.1f EV.",
+                        v.initialError, v.iterations, v.residualEV))
+                } else if abs(v.residualEV) > 0.3 {
+                    verifyNotes.append(String(format:
+                        "Exposure settled %+.1f EV from target.",
+                        v.residualEV))
+                }
+                Analytics.shared.track("auto_optimize_verify", props: [
+                    "run_id": runId,
+                    "recipe_id": recipe.id,
+                    "residual_ev": String(format: "%.2f", v.residualEV),
+                    "iterations": "\(v.iterations)",
+                    "clamped": v.clamped ? "1" : "0",
+                ])
+            }
+        } else {
+            try? await Task.sleep(nanoseconds: 300_000_000) // let hardware settle
         }
         if wasCancelled(stage: "verify") { return }
+        session.refreshReadouts()
+        let readback = session.readbackState()
+
+        if solution.phoneTargets.exposureDurationSec != nil {
+            if readback.exposureMode != "custom" {
+                verifyNotes.append("Custom exposure not held (\(readback.exposureMode)) — values below are guidance.")
+            } else if let want = solution.phoneTargets.exposureDurationSec, want > 0 {
+                let drift = abs(readback.exposureDuration - want) / want
+                if drift > 0.15 {
+                    verifyNotes.append("Shutter read back \(RecipeCameraMapper.formatShutter(readback.exposureDuration)) vs solved \(RecipeCameraMapper.formatShutter(want)).")
+                }
+            }
+        }
+        if let wantISO = solution.phoneTargets.iso.flatMap({ Float($0) }), wantISO > 0 {
+            let drift = abs(readback.iso - wantISO) / wantISO
+            if drift > 0.15 {
+                verifyNotes.append("ISO read back \(Int(readback.iso.rounded())) vs solved \(Int(wantISO.rounded())).")
+            }
+        }
+
+        session.clampMessages.append(contentsOf: verifyNotes)
+        verifyWarning = verifyNotes.isEmpty ? nil : verifyNotes.joined(separator: " ")
+
+        // Diff chips show the values READ BACK from the device, not the targets.
+        afterSnapshot = snap(session)
+        agentBaseline = afterSnapshot
+        diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
+        advancedDiffs = buildAdvancedDiffs(session: session)
+
+        publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session)
+
         if suggestedLook != nil { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
-        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets)")
-        Analytics.shared.track("auto_optimize_success", props: latencyProps().merging([
+        let latencyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+        log.info("ready recipe=\(recipe.id, privacy: .public) diffs=\(self.coreDiffs.count) wroteTargets=\(wroteTargets) latency=\(latencyMs)ms")
+        Analytics.shared.track("auto_optimize_success", props: [
             "recipe_id": recipe.id,
-            "look_id": session.activeCreativeLook?.id ?? "",
-        ]) { _, new in new })
+            "latency_ms": "\(latencyMs)",
+            "path": "local",
+            "trigger": trigger,
+            "run_id": runId,
+            "parent_run_id": parentRunId ?? "",
+            "features_v": "\(SceneFeatures.currentSchemaVersion)",
+            "feature_vector": Self.quantizedVector(features),
+            "top3": Self.top3Scores(scores),
+        ])
+        AOPerf.end(perfId, outcome: "ready")
         consumeSharedFreeIfNeeded(entitlements)
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
+
+        // Pass 2: refine the LOCKED recipe with one still JPEG (never pixels for Pass 1).
         guard allowCloudRefine else {
             Analytics.shared.track("cloud_refine_skipped", props: ["reason": "first_win_local", "recipe_id": recipe.id])
             return
         }
+        let probe = await SceneSensor.shared.latestJPEG()
+        startSceneChangeWatch(session: session, recipeId: recipe.id, baselineEV: features.sceneEV100, generation: generation)
         schedulePass2CloudRefine(
             session: session,
             entitlements: entitlements,
@@ -485,6 +569,112 @@ final class AutoOptimizeController: ObservableObject {
             generation: generation,
             wroteDials: entitlements.canApplyDials
         )
+    }
+
+    /// Publishes the scored decision to the UI-facing state.
+    private func publishDecision(
+        _ decision: RecipeDecision,
+        recipe: Recipe,
+        features: SceneFeatures,
+        solution: SettingsSolver.Solution,
+        session: CameraSession
+    ) {
+        chosenRecipeId = decision.recipeId
+        chosenRecipeTitle = decision.recipeTitle
+        reasonNote = decision.reason
+        teachWhy = decision.teachWhy
+        senseSummary = decision.senseSummary
+        tips = recipe.tips + solution.extraTips
+        coachOnly = solution.coachOnly
+        panCue = solution.panCue
+        session.apertureGuidance = solution.apertureGuidance
+        session.appliedRecipeId = recipe.id
+        session.appliedRecipeTitle = decision.recipeTitle
+        if decision.showAlsoTry, let runner = decision.runnerUp {
+            alsoTryRecipeId = runner.recipeId
+            alsoTryRecipeTitle = BundledPresets.recipe(id: runner.recipeId)?.title ?? runner.recipeId
+            alsoTryProbability = runner.probability
+        } else {
+            alsoTryRecipeId = nil; alsoTryRecipeTitle = nil; alsoTryProbability = nil
+        }
+
+        // Look: ported heuristic — auto-apply ≥ 0.6 confidence, else a chip.
+        autoAppliedLookId = nil
+        if let suggested = LookSuggester.suggest(features: features) {
+            if suggested.confidence >= LookSuggester.autoApplyThreshold {
+                session.setActiveLook(suggested.look)
+                autoAppliedLookId = suggested.look.id
+                Analytics.shared.track("look_applied", props: [
+                    "look_id": suggested.look.id,
+                    "source": "auto",
+                    "rank": "1",
+                    "auto_applied": "1",
+                    "confidence": String(format: "%.2f", suggested.confidence),
+                ])
+            } else {
+                suggestedLook = suggested.look
+            }
+        }
+    }
+
+    // MARK: - Outcome telemetry (same run id)
+
+    /// The 45-dim feature vector quantized to 2 decimals for telemetry.
+    /// Numeric features only — Pass 1 telemetry never carries pixels.
+    static func quantizedVector(_ features: SceneFeatures) -> String {
+        features.featureVector().map { String(format: "%.2f", $0) }.joined(separator: ",")
+    }
+
+    static func top3Scores(_ scores: [RecipeScore]) -> String {
+        scores.prefix(3)
+            .map { "\($0.recipeId):\(String(format: "%.2f", $0.probability))" }
+            .joined(separator: ",")
+    }
+
+    /// Returns the last run id when a photo is captured within 30 s of a
+    /// successful optimize (consumed — one capture per run).
+    func takeRecentRunIdForCapture() -> String? {
+        guard let id = lastRunId, let at = lastRunDate,
+              Date().timeIntervalSince(at) <= 30 else { return nil }
+        lastRunId = nil
+        return id
+    }
+
+    // MARK: - Scene-change watch (never a silent re-run)
+
+    /// After Ready, polls the sensor every 2 s. When a *different* recipe
+    /// scores ≥ 0.75 twice in a row, or the scene EV shifted by > 1.5 stops,
+    /// shows "Scene changed — re-optimize?" — the user taps to re-run.
+    private func startSceneChangeWatch(session: CameraSession, recipeId: String, baselineEV: Float?, generation: Int) {
+        sceneWatchTask?.cancel()
+        sceneWatchTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var streak = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { return }
+                guard self.runGeneration == generation, case .ready = self.phase else { return }
+                let snapshot = await SceneSensor.shared.current()
+                guard snapshot.age <= 2.0 else { continue }
+                var features = snapshot.features
+                features.recipeIntent = nil // scene change is about the scene, not the note
+                let scores = self.scorer.score(features)
+                if let top = scores.first, top.recipeId != recipeId, top.probability >= 0.75 {
+                    streak += 1
+                } else {
+                    streak = 0
+                }
+                let evShift: Bool = {
+                    guard let a = baselineEV, let b = features.sceneEV100 else { return false }
+                    return abs(a - b) > 1.5
+                }()
+                if streak >= 2 || evShift {
+                    self.sceneChangedSuggestion = "Scene changed — re-optimize?"
+                    Analytics.shared.track("scene_changed_suggest", props: ["recipe_id": recipeId])
+                    return
+                }
+            }
+        }
     }
 
     // MARK: - Pass 2 (cloud refine, non-blocking)
@@ -605,11 +795,7 @@ final class AutoOptimizeController: ObservableObject {
                     Analytics.shared.track("look_applied", props: ["look_id": applied.id, "source": "cloud_refine_auto"])
                 }
                 session.optimizeReason = self.teachOneLiner ?? self.reasonNote
-                self.advancedDiffs = self.buildAdvancedDiffs(
-                    beforeNotes: notesBefore,
-                    afterNotes: session.applyNotes,
-                    session: session
-                )
+                self.advancedDiffs = self.buildAdvancedDiffs(beforeNotes: notesBefore, afterNotes: session.applyNotes, session: session)
                 // Free Peek + Pro both write dials — always refresh diffs for on-finder apply burst.
                 session.refreshReadouts()
                 self.afterSnapshot = self.snap(session)
@@ -627,6 +813,32 @@ final class AutoOptimizeController: ObservableObject {
         }
     }
 
+    /// Manual Pass 2 trigger (Teach sheet). Locked to the chosen recipe.
+    func runCloudRefine(session: CameraSession, entitlements: EntitlementsStore) {
+        guard case .ready = phase, let id = chosenRecipeId, let recipe = BundledPresets.recipe(id: id) else { return }
+        Task {
+            let probe = await SceneSensor.shared.latestJPEG()
+            schedulePass2CloudRefine(
+                session: session,
+                entitlements: entitlements,
+                recipe: recipe,
+                sceneNote: "",
+                probeJPEG: probe,
+                generation: runGeneration,
+                wroteDials: entitlements.canApplyDials
+            )
+        }
+    }
+
+    func cancelPass2CloudRefine() {
+        cloudRefineTask?.cancel()
+        cloudRefineTask = nil
+        isCloudRefining = false
+    }
+
+    // MARK: - Snapshots & diffs
+
+    /// Snapshot of the CURRENT device readouts (post-verify read-back).
     private func snap(_ session: CameraSession) -> SettingsSnapshot {
         SettingsSnapshot(
             mode: session.captureMode.shortLabel,
@@ -639,16 +851,25 @@ final class AutoOptimizeController: ObservableObject {
         )
     }
 
-    private func recommended(_ recipe: Recipe, _ session: CameraSession) -> SettingsSnapshot {
-        let m = RecipeCameraMapper.map(dials: recipe.dials, capabilities: session.capabilities)
+    /// Coach-only snapshot: what the solver WOULD apply (free tier, dials locked).
+    private func recommendedSnapshot(from solution: SettingsSolver.Solution, session: CameraSession) -> SettingsSnapshot {
+        let t = solution.phoneTargets
+        let shutter = t.exposureDurationSec.map { RecipeCameraMapper.formatShutter($0) } ?? t.shutter ?? "—"
+        let focus: String = {
+            switch t.focusMode {
+            case "locked"?: return "Locked"
+            case "continuous"?: return "Cont."
+            default: return "Auto"
+            }
+        }()
         return SettingsSnapshot(
             mode: session.captureMode.shortLabel,
-            aperture: m.apertureGuidance ?? recipe.dials.aperture,
-            shutter: m.shutterSeconds.map { RecipeCameraMapper.formatShutter($0) } ?? (recipe.dials.shutter ?? "—"),
-            iso: m.iso.map { "\(Int($0))" } ?? (recipe.dials.iso ?? "—"),
-            ev: String(format: "%+.1f", session.evBias),
+            aperture: solution.apertureGuidance ?? session.apertureGuidance,
+            shutter: shutter,
+            iso: t.iso ?? "—",
+            ev: t.ev ?? "0",
             wb: session.whiteBalanceLocked ? "Locked" : "Auto",
-            focus: session.focusLocked ? "Locked" : "Cont."
+            focus: focus
         )
     }
 
@@ -698,7 +919,48 @@ final class AutoOptimizeController: ObservableObject {
         }
         // Dedupe by label keeping last
         var seen = Set<String>()
-        return lines.reversed().filter { seen.insert($0.label).inserted }.reversed()
+        var deduped: [DiffLine] = []
+        for line in lines.reversed() {
+            if seen.insert(line.label).inserted { deduped.append(line) }
+        }
+        return deduped.reversed()
+    }
+
+    /// Read-back-based advanced diffs (Pass 1): torch / low-light boost / HDR / zoom actually on.
+    private func buildAdvancedDiffs(session: CameraSession) -> [DiffLine] {
+        var lines: [DiffLine] = []
+        if session.torchOn {
+            lines.append(.init(label: "Torch", before: "Off", after: "On", clamped: false, tier: .advanced))
+        }
+        if session.lowLightBoostOn {
+            lines.append(.init(label: "Low-light", before: "Off", after: "On", clamped: false, tier: .advanced))
+        }
+        if session.videoHDROn {
+            lines.append(.init(label: "Video HDR", before: "Off", after: "On", clamped: false, tier: .advanced))
+        }
+        return lines
+    }
+
+    // MARK: - Nested types
+
+    struct SettingsSnapshot: Equatable {
+        var mode: String
+        var aperture: String?
+        var shutter: String
+        var iso: String
+        var ev: String
+        var wb: String
+        var focus: String
+    }
+
+    struct DiffLine: Equatable, Identifiable {
+        var id: String { label }
+        var label: String
+        var before: String
+        var after: String
+        var clamped: Bool
+        /// Tier: core (always chips) vs advanced (Teach / More changes)
+        var tier: Tier = .core
+        enum Tier: String, Equatable { case core, advanced }
     }
 }
-

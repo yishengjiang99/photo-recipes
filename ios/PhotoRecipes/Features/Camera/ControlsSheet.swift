@@ -281,7 +281,7 @@ struct ControlsSheet: View {
                 Button(session.focusLocked ? "Unlock" : "Lock center") {
                     guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
                     if session.focusLocked { session.unlockFocus() }
-                    else { session.focus(at: CGPoint(x: 0.5, y: 0.5), lock: true) }
+                    else { session.focusOnUIPoint(CGPoint(x: 0.5, y: 0.5), lock: true) }
                     optimizer.markDirty()
                 }
                 .font(AppTheme.caption())

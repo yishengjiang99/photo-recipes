@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "water": 0.9
+  },
+  "subjectKind": null,
+  "subjectBox": null,
+  "subjectAreaFraction": 0.0,
+  "subjectSpeedPxPerSec": 900,
+  "backgroundSpeedPxPerSec": 30,
+  "subjectRelativeSpeedPxPerSec": 880,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 13,
+  "highlightClipFraction": 0.0,
+  "shadowCrushFraction": 0.0,
+  "percentileSpreadStops": 5,
+  "subjectDeltaStops": null,
+  "warmBias": 0.0,
+  "cameraElevationDegrees": 0,
+  "handShakeRadPerSec": 0.004,
+  "recipeIntent": null
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "semanticGroups": {
+    "person": 0.9
+  },
+  "subjectKind": "face",
+  "subjectBox": {
+    "x": 0.3,
+    "y": 0.2,
+    "width": 0.4,
+    "height": 0.45
+  },
+  "subjectAreaFraction": 0.18,
+  "subjectSpeedPxPerSec": 0,
+  "backgroundSpeedPxPerSec": 0,
+  "subjectRelativeSpeedPxPerSec": 0,
+  "motionDirectionX": 1,
+  "motionDirectionY": 0,
+  "meteredExposureSeconds": 0.016666666666666666,
+  "meteredISO": 100,
+  "lensAperture": 1.8,
+  "exposureTargetOffset": 0,
+  "exposureWasCustom": false,
+  "sceneEV100": 12,
+  "highlightClipFraction": 0.0,
+  "shadowCrushFraction": 0.0,
+  "percentileSpreadStops": 5,
+  "subjectDeltaStops": -0.5,
+  "warmBias": 0.0,
+  "cameraElevationDegrees": 0,
+  "handShakeRadPerSec": 0.01,
+  "recipeIntent": null
+}
