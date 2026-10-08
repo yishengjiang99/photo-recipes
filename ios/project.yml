@@ -38,9 +38,15 @@ targets:
           # AppIcon / CFBundleIconName → ASC validation 409).
           - "Resources/Products.storekit"
           - "Resources/PrivacyInfo.xcprivacy"
+          # Pass 1 ML data files: resources only (JSON/TXT must not hit the Swift compiler).
+          - "Resources/scene-label-groups.json"
+          - "Resources/vision-labels.txt"
     resources:
       - path: PhotoRecipes/Resources/Products.storekit
       - path: PhotoRecipes/Resources/PrivacyInfo.xcprivacy
+      # On-device Pass 1 ML: Vision label mapping (data, not code).
+      - path: PhotoRecipes/Resources/scene-label-groups.json
+      - path: PhotoRecipes/Resources/vision-labels.txt
     dependencies:
       - package: FacebookSDK
         product: FacebookCore
