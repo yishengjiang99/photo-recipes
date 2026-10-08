@@ -133,4 +133,67 @@ final class AutoOptimizeControllerTests: XCTestCase {
             gate(secondsSinceRun: 12, topId: "panning", topProb: 0.7),
             .rerun)
     }
+
+    // MARK: - resetForCameraFlip
+
+    private func makeFlipState(
+        aoRecipe: String? = "panning-sharp-subject",
+        appliedRecipe: String? = "panning-sharp-subject",
+        aoLook: String? = "warm-glow", activeLook: String? = "warm-glow",
+        phase: AutoOptimizeController.Phase = .ready
+    ) -> (AutoOptimizeController, CameraSession) {
+        let optimizer = AutoOptimizeController()
+        let session = CameraSession()
+        optimizer.chosenRecipeId = aoRecipe
+        optimizer.autoAppliedLookId = aoLook
+        optimizer.verifyWarning = "A bit bright"
+        optimizer.phase = phase
+        session.appliedRecipeId = appliedRecipe
+        session.appliedRecipeTitle = "Panning"
+        if let activeLook { session.activeCreativeLook = CreativeLook(id: activeLook) }
+        return (optimizer, session)
+    }
+
+    func testFlip_clearsAOState() {
+        let (optimizer, session) = makeFlipState()
+        optimizer.resetForCameraFlip(session: session)
+        XCTAssertNil(optimizer.chosenRecipeId)
+        XCTAssertNil(optimizer.verifyWarning)
+        XCTAssertNil(optimizer.autoAppliedLookId)
+        XCTAssertEqual(optimizer.phase, .idle)
+        XCTAssertNil(session.appliedRecipeId)
+        XCTAssertNil(session.activeCreativeLook, "AO auto-applied look must not survive the flip")
+    }
+
+    func testFlip_keepsUserAppliedLook() {
+        // User picked the look via the Look chip: autoAppliedLookId is nil.
+        let (optimizer, session) = makeFlipState(aoLook: nil, activeLook: "user-look")
+        optimizer.resetForCameraFlip(session: session)
+        XCTAssertEqual(session.activeCreativeLook?.id, "user-look")
+    }
+
+    func testFlip_keepsUserAppliedRecipe() {
+        // appliedRecipeId is the user's own pick, not AO's.
+        let (optimizer, session) = makeFlipState(
+            aoRecipe: "panning-sharp-subject", appliedRecipe: "hdr-brights-darks")
+        optimizer.resetForCameraFlip(session: session)
+        XCTAssertEqual(session.appliedRecipeId, "hdr-brights-darks")
+        XCTAssertNil(optimizer.chosenRecipeId, "AO state still resets")
+    }
+
+    func testFlip_noAOState_noop() {
+        let optimizer = AutoOptimizeController()
+        let session = CameraSession()
+        session.appliedRecipeId = "hdr-brights-darks"
+        optimizer.resetForCameraFlip(session: session)
+        XCTAssertEqual(session.appliedRecipeId, "hdr-brights-darks", "untouched without AO state")
+        XCTAssertEqual(optimizer.phase, .idle)
+    }
+
+    func testFlip_cancelsInFlightRun() {
+        let (optimizer, session) = makeFlipState(phase: .verifying("Checking exposure…"))
+        optimizer.resetForCameraFlip(session: session)
+        XCTAssertEqual(optimizer.phase, .idle, "clear() bumps runGeneration and resets phase")
+        XCTAssertNil(optimizer.chosenRecipeId)
+    }
 }

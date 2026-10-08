@@ -425,6 +425,29 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
     }
 
+    /// Called before a camera flip: AO's result belongs to the old camera.
+    /// Clears only what AO itself set — never a user-chosen recipe or look.
+    func resetForCameraFlip(session: CameraSession) {
+        // Read these BEFORE clear(): clear() nils chosenRecipeId and autoAppliedLookId.
+        let aoRecipeId = chosenRecipeId
+        let aoLookId = autoAppliedLookId
+        guard phase.isRunning || aoRecipeId != nil else { return }
+        if let aoLookId, session.activeCreativeLook?.id == aoLookId {
+            session.clearActiveLook()
+        }
+        if let aoRecipeId, session.appliedRecipeId == aoRecipeId {
+            session.appliedRecipeId = nil
+            session.appliedRecipeTitle = nil
+        }
+        session.setSubjectAreaMonitoring(false)
+        session.pendingBracket = nil
+        clear() // bumps runGeneration (cancels an in-flight run), resets phase,
+                // verifyWarning, suggestedLook, also-try, scene-changed chip
+        Analytics.shared.track("ao_reset_on_flip", props: [
+            "recipe_id": aoRecipeId ?? "", "cleared_look": aoLookId ?? "",
+        ])
+    }
+
     func clear() {
         cloudRefineTask?.cancel()
         cloudRefineTask = nil

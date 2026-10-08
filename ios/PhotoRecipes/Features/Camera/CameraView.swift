@@ -1648,6 +1648,7 @@ struct CameraView: View {
     private func flipCameraWithFeedback() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let goingFront = !session.isFront
+        optimizer.resetForCameraFlip(session: session)
         session.flipCamera()
         presentChromeToast(goingFront ? "Front camera" : "Back camera")
     }
