@@ -390,7 +390,6 @@ final class AutoOptimizeController: ObservableObject {
         let isFirstSuccessPending = !UserDefaults.standard.bool(
             forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
         )
-        let allowCloudRefine = isFirstSuccessPending || Self.cloudRefineEnabled
 
         func wasCancelled(stage: String) -> Bool {
             guard runGeneration != generation else { return false }
@@ -414,9 +413,13 @@ final class AutoOptimizeController: ObservableObject {
         // (A5) — frames exposed under a previous run's custom exposure would
         // anchor E_auto to the wrong light level.
         var convergedAt = Date.distantPast
+        // Hoisted: the run's metered anchor, carried into the Pass 2 context so
+        // the server's absolute shutter/ISO are re-planned from it (Section B).
+        var convergedEAuto = 0.0
         do {
             let converge = try await session.convergeAutoExposure()
             convergedAt = converge.convergedAt
+            convergedEAuto = converge.eAuto
             if converge.timedOut {
                 Analytics.shared.track("ae_converge_timeout", props: [
                     "run_id": runId,
@@ -681,10 +684,44 @@ final class AutoOptimizeController: ObservableObject {
                                  features: features, coachOnly: false)
 
         // Pass 2: refine the LOCKED recipe with one still JPEG (never pixels for Pass 1).
-        guard allowCloudRefine else {
-            Analytics.shared.track("cloud_refine_skipped", props: ["reason": "first_win_local", "recipe_id": recipe.id])
+        // Gate: the first successful optimize stays local-only, the toggle
+        // gates the rest, and auto_first_capture never triggers a cloud call.
+        // Each skip reason fires only when actually true (Section B).
+        switch Self.cloudRefineGate(
+            isFirstSuccessPending: isFirstSuccessPending,
+            cloudRefineEnabled: Self.cloudRefineEnabled,
+            trigger: trigger
+        ) {
+        case .allow:
+            break
+        case .skip(let reason):
+            Analytics.shared.track("cloud_refine_skipped", props: ["reason": reason, "recipe_id": recipe.id])
             return
         }
+
+        // Exposure anchor for Pass 2: re-plan the server's exposure from the
+        // same metered E_auto with the recipe's priority/cap. Nil when Pass 1
+        // wrote no custom exposure (HDR / system-auto / metering-missing /
+        // thermal fallback) — Pass 2 then refines intent only, never exposure.
+        let pass2Anchor: Pass2ExposureAnchor? = {
+            guard convergedEAuto > 0, solution.phoneTargets.exposureDurationSec != nil else { return nil }
+            let motion = ExposurePlanner.MotionContext(
+                handShakeRadPerSec: Double(features.handShakeRadPerSec),
+                frameWidthPx: solveContext.frameWidthPx,
+                fieldOfViewDegrees: solveContext.fieldOfViewDegrees,
+                isTripodSteady: features.isTripodSteady)
+            let limits = ExposurePlanner.DeviceLimits(
+                minShutterSeconds: session.capabilities.minExposureSeconds,
+                maxShutterSeconds: session.capabilities.maxExposureSeconds,
+                minISO: session.capabilities.minISO,
+                maxISO: session.capabilities.maxISO)
+            return Pass2ExposureAnchor(
+                eAuto: convergedEAuto,
+                priority: solution.priority,
+                motion: motion,
+                limits: limits)
+        }()
+
         let probe = await SceneSensor.shared.latestJPEG()
         startSceneChangeWatch(session: session, recipeId: recipe.id, baselineEV: features.sceneEV100, generation: generation)
         schedulePass2CloudRefine(
@@ -694,7 +731,8 @@ final class AutoOptimizeController: ObservableObject {
             sceneNote: sceneNote,
             probeJPEG: probe,
             generation: generation,
-            wroteDials: entitlements.canApplyDials
+            wroteDials: entitlements.canApplyDials,
+            pass2Anchor: pass2Anchor
         )
     }
 
@@ -889,6 +927,12 @@ final class AutoOptimizeController: ObservableObject {
 
     /// After Pass 1 Ready: optionally call `/api/recommend` to refine dials **within** the chosen recipe.
     /// Never blocks shutter. Soft-fails offline / 402 / errors. Applies only if still same generation + recipe.
+    ///
+    /// Pass 2 may change the recipe's *intent* (EV offset ±1 stop, white
+    /// balance, focus, look intensity, other non-exposure targets) but NEVER
+    /// applies the server's absolute shutter/ISO directly: its exposure is
+    /// re-anchored to the run's metered `E_auto` (`pass2Anchor`), re-planned
+    /// with the recipe's priority/cap, and verified like Pass 1.
     private func schedulePass2CloudRefine(
         session: CameraSession,
         entitlements: EntitlementsStore,
@@ -896,7 +940,8 @@ final class AutoOptimizeController: ObservableObject {
         sceneNote: String,
         probeJPEG: Data?,
         generation: Int,
-        wroteDials: Bool
+        wroteDials: Bool,
+        pass2Anchor: Pass2ExposureAnchor?
     ) {
         guard Self.cloudRefineEnabled else {
             Analytics.shared.track("cloud_refine_skipped", props: ["reason": "disabled", "recipe_id": recipe.id])
@@ -909,6 +954,7 @@ final class AutoOptimizeController: ObservableObject {
         let recipeTitle = recipe.title
         let note = sceneNote
         let probe = probeJPEG
+        let anchor = pass2Anchor
         let favorites = Array(entitlements.favoriteIds)
 
         cloudRefineTask = Task { @MainActor [weak self] in
@@ -989,7 +1035,31 @@ final class AutoOptimizeController: ObservableObject {
                 let notesBefore = session.applyNotes
                 // Refine dials when server allows free phoneTargets (or Pro).
                 if entitlements.canApplyDials {
-                    _ = await session.applyPhoneTargets(targets)
+                    // Pass 2 intent: white balance, focus, look intensity and
+                    // other non-exposure targets. The server's absolute
+                    // shutter/ISO are stripped here — never applied directly.
+                    _ = await session.applyPhoneTargets(Self.pass2IntentTargets(from: targets))
+                    // Pass 2 exposure: the server's exposure re-anchored to the
+                    // run's metered E_auto (±1 stop), re-planned with the
+                    // recipe's priority/cap, applied via the normal apply
+                    // path, then verified with the plan's priority and cap.
+                    if let plan = Self.pass2ExposurePlan(targets: targets, anchor: anchor),
+                       !Task.isCancelled {
+                        _ = await Self.applyPass2Exposure(
+                            plan: plan,
+                            priority: anchor?.priority,
+                            apply: { durationSeconds, iso in
+                                await session.applyPhoneTargets(PhoneTargets(
+                                    exposureDurationSec: durationSeconds,
+                                    iso: "\(Int(iso.rounded()))"))
+                            },
+                            verify: { targetEV, priority, shutterCapSeconds in
+                                await session.verifyExposure(
+                                    targetEV: targetEV,
+                                    priority: priority,
+                                    shutterCapSeconds: shutterCapSeconds)
+                            })
+                    }
                 }
                 // Look: auto-apply when Pass 1 left none; otherwise keep Pass 1 look.
                 if session.activeCreativeLook == nil,
@@ -1033,7 +1103,10 @@ final class AutoOptimizeController: ObservableObject {
                 sceneNote: "",
                 probeJPEG: probe,
                 generation: runGeneration,
-                wroteDials: entitlements.canApplyDials
+                wroteDials: entitlements.canApplyDials,
+                // Manual Teach-sheet refine: no metered anchor from a run —
+                // intent only (WB/focus/look), never absolute exposure.
+                pass2Anchor: nil
             )
         }
     }
@@ -1042,6 +1115,115 @@ final class AutoOptimizeController: ObservableObject {
         cloudRefineTask?.cancel()
         cloudRefineTask = nil
         isCloudRefining = false
+    }
+
+    // MARK: - Pass 2 exposure plumbing (Section B: planner-respecting refine)
+
+    /// The Pass 1 exposure context carried into the Pass 2 cloud task, so the
+    /// server's absolute exposure can be re-planned from the run's metered
+    /// anchor — never applied directly.
+    struct Pass2ExposureAnchor {
+        /// Metered exposure product from the run's converged AE state.
+        var eAuto: Double
+        /// The recipe's exposure priority (nil → no custom exposure).
+        var priority: ExposurePlanner.Priority?
+        var motion: ExposurePlanner.MotionContext
+        var limits: ExposurePlanner.DeviceLimits
+    }
+
+    /// Auto-scheduling gate for Pass 2. The first successful optimize stays
+    /// local-only ("first_win_local"); the Settings toggle gates the rest
+    /// ("disabled"); `auto_first_capture` never triggers a cloud call
+    /// ("auto_first_capture"). Each skip reason fires only when actually true.
+    enum CloudRefineGate: Equatable {
+        case allow
+        case skip(reason: String)
+    }
+
+    /// Pass 2 auto-scheduling gate. Pure — unit-tested.
+    nonisolated static func cloudRefineGate(
+        isFirstSuccessPending: Bool,
+        cloudRefineEnabled: Bool,
+        trigger: String
+    ) -> CloudRefineGate {
+        if isFirstSuccessPending { return .skip(reason: "first_win_local") }
+        if !cloudRefineEnabled { return .skip(reason: "disabled") }
+        if trigger == "auto_first_capture" { return .skip(reason: "auto_first_capture") }
+        return .allow
+    }
+
+    /// The server's exposure as a delta in stops relative to the run's
+    /// metered `eAuto`. Prefers the absolute shutter/ISO pair; falls back to
+    /// a bare EV bias (already a relative offset). Nil when the server sent
+    /// no usable exposure — an intent-only refine. Pure — unit-tested.
+    nonisolated static func cloudExposureDeltaEV(targets: PhoneTargets, eAuto: Double) -> Double? {
+        guard eAuto > 0 else { return nil }
+        let durationSec = targets.exposureDurationSec
+            ?? targets.shutter.flatMap(RecipeCameraMapper.parseShutter)
+        let isoVal = targets.iso.flatMap(RecipeCameraMapper.parseISO)
+        if let d = durationSec, let i = isoVal, d > 0, i > 0 {
+            return log2((d * Double(i)) / eAuto)
+        }
+        if let evRaw = targets.ev, let ev = RecipeCameraMapper.parseEV(evRaw) {
+            return Double(ev)
+        }
+        return nil
+    }
+
+    /// Pass 2 may move exposure at most ±1 stop from the metered anchor.
+    /// Pure — unit-tested.
+    nonisolated static func clampedCloudEVDelta(_ delta: Double) -> Double {
+        min(max(delta, -1), 1)
+    }
+
+    /// Intent-only targets: everything the server sent except absolute
+    /// exposure. Pass 2 may change white balance, focus, look intensity and
+    /// other non-exposure levers — never shutter/ISO. Pure — unit-tested.
+    nonisolated static func pass2IntentTargets(from targets: PhoneTargets) -> PhoneTargets {
+        var t = targets
+        t.shutter = nil
+        t.exposureDurationSec = nil
+        t.iso = nil
+        t.ev = nil
+        return t
+    }
+
+    /// The Pass 2 exposure plan: the server's exposure as a ±1-stop-clamped
+    /// delta vs the run's `E_auto`, re-run through `ExposurePlanner` with the
+    /// recipe's priority/cap. Nil when the server sent no exposure or the
+    /// anchor allows no custom exposure — Pass 2 then changes intent only.
+    /// Pure — unit-tested.
+    nonisolated static func pass2ExposurePlan(
+        targets: PhoneTargets,
+        anchor: Pass2ExposureAnchor?
+    ) -> ExposurePlanner.Plan? {
+        guard let anchor, anchor.eAuto > 0, let priority = anchor.priority else { return nil }
+        if case .systemAuto = priority { return nil }
+        guard let delta = cloudExposureDeltaEV(targets: targets, eAuto: anchor.eAuto) else { return nil }
+        return ExposurePlanner.plan(
+            eAuto: anchor.eAuto,
+            targetEV: clampedCloudEVDelta(delta),
+            priority: priority,
+            motion: anchor.motion,
+            limits: anchor.limits)
+    }
+
+    /// Pass 2 closed loop: apply the planner's shutter/ISO via the normal
+    /// apply path, then verify with the plan's priority and cap. The
+    /// apply/verify closures are the test seam — production passes
+    /// `applyPhoneTargets` / `verifyExposure`; tests pass spies. Returns the
+    /// verify result (nil when the plan needs no custom exposure, or the task
+    /// was cancelled before verify).
+    nonisolated static func applyPass2Exposure(
+        plan: ExposurePlanner.Plan,
+        priority: ExposurePlanner.Priority?,
+        apply: @MainActor (Double, Float) async -> Bool,
+        verify: @MainActor (Double, ExposurePlanner.Priority?, Double?) async -> CameraSession.ExposureVerifyResult
+    ) async -> CameraSession.ExposureVerifyResult? {
+        guard plan.useCustomExposure else { return nil }
+        _ = await apply(plan.shutterSeconds, plan.iso)
+        guard !Task.isCancelled else { return nil }
+        return await verify(plan.targetEV, priority, plan.shutterCapSeconds)
     }
 
     // MARK: - Snapshots & diffs
