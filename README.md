@@ -35,7 +35,7 @@ Full App Store Connect setup, local StoreKit testing, and TestFlight checklist: 
 
 ## Agentic tool loop
 
-**Pass 1** Auto Optimize is on-device and instant. **Pass 2** cloud refine, plus Ask Grok / Photo Vision (iOS and web), call `POST /api/recommend`. Grok **must** use tools — it never invents recipes off-catalog.
+**Pass 1** Auto Optimize is a real on-device ML loop: the `SceneSensor` fuses Vision classification, subject detection, optical flow, and metering into a versioned `SceneFeatures` vector; a `RecipeScorer` (hand-tuned JSON weights, Core ML later behind the same protocol) picks the best of the ten bundled recipes; `SettingsSolver` turns the recipe + features into shutter/ISO/focus targets; the controller applies and verifies with a device read-back. Instant, no network, no pixels leave the device. **Pass 2** cloud refine, plus Ask Grok / Photo Vision (iOS and web), call `POST /api/recommend`. Grok **must** use tools — it never invents recipes off-catalog.
 
 ```mermaid
 sequenceDiagram

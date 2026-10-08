@@ -64,16 +64,20 @@ Photo Recipes is a **field camera**: the Camera tab is the home surface. Recipes
 
 **Pass 1 — LOCAL (default on AO tap, instant, no VLM):**
 
-1. **Sense** — AVFoundation metering + optional probe JPEG for Vision (faces / saliency) + luminance histogram. Pitch from `HorizonMonitor` for low-angle.  
-2. **Reason** — heuristics in `LocalAutoOptimizeEngine` → best match from the **bundled Photo Recipes catalog** (five preset IDs). Recipes are source of truth (look intensity rides on `phoneTargets`, not a parallel look system).  
-3. **Act** — `session.apply(recipe:)` + `applyPhoneTargets` (shutter / ISO / EV / WB / focus / torch / look). Mark **Ready** immediately.  
+1. **Sense** — `SceneSensor` (actor) fuses on-device signals: `VNClassifyImageRequest` semantic groups (~1 Hz), face/animal/saliency subjects, `VNGenerateOpticalFlowRequest` motion (~5 Hz), vImage luminance histogram (clips, percentile spread, warm bias), metered EV100 with custom-mode offset correction, and elevation + hand-shake from `HorizonMonitor`. Snapshot refreshed synchronously on tap when > 1 s old. No pixels leave the device.
+2. **Score** — `RecipeScorer` scores all ten bundled recipes from the 45-dim `SceneFeatures` vector. The default is a hand-tuned JSON model (`recipe-scorer-v1.json`: per-recipe weights, softmax with temperature, +3.0 logit bonus for explicit user intent); a staged recipe skips scoring. Uncertain tops (p < 0.55 or margin < 0.15) surface a runner-up "Also try" chip. The exposure-triangle reference card is never auto-selected.
+3. **Solve** — `SettingsSolver` turns recipe + features into dial targets: per-recipe shutter objectives (motion-freeze / hand-shake limits from gyro × focal length, 4% frame-width blur streaks, 6% pan streaks), then ISO = metered-exposure-product × 2^EV / shutter, clamped to device range. EV is folded into ISO — never `setEV` after custom exposure.
+4. **Act** — `applyPhoneTargets` (shutter / ISO / EV / WB / focus / torch / zoom / look).
+5. **Verify** — 300 ms settle + device read-back; one ISO nudge when the exposure offset is > 1 stop off; before→after diff chips show read-back values. If the scene later changes materially, a "Scene changed — re-optimize?" chip appears — never a silent re-run.
+
+**Pass 2 — CLOUD (optional, non-blocking):**
 
 **Pass 2 — CLOUD (optional, non-blocking):**
 
 4. After Ready, if Settings cloud refine is on + online + Ask quota allows, fire `POST /api/recommend` (vision pass-through #69) with scene context + **locked chosen recipe id/title** so Grok refines within that recipe’s dial space / coaching.  
 5. When the response returns, apply refinements only if still the same Optimize generation + recipe; soft-skip on 402/errors. Pill may show `Ready · refining…` — shutter stays enabled.  
 
-**Model choice (Pass 1):** pure heuristics (no `.mlmodel` in Build 3). Optional tiny Core ML classifier later (&lt;10MB). No bundled VLM weights.
+**Model choice (Pass 1):** hand-tuned JSON scorer (`recipe-scorer-v1.json`, weights as data not code) behind the `RecipeScoring` protocol. `CoreMLRecipeScorer` implements the same protocol for a future trained model — opt-in via Settings ("Core ML recipe scorer"), off by default; no trained model ships yet, and the JSON scorer is the fallback. Training pipeline: `scripts/train-recipe-scorer/README.md`. No bundled VLM weights.
 
 **Quota choice:** Pass 1 never waits on quota. Pass 2 consumes server Ask quota (`FREE_DAILY_LIMIT`, default 5; #71). Outline **Recommend** CTA still uses the same `/api/recommend` for coach-only (does not write dials until user applies a recipe).
 
