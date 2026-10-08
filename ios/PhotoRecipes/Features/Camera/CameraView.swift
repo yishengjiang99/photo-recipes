@@ -1098,6 +1098,7 @@ struct CameraView: View {
             sceneNote: sceneNote,
             elevationDegrees: horizon.isAvailable ? horizon.cameraElevationDegrees : nil,
             handShake: horizon.isAvailable ? horizon.handShakeRadPerSec : nil,
+            isTripodSteady: horizon.isAvailable ? horizon.isTripodSteady : nil,
             trigger: trigger,
             parentRunId: parentRunId
         )

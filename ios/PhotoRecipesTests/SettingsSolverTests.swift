@@ -40,19 +40,23 @@ final class SettingsSolverTests: XCTestCase {
 
     func testSharpFrontToBack_meteredIndoor() {
         // Spec case: metered 1/60 s, ISO 800 indoor.
-        // P = 13.33; t_shake = 1.5 / (0.01 × 2879px) ≈ 0.052 s (frameWidth 4032).
+        // P = 13.33; the solver's t_shake = 1.5 / (0.01 × 2879px) ≈ 0.052 s
+        // (frameWidth 4032) — but the recipe cap can only SHORTEN the
+        // shutter, so the derived 1/(2f) handheld limit (≈ 1/51 s) binds.
         var ctx = ctx1150!
         ctx.frameWidthPx = 4032
         let sol = SettingsSolver.solve(
             recipeId: "sharp-front-to-back", features: baseFeatures(),
             capabilities: caps, context: ctx)
         let t = sol.phoneTargets
-        XCTAssertEqual(t.exposureDurationSec ?? -1, 0.052, accuracy: 0.005)
-        XCTAssertEqual(t.iso, "256")
+        let handheld = ExposurePlanner.handheldLimitSeconds(fieldOfViewDegrees: 70)
+        XCTAssertEqual(t.exposureDurationSec ?? -1, handheld, accuracy: 0.002)
+        XCTAssertEqual(t.iso, "686")
         XCTAssertEqual(t.focusMode, "locked")
         XCTAssertEqual(t.focusPoint?.x ?? -1, 0.5, accuracy: 0.001)
         XCTAssertEqual(t.focusPoint?.y ?? -1, 0.62, accuracy: 0.001)
         XCTAssertTrue(sol.clampMessages.isEmpty, "unexpected clamps: \(sol.clampMessages)")
+        XCTAssertEqual(sol.shutterCapSeconds ?? -1, handheld, accuracy: 0.002)
     }
 
     func testSharpFrontToBack_highlightClip_appliesMinusEV() {
@@ -287,5 +291,75 @@ final class SettingsSolverTests: XCTestCase {
             recipeId: "no-such-recipe", features: baseFeatures(),
             capabilities: caps, context: ctx1150)
         XCTAssertNotNil(sol.phoneTargets.exposureDurationSec)
+    }
+
+    // MARK: - A4: missing metering falls back to system auto
+
+    func testMissingMetering_fallsBackToSystemAuto() {
+        // No metered anchor — never solve from fixed 1/60 s × ISO 100 guesses.
+        var f = baseFeatures()
+        f.meteredExposureSeconds = nil
+        f.meteredISO = nil
+        let sol = SettingsSolver.solve(
+            recipeId: "sharp-front-to-back", features: f,
+            capabilities: caps, context: ctx1150)
+        // No custom exposure is written: verify skips (targetEV nil) and no
+        // dial targets are produced.
+        XCTAssertNil(sol.targetEV)
+        XCTAssertNil(sol.phoneTargets.exposureDurationSec)
+        XCTAssertNil(sol.phoneTargets.iso)
+        XCTAssertNil(sol.phoneTargets.shutter)
+        XCTAssertNil(sol.shutterCapSeconds)
+        XCTAssertNil(sol.residualEV)
+        XCTAssertTrue(
+            sol.clampMessages.contains("Couldn't read the light — left on auto"),
+            "got: \(sol.clampMessages)")
+        // Non-exposure targets still solve (focus locks on the subject).
+        XCTAssertEqual(sol.phoneTargets.focusMode, "locked")
+    }
+
+    func testMissingMetering_eitherValueMissing() {
+        // Either value missing is enough to trigger the fallback.
+        var f = baseFeatures()
+        f.meteredISO = nil
+        let sol = SettingsSolver.solve(
+            recipeId: "portrait-pop", features: f,
+            capabilities: caps, context: ctx1150)
+        XCTAssertNil(sol.targetEV)
+        XCTAssertNil(sol.phoneTargets.exposureDurationSec)
+        XCTAssertTrue(
+            sol.clampMessages.contains("Couldn't read the light — left on auto"))
+    }
+
+    // MARK: - A2: tripod relaxation at the solver level
+
+    func testTripodSteady_allowsLongShutter() {
+        // Dim indoor scene on a tripod: the shake-derived limits drop, so the
+        // plan runs to the longest shutter the light needs (E_target at min
+        // ISO), with a truthful message.
+        var f = baseFeatures()
+        f.isTripodSteady = true
+        let sol = SettingsSolver.solve(
+            recipeId: "sharp-front-to-back", features: f,
+            capabilities: caps, context: ctx1150)
+        // E_target = 13.33 → 0.267 s at min ISO 50 (device max 1 s not hit).
+        XCTAssertEqual(sol.phoneTargets.exposureDurationSec ?? -1, 0.267, accuracy: 0.01)
+        XCTAssertEqual(sol.phoneTargets.iso, "50")
+        XCTAssertEqual(sol.shutterCapSeconds ?? -1, 1.0, accuracy: 1e-9)
+        XCTAssertTrue(
+            sol.clampMessages.contains("Tripod detected — long shutter"),
+            "got: \(sol.clampMessages)")
+    }
+
+    func testTripodSteady_subjectMotionStillCaps() {
+        // Tripod + moving subject: the recipe's motion objective still caps
+        // the shutter (freeze the subject), even though shake is dropped.
+        var f = baseFeatures()
+        f.isTripodSteady = true
+        f.subjectRelativeSpeedPxPerSec = 500 // tMotion = 1.5/500 = 0.003 s
+        let sol = SettingsSolver.solve(
+            recipeId: "sharp-front-to-back", features: f,
+            capabilities: caps, context: ctx1150)
+        XCTAssertEqual(sol.phoneTargets.exposureDurationSec ?? -1, 0.003, accuracy: 0.001)
     }
 }

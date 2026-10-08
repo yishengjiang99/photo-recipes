@@ -47,4 +47,48 @@ final class HorizonMonitorTests: XCTestCase {
         for _ in 0..<200 { v = MotionMath.ema(previous: v, sample: 1.0, alpha: 0.2) }
         XCTAssertEqual(v, 1.0, accuracy: 0.01)
     }
+
+    // MARK: - TripodDetector (A2)
+
+    private func history(
+        shakes: [Double], spacing: TimeInterval = 1.0 / 30, endingAt now: Date = Date()
+    ) -> [(date: Date, shake: Double)] {
+        shakes.enumerated().map { i, s in
+            (date: now.addingTimeInterval(-Double(shakes.count - 1 - i) * spacing), shake: s)
+        }
+    }
+
+    func testTripod_sustainedStillness_isSteady() {
+        // 2 s of < 0.005 rad/s → steady.
+        let now = Date()
+        let h = history(shakes: Array(repeating: 0.002, count: 61), endingAt: now)
+        XCTAssertTrue(TripodDetector.isSteady(history: h, at: now))
+    }
+
+    func testTripod_singleJolt_breaksSteadiness() {
+        // One 0.05 rad/s jolt inside the window → not steady.
+        let now = Date()
+        var shakes = Array(repeating: 0.002, count: 61)
+        shakes[30] = 0.05
+        let h = history(shakes: shakes, endingAt: now)
+        XCTAssertFalse(TripodDetector.isSteady(history: h, at: now))
+    }
+
+    func testTripod_shortHistory_isNotSteady() {
+        // Only 1 s of stillness — the 1.5 s window isn't covered.
+        let now = Date()
+        let h = history(shakes: Array(repeating: 0.002, count: 31), endingAt: now)
+        XCTAssertFalse(TripodDetector.isSteady(history: h, at: now))
+    }
+
+    func testTripod_emptyHistory_isNotSteady() {
+        XCTAssertFalse(TripodDetector.isSteady(history: [], at: Date()))
+    }
+
+    func testTripod_handheldShake_isNotSteady() {
+        // Typical handheld 0.03 rad/s → not steady.
+        let now = Date()
+        let h = history(shakes: Array(repeating: 0.03, count: 61), endingAt: now)
+        XCTAssertFalse(TripodDetector.isSteady(history: h, at: now))
+    }
 }

@@ -1468,6 +1468,10 @@ final class CameraSession: NSObject, ObservableObject {
         var exposureSeconds: Double
         var iso: Float
         var timedOut: Bool
+        /// When convergence finished — the controller requires the sensor
+        /// snapshot's frame timestamp to be later than this (frames exposed
+        /// under a previous run's custom exposure must not anchor `E_auto`).
+        var convergedAt: Date = Date()
         /// `exposureSeconds × iso` — the anchor for the exposure planner.
         var eAuto: Double { exposureSeconds * Double(iso) }
     }
@@ -1488,6 +1492,14 @@ final class CameraSession: NSObject, ObservableObject {
         configure(device) {
             if device.isExposureModeSupported(.continuousAutoExposure) {
                 device.exposureMode = .continuousAutoExposure
+            }
+            // Reset the metering point to frame center so E_auto is metered
+            // from a known point: a stale face/spot POI from a previous run
+            // would bias the convergence and double-count the face EV that
+            // is applied after custom exposure. Face stays the *focus* point
+            // only.
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
             }
             let zeroBias = min(max(Float(0), capabilities.minEV), capabilities.maxEV)
             device.setExposureTargetBias(zeroBias, completionHandler: nil)

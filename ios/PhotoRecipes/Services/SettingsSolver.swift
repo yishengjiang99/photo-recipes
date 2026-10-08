@@ -28,17 +28,19 @@ enum SettingsSolver {
         var clampMessages: [String] = []
         /// Composed exposure offset the plan targets (recipe + face + learned),
         /// in stops. Nil when no custom exposure is written (HDR, cheatsheet,
-        /// thermal-critical fallback) — the verify loop skips then.
+        /// missing metering, thermal-critical fallback) — the verify loop
+        /// skips then.
         var targetEV: Double?
-        /// A6: the recipe's exposure priority for the verify loop's correction
-        /// policy (`.shutter` recipes never have their shutter moved by
-        /// corrections). Populated by the solver-side worker; nil keeps the
-        /// legacy ISO-first-then-shutter corrections.
-        var priority: ExposurePlanner.Priority? = nil
-        /// A6: longest shutter the verify loop may move to when correcting
-        /// under `.auto` priority (the recipe's motion cap). Nil = device
-        /// limits only. Populated by the solver-side worker.
-        var shutterCapSeconds: Double? = nil
+        /// Plan-derived fields for the verify step + telemetry, populated in
+        /// solveImpl's planExposure from the last plan.
+        ///
+        /// Shared interface with the A1/A6 worker (branch fix/ao-review-a1a6),
+        /// which consumes these in the verify call site. Declared here with
+        /// the agreed spec (nil defaults) so this branch compiles standalone —
+        /// the merge must keep exactly one copy of these three declarations.
+        var priority: ExposurePlanner.Priority?
+        var shutterCapSeconds: Double?
+        var residualEV: Double?
         var coachOnly: CoachOnly?
         var panCue: PanCue?
         var apertureGuidance: String?
@@ -72,6 +74,9 @@ enum SettingsSolver {
             solution.phoneTargets.iso = nil
             solution.phoneTargets.ev = nil
             solution.targetEV = nil
+            solution.priority = nil
+            solution.shutterCapSeconds = nil
+            solution.residualEV = nil
             solution.clampMessages.append(
                 "Thermal state critical — exposure left on system auto.")
         }
@@ -98,9 +103,11 @@ enum SettingsSolver {
 
         let fovRad = context.fieldOfViewDegrees * .pi / 180
         let focalPx = (context.frameWidthPx / 2) / max(tan(fovRad / 2), 1e-6)
-        let shake = max(Double(features.handShakeRadPerSec), 1e-4)
+        // Nil/unavailable gyro (0) is 0.03 rad/s typical handheld, never zero.
+        let shake = ExposurePlanner.effectiveShakeRadPerSec(Double(features.handShakeRadPerSec))
         /// Slowest shutter that keeps hand shake under ~1.5 px at full resolution.
-        let tShake = 1.5 / (shake * focalPx)
+        /// On a tripod the shake limit is dropped (subject motion still caps).
+        let tShake: Double = features.isTripodSteady ? .infinity : 1.5 / (shake * focalPx)
         /// Shutter that freezes subject motion to ~1.5 px.
         let relSpeed = Double(features.subjectRelativeSpeedPxPerSec)
         let tMotion: Double = relSpeed > 50 ? 1.5 / relSpeed : .infinity
@@ -119,6 +126,13 @@ enum SettingsSolver {
             tips.append("Hand shake limits the shutter to ~\(RecipeCameraMapper.formatShutter(tShake)) — brace or use a tripod.")
         }
 
+        /// Side-channel from planExposure: the last plan's fields for the
+        /// Solution the verify step + telemetry consume (populated per call).
+        var lastPlanPriority: ExposurePlanner.Priority?
+        var lastPlanSolutionTargetEV: Double?
+        var lastPlanShutterCap: Double?
+        var lastPlanResidualEV: Double?
+
         /// Shared exposure solve via `ExposurePlanner`: `E_target` from the
         /// converged metered product, split into shutter × ISO by the
         /// recipe's priority. Shutter and ISO are never chosen independently
@@ -127,26 +141,60 @@ enum SettingsSolver {
             priority: ExposurePlanner.Priority,
             targetEV: Double
         ) -> ExposurePlanner.Plan {
-            let eAuto = (features.meteredExposureSeconds ?? 1 / 60)
-                * Double(features.meteredISO ?? 100)
             let motion = ExposurePlanner.MotionContext(
-                handShakeRadPerSec: max(Double(features.handShakeRadPerSec), 1e-4),
+                handShakeRadPerSec: Double(features.handShakeRadPerSec),
                 frameWidthPx: context.frameWidthPx,
-                fieldOfViewDegrees: context.fieldOfViewDegrees)
+                fieldOfViewDegrees: context.fieldOfViewDegrees,
+                isTripodSteady: features.isTripodSteady)
             let limits = ExposurePlanner.DeviceLimits(
                 minShutterSeconds: capabilities.minExposureSeconds,
                 maxShutterSeconds: capabilities.maxExposureSeconds,
                 minISO: capabilities.minISO,
                 maxISO: capabilities.maxISO)
-            // targetEV already includes learnedEVOffset (folded in per branch).
-            let plan = ExposurePlanner.plan(
-                eAuto: eAuto, targetEV: targetEV, priority: priority,
-                motion: motion, limits: limits)
+            let plan: ExposurePlanner.Plan
+            if let meteredSeconds = features.meteredExposureSeconds,
+               let meteredISO = features.meteredISO {
+                // targetEV already includes learnedEVOffset (folded in per branch).
+                let eAuto = meteredSeconds * Double(meteredISO)
+                plan = ExposurePlanner.plan(
+                    eAuto: eAuto, targetEV: targetEV, priority: priority,
+                    motion: motion, limits: limits)
+            } else {
+                // A4: no metered anchor — stay on system auto rather than
+                // solving from fixed 1/60 s × ISO 100 guesses.
+                messages.append("Couldn't read the light — left on auto")
+                Task { @MainActor in
+                    Analytics.shared.track("ao_metering_missing", props: ["recipe_id": recipeId])
+                }
+                plan = ExposurePlanner.plan(
+                    eAuto: 1, targetEV: 0, priority: .systemAuto,
+                    motion: motion, limits: limits)
+            }
+            // Side-channel for the Solution fields the verify step + telemetry
+            // consume. targetEV/residualEV are nil without custom exposure —
+            // the verify loop skips then.
+            lastPlanPriority = priority
+            lastPlanSolutionTargetEV = plan.useCustomExposure ? plan.targetEV : nil
+            lastPlanShutterCap = plan.shutterCapSeconds
+            lastPlanResidualEV = plan.useCustomExposure ? plan.residualEV : nil
             messages.append(contentsOf: plan.clampMessages)
             return plan
         }
 
+        /// Fills the plan-derived Solution fields from the last planExposure
+        /// call (verify step + telemetry consume them).
+        func withPlanFields(_ solution: Solution) -> Solution {
+            var s = solution
+            s.priority = lastPlanPriority
+            s.targetEV = lastPlanSolutionTargetEV
+            s.shutterCapSeconds = lastPlanShutterCap
+            s.residualEV = lastPlanResidualEV
+            return s
+        }
+
         func setExposure(plan: ExposurePlanner.Plan) {
+            // A system-auto plan writes nothing — the device stays on auto.
+            guard plan.useCustomExposure else { return }
             targets.exposureDurationSec = plan.shutterSeconds
             targets.shutter = RecipeCameraMapper.formatShutter(plan.shutterSeconds)
             targets.iso = "\(Int(plan.iso.rounded()))"
@@ -172,7 +220,7 @@ enum SettingsSolver {
                 x: Double(subjectCenter?.x ?? 0.5), y: Double(subjectCenter?.y ?? 0.62))
             targets.whiteBalance = .mode("auto")
             if isVeryDim { targets.lowLightBoost = true }
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -181,7 +229,7 @@ enum SettingsSolver {
                     notes: "Phone aperture is fixed — use subject distance for DoF."
                 ),
                 apertureGuidance: "f/11–f/16 (guidance)", extraTips: tips
-            )
+            ))
 
         case "blur-moving-subjects":
             // Objective: t = targetBlurPx / subjectRelativeSpeed, ~4% frame width
@@ -211,7 +259,7 @@ enum SettingsSolver {
             targets.focusPoint = FocusPointNorm(x: Double(staticPoint.x), y: Double(staticPoint.y))
             let ndNote: String? = messages.contains(where: { $0.contains("Overexposed") })
                 ? "ND filter — scene too bright for silky blur at base ISO" : nil
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -219,7 +267,7 @@ enum SettingsSolver {
                     notes: "Tripod keeps the static world sharp while motion blurs."
                 ),
                 extraTips: tips
-            )
+            ))
 
         case "panning-sharp-subject":
             // Objective: t = targetStreakPx / cameraPanSpeed, ~6% frame width
@@ -240,7 +288,7 @@ enum SettingsSolver {
             targets.monitorSubjectAreaChange = true
             let dir: String = abs(features.motionDirectionX) >= abs(features.motionDirectionY)
                 ? "horizontal" : "vertical"
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -249,7 +297,7 @@ enum SettingsSolver {
                 ),
                 panCue: PanCue(direction: dir, note: "Pan with the subject"),
                 extraTips: tips
-            )
+            ))
 
         case "hdr-brights-darks":
             // No custom exposure: auto with the exposure point on the subject.
@@ -291,7 +339,7 @@ enum SettingsSolver {
             targets.whiteBalance = .mode("auto")
             if isVeryDim { targets.lowLightBoost = true }
             messages.append("Exposure re-checked after the ultra-wide switch (verify read-back).")
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -300,7 +348,7 @@ enum SettingsSolver {
                 ),
                 panCue: PanCue(direction: "down", note: "Drop lower"),
                 extraTips: tips
-            )
+            ))
 
         case "portrait-pop":
             // Face → exposure point on the face/eyes, locked focus, 2× zoom.
@@ -320,7 +368,7 @@ enum SettingsSolver {
             } else if isDim {
                 targets.lowLightBoost = true
             }
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -329,7 +377,7 @@ enum SettingsSolver {
                     notes: "Zoom 2×, focus on the eyes, verify sharpness by zooming in tight after the shot."
                 ),
                 extraTips: tips
-            )
+            ))
 
         case "sharp-and-in-focus":
             // Single-point focus locked on the subject (eyes for people).
@@ -343,7 +391,7 @@ enum SettingsSolver {
             let p = eyePoint(features: features)
             targets.focusPoint = FocusPointNorm(x: Double(p.x), y: Double(p.y))
             if isVeryDim { targets.lowLightBoost = true }
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -352,7 +400,7 @@ enum SettingsSolver {
                     notes: "Single-point focus locked on the subject — tap to move it if the camera picked the wrong element."
                 ),
                 extraTips: tips
-            )
+            ))
 
         case "leading-lines":
             // Deep focus so lines stay sharp foreground → background.
@@ -367,7 +415,7 @@ enum SettingsSolver {
             targets.focusPoint = FocusPointNorm(x: Double(c.x), y: Double(c.y))
             targets.simulatedAperture = 11 // coach-only: deep focus keeps lines sharp
             if isVeryDim { targets.lowLightBoost = true }
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -375,7 +423,7 @@ enum SettingsSolver {
                     notes: "Turn on the thirds grid; lines should start in the foreground and point at the subject."
                 ),
                 apertureGuidance: "f/11 (guidance)", extraTips: tips
-            )
+            ))
 
         case "minimalist-photos":
             // Expose for mood: slight underexposure keeps blue-hour scenes moody.
@@ -389,7 +437,7 @@ enum SettingsSolver {
             let c = subjectCenter ?? CGPoint(x: 0.5, y: 0.5)
             targets.focusPoint = FocusPointNorm(x: Double(c.x), y: Double(c.y))
             if isVeryDim { targets.lowLightBoost = true }
-            return Solution(
+            return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
                 targetEV: plan.targetEV,
                 coachOnly: CoachOnly(
@@ -397,7 +445,7 @@ enum SettingsSolver {
                     notes: "Thirds grid on; one subject on a third line; blue hour (30 min after sunset) is ideal."
                 ),
                 extraTips: tips
-            )
+            ))
 
         default:
             // Unknown id — treat as sharp-front-to-back (server fallback agrees).
