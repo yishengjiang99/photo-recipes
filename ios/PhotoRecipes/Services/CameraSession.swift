@@ -466,12 +466,21 @@ final class CameraSession: NSObject, ObservableObject {
         configure(device) {
             if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = clamped }
             if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = clamped }
-            if lock, device.isFocusModeSupported(.locked) {
-                device.focusMode = .locked
-            } else if device.isFocusModeSupported(.autoFocus) {
+            // `.autoFocus` scans once at the point of interest and then holds the
+            // lens, so it serves both lock and non-lock. Writing `.locked` here
+            // would freeze the lens where it is without ever focusing on the point.
+            if device.isFocusModeSupported(.autoFocus) {
                 device.focusMode = .autoFocus
             } else if device.isFocusModeSupported(.continuousAutoFocus) {
                 device.focusMode = .continuousAutoFocus
+            } else if lock, device.isFocusModeSupported(.locked) {
+                device.focusMode = .locked
+            }
+            // The exposure point only takes effect when the mode is (re)written.
+            // Leave locked / custom exposure alone so applied dials survive a tap.
+            if device.isExposurePointOfInterestSupported,
+               device.exposureMode == .continuousAutoExposure {
+                device.exposureMode = .continuousAutoExposure
             }
         }
         focusLocked = lock
