@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 /// - Bracket settings: 5 frames at −2…+2 EV (construction only — no hardware).
 /// - Store: downsampled JPEGs + meta.json, count/size caps evict oldest.
 /// - Nothing uploads: only a manifest of metadata is ever built.
+@MainActor
 final class AOBracketCaptureTests: XCTestCase {
 
     // MARK: - Opt-in

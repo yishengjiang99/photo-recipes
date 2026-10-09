@@ -5,6 +5,7 @@ import XCTest
 /// - The 45-dim Core ML feature-vector contract is untouched.
 /// - Every telemetry prop is numeric / short-identifier only (no-pixel guarantee).
 /// - Override deltas (EV / shutter / ISO / Kelvin / recipe) are pure math.
+@MainActor
 final class AOTelemetryTests: XCTestCase {
 
     // MARK: - Contract: feature vector stays 45 dims
