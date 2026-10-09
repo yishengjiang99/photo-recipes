@@ -33,7 +33,7 @@ def token():
 
 
 def api(method, path, body=None):
-    if MODE != "submit" and method != "GET":
+    if MODE not in ("submit", "cancel") and method != "GET":
         raise SystemExit(f"read-only mode but tried {method} {path}")
     r = requests.request(method, path if path.startswith("http") else BASE + path, json=body,
                          headers={"Authorization": "Bearer " + token()}, timeout=90)
@@ -54,6 +54,9 @@ def find_build(app_id):
 
 def status(app_id):
     print("\n===== STATUS =====")
+    b = find_build(app_id)
+    print("BUILD", BUILD_NUMBER, b and (b["id"], b["attributes"].get("processingState"),
+          "usesNonExemptEncryption=", b["attributes"].get("usesNonExemptEncryption"), b["attributes"].get("uploadedDate")))
     vers = must("GET", f"/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=5")["data"]
     for v in vers:
         a = v["attributes"]
@@ -111,6 +114,27 @@ def main():
         raise SystemExit(f"build {BUILD_NUMBER} not VALID after 30 min")
 
     if MODE == "status":
+        status(app_id)
+        return
+
+    if MODE == "cancel":
+        rs_id = os.environ["CANCEL_SUBMISSION_ID"].strip()
+        a = must("GET", f"/v1/reviewSubmissions/{rs_id}")["data"]["attributes"]
+        print("SUBMISSION", rs_id, a.get("state"))
+        if a.get("state") not in ("WAITING_FOR_REVIEW", "UNRESOLVED_ISSUES", "IN_REVIEW", "CANCELING"):
+            raise SystemExit(f"submission {rs_id} is {a.get('state')}; nothing to cancel")
+        if a.get("state") != "CANCELING":
+            j = must("PATCH", f"/v1/reviewSubmissions/{rs_id}", {"data": {"type": "reviewSubmissions", "id": rs_id,
+                                                                            "attributes": {"canceled": True}}})
+            print("CANCEL requested ->", j["data"]["attributes"].get("state"))
+        for i in range(40):
+            st = must("GET", f"/v1/reviewSubmissions/{rs_id}")["data"]["attributes"].get("state")
+            v = must("GET", f"/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&filter[versionString]={VERSION_STRING}")["data"][0]
+            vs = v["attributes"].get("appStoreState")
+            print(f"poll {i + 1}: submission={st} version {VERSION_STRING}={vs}")
+            if st == "COMPLETE" and vs in ("DEVELOPER_REJECTED", "PREPARE_FOR_SUBMISSION"):
+                break
+            time.sleep(15)
         status(app_id)
         return
 

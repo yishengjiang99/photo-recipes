@@ -8,14 +8,17 @@ on:
       mode:
         description: status (read-only) or submit
         type: choice
-        options: [status, submit]
+        options: [status, submit, cancel]
         default: status
       version_string:
         description: App Store versionString
         default: "1.4"
       build_number:
         description: CFBundleVersion
-        default: "71"
+        default: "72"
+      cancel_submission_id:
+        description: reviewSubmission id to pull from review (mode=cancel)
+        default: ""
 
 concurrency:
   group: asc-submit
@@ -57,4 +60,10 @@ jobs:
       - name: Status (read-only)
         if: ${{ inputs.mode == 'status' }}
         env: { MODE: status }
+        run: python3 scripts/asc/submit_version_with_subscriptions.py
+      - name: Cancel review submission (pull from review)
+        if: ${{ inputs.mode == 'cancel' }}
+        env:
+          MODE: cancel
+          CANCEL_SUBMISSION_ID: ${{ inputs.cancel_submission_id }}
         run: python3 scripts/asc/submit_version_with_subscriptions.py
