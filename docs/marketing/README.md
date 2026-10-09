@@ -6,6 +6,8 @@ Strategy and copy sources of truth for Photo Recipes marketing. Use these docs f
 
 > **2026-09-19:** [gtm-plan.md](./gtm-plan.md), [budget-300-spend.md](./budget-300-spend.md), and [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md) refreshed for **iOS-first** GTM (TestFlight / App Store; Auto Optimize activation). Match [ad-copy-v2.md](./ad-copy-v2.md).
 
+> **2026-09-20:** [ios-distribution-sdks-research.md](./ios-distribution-sdks-research.md) — DRAFT Marketing Expert brief: Meta iOS Ads SDK / AEM / SKAN, competing SDKs & MMPs, CPI ranges, top distributors for Grok Camera / Photo Recipes.
+
 | Doc | One-liner |
 | --- | --- |
 | [gtm-plan.md](./gtm-plan.md) | Full go-to-market plan: iOS-first positioning, ICP, channels, funnel, launch sequence, budget, north-star metrics |
@@ -15,6 +17,7 @@ Strategy and copy sources of truth for Photo Recipes marketing. Use these docs f
 | [lead-gen-outreach-playbook.md](./lead-gen-outreach-playbook.md) | Where to hang out, lead magnets, outreach scripts, weekly cadence, CRM, first 20 outreaches |
 | [growth-ideas-unconventional.md](./growth-ideas-unconventional.md) | 60 unconventional growth ideas + top 5 to run next (not more Reddit/Meta tweaks) |
 | [budget-300-spend.md](./budget-300-spend.md) | How to spend $300 over 14 days: Meta (install/AO), micro-creators, tools/magnet |
+| [ios-distribution-sdks-research.md](./ios-distribution-sdks-research.md) | DRAFT: Meta SDK optimization, SDK/MMP comparison, CPI ranges + citations, top acquisition channels |
 
 **Copy source of truth:** [ad-copy-v2.md](./ad-copy-v2.md) only. Use it for all current paid creative and messaging.
 
