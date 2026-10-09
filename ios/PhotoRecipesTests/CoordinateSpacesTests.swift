@@ -1,6 +1,7 @@
 import XCTest
 @testable import PhotoRecipes
 
+@MainActor
 final class CoordinateSpacesTests: XCTestCase {
 
     func testVisionToUI_flipsY() {

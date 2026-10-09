@@ -1,6 +1,7 @@
 import XCTest
 @testable import PhotoRecipes
 
+@MainActor
 final class AutoOptimizeControllerTests: XCTestCase {
 
     // MARK: - pinnedRecipeId
