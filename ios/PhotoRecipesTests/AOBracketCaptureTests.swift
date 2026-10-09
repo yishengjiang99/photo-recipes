@@ -14,11 +14,13 @@ final class AOBracketCaptureTests: XCTestCase {
 
     // MARK: - Opt-in
 
+    @MainActor
     func testOptInDefaultsOff() {
         UserDefaults.standard.removeObject(forKey: AOBracketCapture.optInDefaultsKey)
         XCTAssertFalse(AOBracketCapture.optedIn, "improve opt-in must default OFF")
     }
 
+    @MainActor
     func testOptInRoundTrip() {
         UserDefaults.standard.removeObject(forKey: AOBracketCapture.optInDefaultsKey)
         defer { UserDefaults.standard.removeObject(forKey: AOBracketCapture.optInDefaultsKey) }
@@ -30,10 +32,12 @@ final class AOBracketCaptureTests: XCTestCase {
 
     // MARK: - Bracket construction
 
+    @MainActor
     func testEvOffsetsAreFiveFramesMinus2ToPlus2() {
         XCTAssertEqual(AOBracketCapture.evOffsets, [-2, -1, 0, 1, 2])
     }
 
+    @MainActor
     func testBracketedSettingsScaleExposureAtConstantISO() {
         let settings = AOBracketCapture.bracketedSettings(
             baseShutter: 1.0 / 60, baseISO: 100,
@@ -47,6 +51,7 @@ final class AOBracketCaptureTests: XCTestCase {
         for s in settings { XCTAssertEqual(s.iso, 100) }
     }
 
+    @MainActor
     func testBracketedSettingsClampToDeviceLimits() {
         // 1 s base at +2 EV would be 4 s — clamped to the 1/2 s device max.
         let settings = AOBracketCapture.bracketedSettings(
@@ -78,6 +83,7 @@ final class AOBracketCaptureTests: XCTestCase {
         return out as Data
     }
 
+    @MainActor
     func testDownsampleProducesSmallJPEG() {
         let big = Self.makeTestJPEG()
         let small = AOBracketDownsampler.downsampleJPEG(big)
@@ -88,6 +94,7 @@ final class AOBracketCaptureTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(img.width, img.height), AOBracketDownsampler.maxPixelSize)
     }
 
+    @MainActor
     func testDownsampleRejectsGarbage() {
         XCTAssertNil(AOBracketDownsampler.downsampleJPEG(Data([0, 1, 2, 3])))
         XCTAssertNil(AOBracketDownsampler.downsampleJPEG(Data()))
@@ -109,6 +116,7 @@ final class AOBracketCaptureTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
     }
 
+    @MainActor
     func testStoreEnforcesCountCapEvictingOldest() throws {
         let dir = tempDir()
         let store = AOBracketStore(baseURL: dir, maxSets: 2, maxBytes: 100 * 1024 * 1024)
@@ -134,6 +142,7 @@ final class AOBracketCaptureTests: XCTestCase {
             atPath: dir.appendingPathComponent("run-3/meta.json").path))
     }
 
+    @MainActor
     func testStoreEnforcesSizeCap() throws {
         let dir = tempDir()
         let frames = (0..<5).map { _ in Self.makeTestJPEG(width: 64, height: 64) }
@@ -156,6 +165,7 @@ final class AOBracketCaptureTests: XCTestCase {
         XCTAssertEqual(sets[0].id, "run-b")
     }
 
+    @MainActor
     func testPendingUploadManifestHasNoPixels() throws {
         let dir = tempDir()
         let store = AOBracketStore(baseURL: dir)
@@ -176,6 +186,7 @@ final class AOBracketCaptureTests: XCTestCase {
         XCTAssertFalse(text.contains("/9j/"), "JPEG base64 must never appear in the manifest")
     }
 
+    @MainActor
     func testClearAll() throws {
         let dir = tempDir()
         let store = AOBracketStore(baseURL: dir)
@@ -337,6 +348,7 @@ final class AOBracketCaptureTests: XCTestCase {
 
     // MARK: - Section D (c): ISO-raised positive offsets + blur_risk
 
+    @MainActor
     func testBracketedSettingsRaiseISOPastMotionCap() {
         // Dim scene: 1/30 s base, motion-safe cap 1/60 s.
         let settings = AOBracketCapture.bracketedSettings(
@@ -360,6 +372,7 @@ final class AOBracketCaptureTests: XCTestCase {
         XCTAssertEqual(settings[4].iso, 800)
     }
 
+    @MainActor
     func testBracketedSettingsClampRaisedISOToMax() {
         // +2 EV from 1/30 s at cap 1/60 would want ISO 800 — maxISO 500 wins.
         let settings = AOBracketCapture.bracketedSettings(
@@ -371,6 +384,7 @@ final class AOBracketCaptureTests: XCTestCase {
         XCTAssertEqual(settings[0].iso, 500)
     }
 
+    @MainActor
     func testBracketedSettingsWithoutCapKeepShutterScaling() {
         // No motion cap → legacy behavior: shutter scales, ISO constant.
         let settings = AOBracketCapture.bracketedSettings(
@@ -381,6 +395,7 @@ final class AOBracketCaptureTests: XCTestCase {
         for s in settings { XCTAssertEqual(s.iso, 100) }
     }
 
+    @MainActor
     func testStoreFlagsBlurRiskPerFrame() throws {
         let dir = tempDir()
         let store = AOBracketStore(baseURL: dir)
@@ -409,6 +424,7 @@ final class AOBracketCaptureTests: XCTestCase {
 
     // MARK: - Section D (d): manifest anchors
 
+    @MainActor
     func testMetaJsonContainsLabelAnchors() throws {
         let dir = tempDir()
         let store = AOBracketStore(baseURL: dir)
@@ -438,6 +454,7 @@ final class AOBracketCaptureTests: XCTestCase {
 
     // MARK: - Section D (e): EXIF strip
 
+    @MainActor
     func testDownsampledJPEGsStripGPSAndEXIF() throws {
         let tagged = Self.makeTestJPEGWithGPS()
         // Sanity: the input really carries GPS.
