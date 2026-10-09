@@ -1,5 +1,5 @@
 # TODO — ProTune AI Camera
-_Last updated: 2026-10-06 5:15 PM PT by Chief of Staff_
+_Last updated: 2026-10-09 9:40 AM PT by Chief of Staff_
 
 iOS-first; tip `7ce3c4c`. App display name / ASC name is **ProTune AI Camera** (`com.ragnus.mvp`). **v1.1 (build 46) is live** (READY_FOR_SALE). **v1.2 build 53 (`62e670e`) is WAITING_FOR_REVIEW** (submission `d30b5a05`, submitted 2026-10-06 4:21 PM PT). Build 54 (`7ce3c4c`, AppsFlyer removed) is in TestFlight only. Open draft PRs #141 and #138 unchanged.
 
@@ -19,13 +19,13 @@ iOS-first; tip `7ce3c4c`. App display name / ASC name is **ProTune AI Camera** (
 - [ ] 1.2 (build 53) waiting on App Review; release when approved — User
 
 ## Done (recent)
+- [x] Submit workflow fix: drop stale /tmp/submit_app_store.py invocation — `56e838a` — 2026-10-08
+- [x] Admin panel counts IAP as estimated MRR alongside Stripe — `bf28e01` — 2026-10-08
+- [x] v1.3 listing: whatsnew/description + camera chrome screenshots — `dff9c14`, `6eaecfb` — 2026-10-08
+- [x] Camera chrome revamp, tap-to-focus fix, selfie mode, named looks on-device, Low Angle library-only — `c86c6c7`, `f335f69`, `d5fd10f`, `7435230`, `fee4930` — 2026-10-08
+- [x] Auto Optimize review fixes A–D + overexposure loop steps 1–6 — merges `7903c64`, `56b5aa6`, `d629ab6`, `7a25c90`, `b55ba82` — 2026-10-07
 - [x] v1.2 resubmitted with build 53 (ITMS-91064 fixed: `NSPrivacyTracking` true with tracking domains) — WAITING_FOR_REVIEW, submit run 37546069519 — 2026-10-06
 - [x] Remove AppsFlyer entirely (SDK, secret gates, privacy disclosure); keep Meta + SKAN — `7ce3c4c`, TestFlight build 54 — 2026-10-06
 - [x] Funnel fix proposal: guided first win, success-based welcome quota, earned D1 reminder — `c400166`, `62e670e`, build 53 — 2026-10-06
 - [x] Push: ship devices/push_tokens DDL in bundle, keep server data across deploys, cron tick — `a3efa0f` — 2026-10-06
 - [x] Telemetry fix pass: come-shoot/D1 push, soft/hard paywall, auto-apply looks with undo, local-first Auto Optimize — `6462a8b`, `f7376ce`, build 52 — 2026-10-06
-- [x] Telemetry: event allowlist removed, server accepts all events — `cacc1dc` — 2026-10-06
-- [x] iOS build fixes: Facebook SPM archive provisioning scope, AppIcon compile, PrivacyInfo for ITMS-91064 — `1d9e92a`, `77f2b2e`, `f17d3b6` — 2026-10-06
-- [x] Ads: ProTune 9:16 slider promo + selfie Reels v13–v16 (v16 Midwestern VO, -14 LUFS) in `docs/ads/` — `b11998a`, `0f90c77`, `41c20d6`, `cf39b2d`, `ecbb454` — 2026-10-05
-- [x] Meta App Events SDK (FB App ID 1895534071416482; FB SDK 18.x) merged to main; iOS unit tests green — `7f217d9`…`f293263`, merge `b5a7fcf` — 2026-10-05
-- [x] v1.1 build 46 approved, READY_FOR_SALE (submission `fd14c9ca` COMPLETE) — ASC status run 37347060871 — 2026-10-05
