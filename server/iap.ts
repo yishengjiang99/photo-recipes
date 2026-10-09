@@ -26,7 +26,7 @@ import {
   getGuestId,
   setSubscriptionCookie,
   upsertEntitlement,
-  getSubscriptionStatus,
+  isProStatus,
   type Plan,
 } from './entitlements.ts'
 
@@ -384,12 +384,13 @@ export function mountIapRoutes(app: Express) {
       })
       setSubscriptionCookie(res, ent.id)
 
-      const sub = getSubscriptionStatus(req, res)
+      // Read from the entitlement just written — the request's pr_sub cookie
+      // predates this verify, so getSubscriptionStatus(req) reports free here.
       res.json({
         ok: true,
-        pro: sub.pro,
-        status: sub.status,
-        plan: sub.plan,
+        pro: isProStatus(ent.status),
+        status: ent.status,
+        plan: ent.plan,
         productId,
         source: 'iap',
       })

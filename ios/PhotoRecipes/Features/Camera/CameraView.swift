@@ -35,6 +35,7 @@ struct CameraView: View {
     @State private var drawerLookIntensity: Double = CreativeLookCatalog.defaultIntensity
     // Last captured photo for the finder thumbnail.
     @State private var lastCaptureImage: UIImage?
+    @State private var showLastPhoto = false
     @State private var isCapturing = false
     @State private var captureError: String?
     @State private var showCoachMarks = false
@@ -339,6 +340,11 @@ struct CameraView: View {
             .environmentObject(entitlements)
             .environmentObject(router)
             .presentationDetents([.medium, .large])
+        }
+        .fullScreenCover(isPresented: $showLastPhoto) {
+            if let img = lastCaptureImage {
+                LastPhotoViewer(image: img)
+            }
         }
     }
 
@@ -1007,12 +1013,17 @@ struct CameraView: View {
         .accessibilityHint("Runs Auto Optimize on the current scene")
     }
 
-    /// Last captured photo thumbnail — opens the library. Subtle placeholder
-    /// until the first capture.
+    /// Last captured photo thumbnail — opens that photo full screen. Subtle
+    /// placeholder until the first capture this session, when it opens Photos
+    /// (add-only library access, so we can't read earlier shots ourselves).
     private func lastPhotoButton(compact: Bool) -> some View {
         Button {
             Analytics.shared.track("last_photo_tap", props: ["source": "finder"])
-            router.selectedTab = .library
+            if lastCaptureImage != nil {
+                showLastPhoto = true
+            } else if let url = URL(string: "photos-redirect://") {
+                UIApplication.shared.open(url)
+            }
         } label: {
             Group {
                 if let img = lastCaptureImage {
@@ -1034,7 +1045,7 @@ struct CameraView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Last photo")
-        .accessibilityHint("Opens the photo library")
+        .accessibilityHint("Opens your most recent photo")
     }
 
     // MARK: - Chrome revamp: side rails + controls drawer
@@ -2317,6 +2328,41 @@ struct ApplyBurstBanner: View {
     }
 }
 
+/// Full-screen view of the most recent capture (pinch to zoom, tap ✕ to return to the finder).
+private struct LastPhotoViewer: View {
+    let image: UIImage
+    @Environment(\.dismiss) private var dismiss
+    @State private var zoom: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(zoom * pinch)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gesture(
+                    MagnificationGesture()
+                        .updating($pinch) { value, state, _ in state = value }
+                        .onEnded { zoom = min(max(zoom * $0, 1), 5) }
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation(.easeOut(duration: 0.2)) { zoom = zoom > 1 ? 1 : 2.5 }
+                }
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .background(Circle().fill(Color.white.opacity(0.18)))
+            }
+            .padding(16)
+            .accessibilityLabel("Close")
+        }
+    }
+}
 
 /// Thread-safe flag: true once any Recommend SSE event arrives (vs. fail-to-start).
 final class RecommendStreamStartFlag: @unchecked Sendable {

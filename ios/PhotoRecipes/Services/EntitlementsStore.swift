@@ -20,6 +20,9 @@ final class EntitlementsStore: ObservableObject {
     private let favoritesKey = "favorites.recipeIds"
     private let checklistKeyPrefix = "checklist."
     private let softNudgeShownKey = "paywall.softNudgeShown"
+    /// Set by a StoreKit-verified current entitlement this launch; survives server refreshes.
+    private var storeKitVerified = false
+    private var storeKitPlan: SubscriptionPlan?
 
     @Published var favoriteIds: Set<String> {
         didSet {
@@ -124,6 +127,10 @@ final class EntitlementsStore: ObservableObject {
         defer { loading = false }
         do {
             status = try await api.subscriptionStatus()
+            // Server may lag or fail IAP verify — never downgrade a StoreKit-verified entitlement.
+            if !status.pro, storeKitVerified {
+                applyVerifiedPro(plan: storeKitPlan)
+            }
         } catch {
             lastError = error.localizedDescription
             // Keep last known / free peek default so UI stays usable offline
@@ -158,7 +165,16 @@ final class EntitlementsStore: ObservableObject {
         objectWillChange.send()
     }
 
+    /// StoreKit reports no current entitlement (expired / refunded) — server status is truth again.
+    func clearVerifiedPro() {
+        storeKitVerified = false
+        storeKitPlan = nil
+    }
+
     func applyVerifiedPro(plan: SubscriptionPlan?) {
+        storeKitVerified = true
+        storeKitPlan = plan
+        showPaywall = false
         status = SubscriptionStatus(
             pro: true,
             unlimited: true,

@@ -166,6 +166,7 @@ final class StoreKitManager: ObservableObject {
             }
         }
         purchasedProductIDs = ids
+        if ids.isEmpty { entitlements.clearVerifiedPro() }
     }
 
     private func syncEntitlement(
@@ -186,6 +187,10 @@ final class StoreKitManager: ObservableObject {
             }
             await entitlements.refresh()
         } catch {
+            // Refunded / lapsed transactions arrive via Transaction.updates too — never grant on those.
+            let live = transaction.revocationDate == nil
+                && (transaction.expirationDate.map { $0 > Date() } ?? true)
+            guard live else { return }
             // Verified StoreKit transaction — grant Pro locally; retry server on next launch
             entitlements.applyVerifiedPro(plan: plan)
             purchaseError = "Purchased; server sync pending: \(error.localizedDescription)"
