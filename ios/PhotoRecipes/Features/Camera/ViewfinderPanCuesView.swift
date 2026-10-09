@@ -37,7 +37,7 @@ enum ViewfinderPanCueResolver {
 
     private static func applyPanCue(direction: String, note: String?, to cue: inout ViewfinderPanCue) {
         // Map direction literally — never fall through "down"/"lower" to L/R (Build 28).
-        // Those looked like tappable controls on composition / get-down-low.
+        // Those looked like tappable controls on composition recipes.
         switch direction.lowercased() {
         case "left":
             cue.left = true
@@ -64,25 +64,13 @@ enum ViewfinderPanCueResolver {
             cue.left = true; cue.right = true
             cue.caption = "pan with subject →"
         }
-        if recipe.tags.contains(.composition) || id.contains("get-down-low") || blob.contains("knee-height") {
-            // leading-lines / minimalist-photos are compositional, not positional —
-            // no chevron; their guidance lives in coach notes (thirds grid, subject placement).
-            let compositionalOnly = id.contains("leading-lines") || id.contains("minimalist")
-            if !compositionalOnly {
-                cue.down = true
-                if cue.caption == nil {
-                    cue.caption = id.contains("get-down-low") ? "Drop lower" : "include foreground ↓"
-                }
-            }
-        }
+        // Composition recipes are compositional, not positional — no chevron;
+        // their guidance lives in coach notes (thirds grid, subject placement).
     }
 
     private static func applyStatusHooks(_ status: String, to cue: inout ViewfinderPanCue) {
         if status.contains("pann") || status.contains("sensing motion") || status.contains("follow") {
             cue.left = true; cue.right = true
-        }
-        if status.contains("low") || status.contains("kneel") || status.contains("get down") {
-            cue.down = true
         }
         if status.contains("look up") || status.contains("tilt up") {
             cue.up = true

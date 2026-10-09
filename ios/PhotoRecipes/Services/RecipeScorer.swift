@@ -16,8 +16,8 @@ struct RecipeScore {
 /// both conform, so either can be swapped in.
 protocol RecipeScoring {
     /// Scores every auto-select candidate, sorted by probability descending.
-    /// `exposure-triangle-cheatsheet` is a reference card and is never a
-    /// candidate — it stays resolvable by id (staged recipes) only.
+    /// `exposure-triangle-cheatsheet` and `get-down-low` are library-only and
+    /// never candidates — they stay resolvable by id (staged recipes) only.
     func score(_ features: SceneFeatures) -> [RecipeScore]
     var candidateIds: [String] { get }
 }
@@ -289,7 +289,7 @@ enum RecipeExplainer {
         "sharp-front-to-back": "deep focus for front-to-back sharpness",
         "blur-moving-subjects": "slow shutter for silky blur",
         "panning-sharp-subject": "pan with the subject so the background streaks",
-        "get-down-low": "drop to knee height with the ultra-wide",
+        "get-down-low": "library card — no camera changes",
         "hdr-brights-darks": "bracket the brights and darks",
         "portrait-pop": "eye focus with a soft background",
         "sharp-and-in-focus": "single-point focus locked on the subject",

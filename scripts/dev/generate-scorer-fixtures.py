@@ -138,13 +138,13 @@ fixtures = {
                          box=(0.4, 0.3, 0.2, 0.45), area=0.09,
                          subj_spd=900, bg_spd=850, rel_spd=80, dx=-1, dy=0,
                          ev=12, shake=0.05, spread=5), "panning-sharp-subject"),
-    # get-down-low
+    # low-angle scenes — get-down-low is library-only, never auto-selected
     "flower-low-angle": (F(sem={"plantOrFlower": 0.8}, kind="salientObject",
                            box=(0.4, 0.62, 0.2, 0.18), area=0.036,
-                           ev=12, elev=35, shake=0.02, spread=5), "get-down-low"),
+                           ev=12, elev=35, shake=0.02, spread=5), None),
     "dog-low-angle": (F(sem={"animal": 0.85, "person": 0.2}, kind="animal",
                         box=(0.35, 0.6, 0.3, 0.25), area=0.075,
-                        ev=11, elev=22, shake=0.02, spread=5), "get-down-low"),
+                        ev=11, elev=22, shake=0.02, spread=5), "sharp-and-in-focus"),
     # hdr-brights-darks
     "sunset-silhouette": (F(sem={"sunsetOrSunrise": 0.85, "sky": 0.7}, kind="face",
                              box=FACE, area=0.032,

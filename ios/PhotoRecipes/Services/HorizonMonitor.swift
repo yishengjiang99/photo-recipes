@@ -58,7 +58,7 @@ final class HorizonMonitor: ObservableObject {
     /// low-angle heuristics anymore (see `cameraElevationDegrees`).
     @Published var pitchDegrees: Double = 0
     /// Camera elevation above the horizon in degrees. ≈ 0° at the horizon in
-    /// any hold; positive when pointed up. Drives get-down-low detection.
+    /// any hold; positive when pointed up.
     @Published var cameraElevationDegrees: Double = 0
     /// Smoothed rotation-rate magnitude (rad/s) — hand-shake estimate for the
     /// Auto Optimize settings solver.

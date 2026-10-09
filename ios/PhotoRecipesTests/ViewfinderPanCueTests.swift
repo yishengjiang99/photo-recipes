@@ -3,9 +3,19 @@ import XCTest
 
 final class ViewfinderPanCueTests: XCTestCase {
 
-    func testPanCue_down_doesNotShowLeftRightChevrons() {
+    func testRecipe_getDownLow_showsNoCue() {
         let cue = ViewfinderPanCueResolver.resolve(
             recipeId: "get-down-low",
+            agentPhase: .idle,
+            agentStatus: nil,
+            agentPanCue: nil
+        )
+        XCTAssertNil(cue)
+    }
+
+    func testPanCue_down_doesNotShowLeftRightChevrons() {
+        let cue = ViewfinderPanCueResolver.resolve(
+            recipeId: nil,
             agentPhase: .ready,
             agentStatus: nil,
             agentPanCue: PanCue(direction: "down", note: "Drop lower")

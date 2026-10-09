@@ -90,7 +90,8 @@ struct SceneFeatures: Codable, Equatable {
     /// slice of the feature vector and by the Core ML scorer.
     /// `exposure-triangle-cheatsheet` is a reference card: it is resolvable by
     /// id (staged recipes) but NEVER an auto-select candidate — the scorer
-    /// excludes it.
+    /// excludes it. `get-down-low` is library-only the same way: it keeps its
+    /// slot here (the vector shape is a model contract) but is never selected.
     static let recipeOrder: [String] = [
         "sharp-front-to-back",
         "blur-moving-subjects",
@@ -105,7 +106,9 @@ struct SceneFeatures: Codable, Equatable {
     ]
 
     /// Recipes the scorer is allowed to auto-select.
-    static let autoSelectCandidates: [String] = recipeOrder.filter { $0 != "exposure-triangle-cheatsheet" }
+    static let autoSelectCandidates: [String] = recipeOrder.filter {
+        $0 != "exposure-triangle-cheatsheet" && $0 != "get-down-low"
+    }
 
     /// Fixed feature order. Indices are a contract with the Core ML model.
     static let vectorFeatureNames: [String] = {
@@ -217,7 +220,7 @@ struct SceneFeatures: Codable, Equatable {
     var faceCount: Int?
 
     /// Subject center Y in UI space (0 top … 1 bottom). Low-in-frame subjects
-    /// have high values — a strong get-down-low signal with a tilted-up camera.
+    /// have high values.
     var subjectCenterY: Float { subjectBox?.centerY ?? 0.5 }
 
     /// Background flow (full-frame px/s) above which the camera is being
@@ -518,11 +521,10 @@ enum IntentMatcher {
         ("hdr-brights-darks", ["hdr", "sunset", "sunrise", "backlit", "silhouette", "high contrast", "bright and dark"]),
         ("portrait-pop", ["portrait", "headshot", "selfie", "bokeh", "blur the background", "eyes sharp"]),
         ("sharp-and-in-focus", ["tack sharp", "in focus", "focus on the eyes", "keep it sharp"]),
-        ("get-down-low", ["get low", "knee height", "kneel", "low angle", "ground level", "worm", "dog view"]),
         ("sharp-front-to-back", ["landscape", "hyperfocal", "front to back", "everything sharp", "depth of field", "foreground to background"]),
         ("leading-lines", ["leading line", "leading lines", "vanishing point", "converge"]),
         ("minimalist-photos", ["minimalist", "minimal", "blue hour", "negative space", "one subject"]),
-        // exposure-triangle-cheatsheet: reference card — never an intent target.
+        // exposure-triangle-cheatsheet, get-down-low: library only — never an intent target.
     ]
 
     private static let negations: Set<String> = ["no", "not", "avoid", "without", "dont", "never"]

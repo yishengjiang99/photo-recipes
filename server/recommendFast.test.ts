@@ -4,6 +4,7 @@ import {
   buildCompactRecipeCatalog,
   extractJsonObject,
   parseFastRecommendPayload,
+  selectablePresets,
   useRecommendToolLoop,
   shouldUseRecommendToolLoop,
 } from './recommend.ts'
@@ -27,12 +28,18 @@ describe('recommend fast path helpers', () => {
     assert.equal(shouldUseRecommendToolLoop({ message: '' }), false)
   })
 
-  it('compact catalog lists every preset id + title', () => {
+  it('compact catalog lists every selectable preset id + title', () => {
     const catalog = buildCompactRecipeCatalog()
-    for (const p of presets) {
+    for (const p of selectablePresets) {
       assert.match(catalog, new RegExp(`- ${p.id}:`))
       assert.ok(catalog.includes(p.title))
     }
+  })
+
+  it('library-only get-down-low is never offered to the recommender', () => {
+    assert.ok(presets.some((p) => p.id === 'get-down-low'))
+    assert.ok(!selectablePresets.some((p) => p.id === 'get-down-low'))
+    assert.doesNotMatch(buildCompactRecipeCatalog(), /get-down-low/)
   })
 
   it('extractJsonObject strips fences', () => {
