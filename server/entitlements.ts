@@ -482,6 +482,14 @@ export const FREE_ASKS_PER_DAY = DEFAULT_FREE_DAILY_LIMIT
 export { GUEST_COOKIE, SUB_COOKIE, FREE_ASSIST_PER_DAY, freeAsksPerDay }
 
 /** Admin income snapshot from local entitlement store (not ASC payouts). */
+
+/**
+ * IAP product prices in cents — mirrors the App Store products
+ * ($7.99/mo, $59.99/yr). Kept in sync with stripe.ts MONTHLY/YEARLY_CENTS.
+ */
+const IAP_MONTHLY_CENTS = 799
+const IAP_YEARLY_CENTS = 5999
+
 export function getEntitlementIncomeSnapshot() {
   const store = readStore()
   const all = Object.values(store.entitlements)
@@ -492,6 +500,9 @@ export function getEntitlementIncomeSnapshot() {
   let monthly = 0
   let yearly = 0
   let unknownPlan = 0
+  let iapMonthly = 0
+  let iapYearly = 0
+  let iapUnknownPlan = 0
 
   for (const e of all) {
     if (!isProStatus(e.status)) continue
@@ -503,10 +514,23 @@ export function getEntitlementIncomeSnapshot() {
     if (isIap) iapPro++
     else stripePro++
 
-    if (e.plan === 'monthly') monthly++
-    else if (e.plan === 'yearly') yearly++
+    const plan = e.plan === 'monthly' ? 'monthly' : e.plan === 'yearly' ? 'yearly' : 'unknown'
+    if (plan === 'monthly') monthly++
+    else if (plan === 'yearly') yearly++
     else unknownPlan++
+    if (isIap) {
+      if (plan === 'monthly') iapMonthly++
+      else if (plan === 'yearly') iapYearly++
+      else iapUnknownPlan++
+    }
   }
+
+  /**
+   * Estimated IAP MRR from local StoreKit-verified entitlements — gross, before
+   * Apple's cut. Same methodology as the Stripe estimate (yearly ÷ 12).
+   */
+  const iapApproxMrrCents =
+    iapMonthly * IAP_MONTHLY_CENTS + Math.round((iapYearly * IAP_YEARLY_CENTS) / 12)
 
   return {
     proTotal: proActive + proTrialing,
@@ -522,6 +546,11 @@ export function getEntitlementIncomeSnapshot() {
     iapNote:
       'IAP counts are local Pro entitlements from StoreKit verify — not ASC payouts or proceeds.',
     byPlan: { monthly, yearly, unknown: unknownPlan },
+    iapByPlan: { monthly: iapMonthly, yearly: iapYearly, unknown: iapUnknownPlan },
+    /** Estimated IAP MRR in cents (gross, before Apple's cut). */
+    iapApproxMrrCents,
+    iapMrrNote:
+      'Estimated from local IAP entitlements (yearly ÷ 12, gross before Apple\u2019s cut) — not ASC payouts.',
     totalRecords: all.length,
   }
 }

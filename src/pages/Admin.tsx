@@ -64,6 +64,9 @@ type Summary = {
     iapPro: number
     iapNote: string
     byPlan: { monthly: number; yearly: number; unknown: number }
+    iapByPlan: { monthly: number; yearly: number; unknown: number }
+    iapApproxMrrCents: number
+    iapMrrNote: string
     totalRecords: number
   }
   quota?: {
@@ -830,11 +833,20 @@ export function Admin() {
                 <Kpi
                   label="Approx MRR"
                   value={
-                    summary.stripe.configured
-                      ? money(summary.stripe.approxMrrCents)
+                    summary.stripe.configured ||
+                    summary.entitlements.iapApproxMrrCents > 0
+                      ? money(
+                          (summary.stripe.configured
+                            ? summary.stripe.approxMrrCents
+                            : 0) + summary.entitlements.iapApproxMrrCents,
+                        )
                       : '—'
                   }
-                  hint={summary.stripe.note}
+                  hint={
+                    summary.stripe.configured
+                      ? `Stripe ${money(summary.stripe.approxMrrCents)} + IAP est. ${money(summary.entitlements.iapApproxMrrCents)}`
+                      : `IAP est. ${money(summary.entitlements.iapApproxMrrCents)} (Stripe unset)`
+                  }
                 />
                 <Kpi
                   label="Local Pro total"
@@ -856,6 +868,20 @@ export function Admin() {
                     <li className="flex justify-between">
                       <span>IAP Pro (StoreKit verify)</span>
                       <span className="font-mono">{summary.entitlements.iapPro}</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span>IAP est. MRR</span>
+                      <span className="font-mono">
+                        {money(summary.entitlements.iapApproxMrrCents)}
+                      </span>
+                    </li>
+                    <li className="flex justify-between text-[var(--color-ink-tertiary)]">
+                      <span>IAP plan · monthly / yearly / ?</span>
+                      <span className="font-mono">
+                        {summary.entitlements.iapByPlan.monthly} /{' '}
+                        {summary.entitlements.iapByPlan.yearly} /{' '}
+                        {summary.entitlements.iapByPlan.unknown}
+                      </span>
                     </li>
                     <li className="flex justify-between text-[var(--color-ink-tertiary)]">
                       <span>Plan · monthly / yearly / ?</span>
