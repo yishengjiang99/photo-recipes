@@ -4,6 +4,11 @@ import crypto from 'node:crypto'
 import { shrinkVisionDataUrl } from './image.ts'
 import { fetchWithTimeout } from './fetchTimeout.ts'
 
+/** Library-only recipes: readable in the app, never picked by the recommender. */
+const LIBRARY_ONLY_PRESET_IDS = new Set(['get-down-low'])
+/** Presets the recommender may list and select. */
+export const selectablePresets = presets.filter((p) => !LIBRARY_ONLY_PRESET_IDS.has(p.id))
+
 const XAI_BASE = 'https://api.x.ai/v1'
 /** Text Ask Grok models */
 const PRIMARY_MODEL = 'grok-4'
@@ -1208,7 +1213,7 @@ function executeTool(
   }
 
   if (name === 'list_presets') {
-    return { result: { presets: presets.map(summarizePreset) } }
+    return { result: { presets: selectablePresets.map(summarizePreset) } }
   }
 
   if (name === 'get_preset_details') {
@@ -1254,7 +1259,7 @@ function executeTool(
     const tips = Array.isArray(args.tips)
       ? args.tips.map((t) => String(t)).filter(Boolean)
       : []
-    const preset = presets.find((p) => p.id === presetId)
+    const preset = selectablePresets.find((p) => p.id === presetId)
     if (!preset) {
       return {
         result: {
@@ -1737,7 +1742,7 @@ export function shouldUseRecommendToolLoop(
 
 /** Compact catalog for one-shot prompt (id + short title/when). */
 export function buildCompactRecipeCatalog(): string {
-  return presets
+  return selectablePresets
     .map((p) => {
       const when = truncate(p.whenToUse, 90) || truncate(p.blurb, 80) || ''
       return `- ${p.id}: ${p.title}${when ? ` — ${when}` : ''}`
@@ -1859,7 +1864,7 @@ export function parseFastRecommendPayload(raw: unknown): SelectionPayload | { er
   }
 
   let presetId = recipeIdRaw
-  let preset = presets.find((p) => p.id === presetId)
+  let preset = selectablePresets.find((p) => p.id === presetId)
   if (presetId && !preset) {
     return {
       error: `Unknown recipeId "${presetId}". Use an id from the catalog.`,

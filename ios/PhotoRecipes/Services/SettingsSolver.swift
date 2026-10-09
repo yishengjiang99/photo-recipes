@@ -127,6 +127,16 @@ enum SettingsSolver {
                 )
             )
         }
+        // Library-only recipe — readable as a card, never drives the camera.
+        if recipeId == "get-down-low" {
+            return Solution(
+                phoneTargets: PhoneTargets(),
+                coachOnly: CoachOnly(
+                    aperture: nil, nd: nil, tripod: false,
+                    notes: "Widest angle; the foreground becomes the main subject."
+                )
+            )
+        }
 
         let fovRad = context.fieldOfViewDegrees * .pi / 180
         let focalPx = (context.frameWidthPx / 2) / max(tan(fovRad / 2), 1e-6)
@@ -361,32 +371,6 @@ enum SettingsSolver {
                 ),
                 extraTips: tips
             )
-
-        case "get-down-low":
-            // As sharp-front-to-back, then switch to the ultra-wide.
-            let shutter = min(tShake, tMotion)
-            let ev: Float = features.highlightClipFraction > 0.02 ? -0.3 : 0
-            let plan = planExposure(
-                priority: .auto(shutterCapSeconds: shutter),
-                targetEV: Double(ev) + learnedEVOffset)
-            setExposure(plan: plan)
-            targets.cameraDevice = "ultraWide"
-            targets.focusMode = "auto"
-            let c = subjectCenter ?? CGPoint(x: 0.5, y: 0.7)
-            targets.focusPoint = FocusPointNorm(x: Double(c.x), y: Double(c.y))
-            targets.whiteBalance = .mode("auto")
-            if isVeryDim { targets.lowLightBoost = true }
-            messages.append("Exposure re-checked after the ultra-wide switch (verify read-back).")
-            return withPlanFields(Solution(
-                phoneTargets: targets, clampMessages: messages,
-                targetEV: plan.targetEV,
-                coachOnly: CoachOnly(
-                    aperture: nil, nd: nil, tripod: false,
-                    notes: "Widest angle; the foreground becomes the main subject."
-                ),
-                panCue: PanCue(direction: "down", note: "Drop lower"),
-                extraTips: tips
-            ))
 
         case "portrait-pop":
             // Face → exposure point on the face/eyes, locked focus, 2× zoom.

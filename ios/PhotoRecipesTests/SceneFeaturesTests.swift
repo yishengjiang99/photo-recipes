@@ -60,7 +60,8 @@ final class SceneFeaturesTests: XCTestCase {
     func testCheatsheetExcludedFromAutoSelect() {
         XCTAssertEqual(SceneFeatures.recipeOrder.count, 10)
         XCTAssertFalse(SceneFeatures.autoSelectCandidates.contains("exposure-triangle-cheatsheet"))
-        XCTAssertEqual(SceneFeatures.autoSelectCandidates.count, 9)
+        XCTAssertFalse(SceneFeatures.autoSelectCandidates.contains("get-down-low"))
+        XCTAssertEqual(SceneFeatures.autoSelectCandidates.count, 8)
     }
 
     func testIntentOneHotSlice() {
@@ -191,9 +192,8 @@ final class SceneFeaturesTests: XCTestCase {
         XCTAssertEqual(r?.recipeId, "panning-sharp-subject")
     }
 
-    func testIntent_getLowKneeHeight_isGetDownLow() {
-        let r = IntentMatcher.match(note: "get low, knee height")
-        XCTAssertEqual(r?.recipeId, "get-down-low")
+    func testIntent_getLowKneeHeight_isNotAnIntent() {
+        XCTAssertNil(IntentMatcher.match(note: "get low, knee height"))
     }
 
     func testIntent_sunsetSilhouette_isHDR() {

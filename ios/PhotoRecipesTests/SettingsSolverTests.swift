@@ -225,17 +225,15 @@ final class SettingsSolverTests: XCTestCase {
 
     // MARK: - get-down-low
 
-    func testGetDownLow_switchesToUltraWide() {
+    func testGetDownLow_isCoachOnly() {
         var f = baseFeatures()
         f.cameraElevationDegrees = 30
         let sol = SettingsSolver.solve(
             recipeId: "get-down-low", features: f,
             capabilities: caps, context: ctx1150)
-        XCTAssertEqual(sol.phoneTargets.cameraDevice, "ultraWide")
-        XCTAssertEqual(sol.panCue?.direction, "down")
-        XCTAssertTrue(
-            sol.clampMessages.contains(where: { $0.contains("ultra-wide") }),
-            "expected the ultra-wide re-clamp note, got: \(sol.clampMessages)")
+        XCTAssertEqual(sol.phoneTargets, PhoneTargets())
+        XCTAssertNil(sol.panCue)
+        XCTAssertNotNil(sol.coachOnly)
     }
 
     // MARK: - portrait-pop / sharp-and-in-focus

@@ -124,7 +124,7 @@
 		23809D3D6E8A21CF338A3BED /* ExposureVerifyLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExposureVerifyLoopTests.swift; sourceTree = "<group>"; };
 		24C5B7C6610B4BD4AB3BD721 /* PhotoRecipesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoRecipesApp.swift; sourceTree = "<group>"; };
 		277DBF13852585A83D56A157 /* ViewfinderPanCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewfinderPanCueTests.swift; sourceTree = "<group>"; };
-		2796F066E9579E4D82774E74 /* PhotoRecipes.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PhotoRecipes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2796F066E9579E4D82774E74 /* PhotoRecipes.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; name = PhotoRecipes.app; path = "ProTune AI Camera.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2939840DE57970321BF1E320 /* HorizonMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizonMonitor.swift; sourceTree = "<group>"; };
 		2A28F13DCD637284399E3AB0 /* SceneFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneFeatures.swift; sourceTree = "<group>"; };
 		2BFA977AFAC5C24EF5053F8A /* InferenceApplyPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InferenceApplyPathTests.swift; sourceTree = "<group>"; };
@@ -139,7 +139,7 @@
 		43CF9F912BE23B99169DCD5B /* CreativeLookEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreativeLookEngine.swift; sourceTree = "<group>"; };
 		46D1B6A59C9B7FB261F7FEE3 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		47D797C57D1A7373B7C66D8F /* GPUStatsEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPUStatsEngineTests.swift; sourceTree = "<group>"; };
-		4821EAB91DB9266A7531A19F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		4821EAB91DB9266A7531A19F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		487FF1EBAEC11A28B295A07F /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		503A0E8CC9B2862D0F7D23EC /* GPUStats.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GPUStats.metal; sourceTree = "<group>"; };
 		505CB5A30B95EC099FC8C49D /* AutoOptimizeControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoOptimizeControllerTests.swift; sourceTree = "<group>"; };
@@ -170,7 +170,7 @@
 		86162858584FF0EEFFCBE347 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		87F8B879722936C6869A5EE3 /* ExposurePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExposurePlanner.swift; sourceTree = "<group>"; };
 		881131F2D5F98177E96BBA4B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		8A1094897CD65C80369C4A0D /* Products.storekit */ = {isa = PBXFileReference; path = Products.storekit; sourceTree = "<group>"; };
+		8A1094897CD65C80369C4A0D /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 		97DF50F5BC95E5DDBCC45D9D /* GPUStatsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPUStatsEngine.swift; sourceTree = "<group>"; };
 		99FB2543A4A6DE81B27C049A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		9A444762FFCD7737EAD42144 /* SceneLabelMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneLabelMappingTests.swift; sourceTree = "<group>"; };

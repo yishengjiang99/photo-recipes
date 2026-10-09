@@ -109,7 +109,7 @@ final class RecipeScorerTests: XCTestCase {
         let scores = scorer.score(features)
         XCTAssertEqual(scores.first?.recipeId, "portrait-pop")
         let gdl = scores.first(where: { $0.recipeId == "get-down-low" })
-        XCTAssertLessThan(gdl?.probability ?? 1, 0.2, "upright portrait must not read as low-angle")
+        XCTAssertNil(gdl, "low-angle is library-only and never scored")
     }
 
     func testCyclistPanning_isPanning() throws {
@@ -153,9 +153,9 @@ final class RecipeScorerTests: XCTestCase {
         XCTAssertEqual(scores.first?.recipeId, "hdr-brights-darks")
     }
 
-    func testFlowerLowAngle_isGetDownLow() throws {
+    func testFlowerLowAngle_isNeverGetDownLow() throws {
         let scores = scorer.score(try fixture("flower-low-angle"))
-        XCTAssertEqual(scores.first?.recipeId, "get-down-low")
+        XCTAssertNil(scores.first(where: { $0.recipeId == "get-down-low" }))
     }
 
     func testMountainVista_isSharpFrontToBack() throws {
