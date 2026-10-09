@@ -1064,7 +1064,8 @@ struct CameraView: View {
             // the handle peeks out at the left edge.
             HStack(spacing: 0) {
                 controlsDrawerPanel(compact: compact)
-                    .frame(width: drawerWidth(compact: compact), maxHeight: .infinity)
+                    .frame(width: drawerWidth(compact: compact))
+                    .frame(maxHeight: .infinity)
                 drawerHandleButton(compact: compact)
                     .padding(.leading, 6)
             }
