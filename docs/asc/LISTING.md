@@ -67,7 +67,10 @@ EVERY DIAL, EXPLAINED
 Teach Mode shows which recipe was chosen, which dials moved and why — an instructor over your shoulder, not a chat wall.
 
 REAL DIALS, NOT FILTERS
-Field looks are capture grades applied live in the viewfinder — golden hour, mono ink, teal orange and more — with intensity you control. Never beauty filters. Never sky replacement.
+Field looks are capture grades applied live in the viewfinder — golden hour, mono ink, teal orange and more — with intensity you control. Name one out loud or type it and it's applied on-device. Never beauty filters. Never sky replacement.
+
+SELFIE MODE
+Front camera gets the same treatment: face-tuned Auto Optimize and fixed capture, so self-portraits get real exposure decisions too.
 
 FREE PEEK VS PRO
 • Free: browse every recipe, live viewfinder, 1 Auto Optimize per day
@@ -81,7 +84,7 @@ Recipes come from classic field technique — panning, motion control, HDR, focu
 
 ## What's New
 ```
-New camera chrome: Auto Optimize is now the primary button right next to the shutter. Field looks live on a right-edge rail, every manual dial slides out from the left, and your last photo is one tap away. Dictate the scene with the mic and watch the words stream in. Stability fixes for longer shoots.
+New in 1.3: a rebuilt camera chrome — Auto Optimize is now the primary button next to the shutter, field looks live on a right-edge rail, every manual dial slides out from the left, and your last photo is one tap away. Selfie mode gets face-tuned Auto Optimize with front-camera fixes. Tap to focus now meters at the exact point you tapped. Name a look out loud or type it — golden hour, mono ink — and it's applied on-device. Plus a more accurate Auto Optimize in bright light, and stability fixes for longer shoots.
 ```
 
 ## Support URL
