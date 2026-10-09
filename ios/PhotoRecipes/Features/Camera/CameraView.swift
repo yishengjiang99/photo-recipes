@@ -178,9 +178,6 @@ struct CameraView: View {
 
         .onChange(of: voice.phase) { _, phase in
             switch phase {
-            case .recording:
-                // Focus the scene field so the live TextField is visible while speaking.
-                sceneFieldFocused = true
             case .error:
                 if voice.permission == .denied { showMicDenied = true }
             default:
@@ -292,8 +289,6 @@ struct CameraView: View {
                 },
                 onVoice: {
                     showOverflow = false
-                    // Voice entry from the sheet focuses the scene field.
-                    sceneFieldFocused = true
                     voice.toggle(
                         onPartial: { applyCameraVoicePartial($0) },
                         onTranscript: { applyCameraVoiceFinal($0) }
@@ -851,8 +846,8 @@ struct CameraView: View {
                     .font(AppTheme.bodySm())
                     .foregroundStyle(AppTheme.ink)
                     .focused($sceneFieldFocused)
-                    .submitLabel(.done)
-                    .onSubmit { dismissSceneKeyboard() }
+                    .submitLabel(.return)
+                    .onSubmit { submitSceneQuery() }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -867,8 +862,14 @@ struct CameraView: View {
                                     )
                             )
                     )
-                    .onChange(of: sceneNote) { _, _ in
+                    .onChange(of: sceneNote) { _, new in
                         sceneFromViewfinder = false
+                        // Vertical-axis fields insert a newline on Return instead of submitting.
+                        if new.contains("\n") {
+                            sceneNote = new.replacingOccurrences(of: "\n", with: " ")
+                                .trimmingCharacters(in: .whitespaces)
+                            submitSceneQuery()
+                        }
                     }
 
                 if isDescribingScene {
@@ -1422,6 +1423,8 @@ struct CameraView: View {
         if case .ready = optimizer.phase {
             let title = optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle ?? "recipe"
             print("[AO] ready recipe=\(title) diffs=\(optimizer.coreDiffs.count)")
+            // Query applied — clear the box for the next one (user-initiated runs only).
+            if trigger == "manual" || trigger == "voice" { sceneNote = "" }
             // Soft Pro nudge once after first success — never blocks the result.
             entitlements.presentSoftNudgeIfNeeded(trigger: "post_first_optimize")
             if session.activeCreativeLook != nil {
@@ -1548,6 +1551,8 @@ struct CameraView: View {
                 applyRecommendLookOnly(response: response, message: message)
             }
             assertApplyFiltersLook(message: message, response: response)
+            // Query applied — clear the box for the next one.
+            sceneNote = ""
             // Voice auto-apply: toast look name; skip result sheet so no second tap.
             if fromVoice, session.activeCreativeLook != nil {
                 showRecommendResult = false
@@ -1589,6 +1594,8 @@ struct CameraView: View {
                     applyRecommendLookOnly(response: response, message: message)
                 }
                 assertApplyFiltersLook(message: message, response: response)
+                // Query applied — clear the box for the next one.
+                sceneNote = ""
                 if fromVoice, session.activeCreativeLook != nil {
                     showRecommendResult = false
                 } else {
@@ -1839,6 +1846,24 @@ struct CameraView: View {
             try? await Task.sleep(nanoseconds: 900_000_000)
             guard !Task.isCancelled else { return }
             withAnimation(.easeIn(duration: 0.18)) { showSavedChip = false }
+        }
+    }
+
+    /// Return key on the scene field: same routing as a spoken utterance
+    /// (look request → Recommend, anything else → Auto Optimize).
+    private func submitSceneQuery() {
+        dismissSceneKeyboard()
+        let plan = ApplyFiltersIntent.planVoiceEndpoint(sceneNote)
+        if plan.cancelInFlight {
+            cancelInFlightVoiceIntent()
+        }
+        switch plan.action {
+        case .none:
+            return
+        case .recommend(let utterance):
+            voiceIntentTask = Task { await runRecommend(messageOverride: utterance) }
+        case .optimize:
+            voiceIntentTask = Task { await runOptimize(trigger: "manual") }
         }
     }
 
