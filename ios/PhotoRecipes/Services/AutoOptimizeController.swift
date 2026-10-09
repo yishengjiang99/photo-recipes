@@ -480,7 +480,7 @@ final class AutoOptimizeController: ObservableObject {
     /// `session.appliedRecipeId`, and feeding that back as "staged" skipped
     /// scoring forever — one Panning pick then stuck across every scene,
     /// re-run and camera flip.
-    static func pinnedRecipeId(staged: String?, applied: String?, aoChosen: String?) -> String? {
+    nonisolated static func pinnedRecipeId(staged: String?, applied: String?, aoChosen: String?) -> String? {
         if let staged { return staged }
         guard let applied else { return nil }
         return applied == aoChosen ? nil : applied
@@ -489,7 +489,7 @@ final class AutoOptimizeController: ObservableObject {
     /// Pure verify-note copy: the yield note (if any) first, then what the
     /// closed loop did. Multi-stop misses are stated plainly — "A bit bright"
     /// hid ~2–7 stop misses.
-    static func verifyNotes(residual: Double, iterations: Int, initialError: Double, yieldNote: String?) -> [String] {
+    nonisolated static func verifyNotes(residual: Double, iterations: Int, initialError: Double, yieldNote: String?) -> [String] {
         var notes: [String] = []
         if let yieldNote { notes.append(yieldNote) }
         if iterations > 0 {
@@ -1101,7 +1101,7 @@ final class AutoOptimizeController: ObservableObject {
     /// Pure, testable gate for subject-area-change re-runs. A re-run pulses
     /// the preview (converge to auto, then re-lock), so it only happens when
     /// the scene would actually pick a different recipe with confidence.
-    static func subjectChangeDecision(
+    nonisolated static func subjectChangeDecision(
         now: Date, lastRunDate: Date?, isRunning: Bool,
         currentRecipeId: String?, sceneTop: RecipeScore?
     ) -> SubjectChangeDecision {
