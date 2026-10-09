@@ -159,8 +159,16 @@ struct CameraView: View {
 
         .onChange(of: session.subjectAreaChangeToken) { _, token in
             guard token > 0, canOptimize else { return }
-            // monitorSubjectAreaChange → debounced re-run of Auto Optimize (same apply path).
-            Task { await runOptimize(trigger: "subject_change") }
+            // monitorSubjectAreaChange → debounced re-run of Auto Optimize,
+            // gated: a re-run pulses the preview (converge, then re-lock),
+            // so it only fires when the scene would actually change recipes.
+            Task {
+                switch await optimizer.shouldRerunOnSubjectChange() {
+                case .rerun: await runOptimize(trigger: "subject_change")
+                case .skip(let reason):
+                    Analytics.shared.track("ao_subject_change_skipped", props: ["reason": reason])
+                }
+            }
         }
 
         .onChange(of: voice.phase) { _, phase in
@@ -1117,7 +1125,10 @@ struct CameraView: View {
         await optimizer.run(
             session: session,
             entitlements: entitlements,
-            preferStagedRecipeId: session.appliedRecipeId ?? router.stagedRecipeId,
+            preferStagedRecipeId: AutoOptimizeController.pinnedRecipeId(
+                staged: router.stagedRecipeId,
+                applied: session.appliedRecipeId,
+                aoChosen: optimizer.chosenRecipeId),
             sceneNote: sceneNote,
             elevationDegrees: horizon.isAvailable ? horizon.cameraElevationDegrees : nil,
             handShake: horizon.isAvailable ? horizon.handShakeRadPerSec : nil,
@@ -1637,6 +1648,7 @@ struct CameraView: View {
     private func flipCameraWithFeedback() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let goingFront = !session.isFront
+        optimizer.resetForCameraFlip(session: session)
         session.flipCamera()
         presentChromeToast(goingFront ? "Front camera" : "Back camera")
     }

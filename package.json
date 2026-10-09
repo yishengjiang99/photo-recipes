@@ -15,7 +15,8 @@
     "test:server": "tsx --test server/hourlyActive.test.ts server/telemetrySchema.test.ts server/entitlementsQuota.test.ts server/iap.test.ts server/imageShrink.test.ts server/opsConfig.test.ts server/phoneTargets.test.ts server/recommendFast.test.ts server/visionPassthrough.test.ts server/apns.test.ts server/attribution.test.ts server/pushTestSend.test.ts server/pushRegister.e2e.test.ts server/comeShootNudge.test.ts server/pushDevices.test.ts",
     "smoke:web": "node scripts/smoke-web.mjs",
     "funnel:report": "node scripts/funnel-report.mjs",
-    "e2e:push": "node scripts/e2e-push-register.mjs"
+    "e2e:push": "node scripts/e2e-push-register.mjs",
+    "sim": "bash scripts/ios-sim-run.sh"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",

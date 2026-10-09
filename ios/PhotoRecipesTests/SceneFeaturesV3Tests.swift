@@ -6,8 +6,8 @@ import XCTest
 /// Core ML feature-vector contract staying at 45 dimensions.
 final class SceneFeaturesV3Tests: XCTestCase {
 
-    func testSchemaVersionIs3() {
-        XCTAssertEqual(SceneFeatures.currentSchemaVersion, 3)
+    func testSchemaVersionIs4() {
+        XCTAssertEqual(SceneFeatures.currentSchemaVersion, 4)
     }
 
     func testVectorDimensionUnchanged() {

@@ -120,8 +120,10 @@ enum ExposureVerifyLoop {
     ///
     /// A6 policy:
     /// - `.shutter`: the shutter is the recipe's creative objective — ISO
-    ///   only. When ISO clamps, clamp it and report the residual (`clamped`);
-    ///   the shutter is never touched.
+    ///   first. Asymmetric when ISO clamps: overexposed at min ISO → the
+    ///   shutter shortens (correct exposure is a hard constraint; a phone has
+    ///   no ND); underexposed at max ISO → the shutter is never lengthened
+    ///   and the residual is reported (`clamped`).
     /// - `.auto`: ISO first; when ISO clamps the shutter may move but never
     ///   beyond `shutterCapSeconds` (the recipe's motion cap; nil = device
     ///   limits, i.e. the historical behavior).
@@ -153,6 +155,17 @@ enum ExposureVerifyLoop {
 
         switch priority {
         case .shutter:
+            // Overexposed with ISO hitting its floor: exposure wins over the
+            // creative shutter — shorten it just enough to make up what ISO
+            // couldn't. Never lengthen it (underexposure stays a residual).
+            if error > 0, isoClamped {
+                let wantProduct = currentShutterSeconds * Double(currentISO) * factor
+                let wantShutter = wantProduct / Double(clampedISO)
+                let finalShutter = max(wantShutter, shutterRange.lowerBound)
+                return Correction(
+                    shutterSeconds: finalShutter, iso: clampedISO,
+                    clamped: finalShutter != wantShutter)
+            }
             return Correction(
                 shutterSeconds: currentShutterSeconds, iso: clampedISO,
                 clamped: isoClamped)

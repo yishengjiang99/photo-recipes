@@ -35,6 +35,12 @@ The training set is the telemetry the app already emits on
 |---|---|
 | `features_v` | `SceneFeatures` schema version — reject rows from older schemas |
 | `feature_vector` | 45 comma-separated floats, 2-decimal quantized, in `vectorFeatureNames` order |
+
+> **Motion features changed meaning in v4** (handheld-wobble gating: below the
+> deliberate-pan threshold, `motion.logSubjectSpeed` is relative to the
+> background and `motion.logBackgroundSpeed` reads as 0). Exclude `features_v < 4`
+> rows from motion-feature training, or recompute those three features from the
+> raw speed props if they're logged.
 | `top3` | the JSON scorer's top-3 (id:probability) at the time — useful as a prior |
 | `recipe_id` | the recipe that was applied |
 
