@@ -126,7 +126,7 @@ final class AOBracketCapture: ObservableObject {
     }
 
     /// 5-frame bracket: −2, −1, 0, +1, +2 EV around the current exposure.
-    static let evOffsets: [Float] = [-2, -1, 0, 1, 2]
+    nonisolated static let evOffsets: [Float] = [-2, -1, 0, 1, 2]
 
     /// While the bracket capture + store runs — the view shows a small
     /// "Saving improvement data…" chip.

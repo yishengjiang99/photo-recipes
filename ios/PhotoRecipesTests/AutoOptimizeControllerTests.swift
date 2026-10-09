@@ -137,6 +137,7 @@ final class AutoOptimizeControllerTests: XCTestCase {
 
     // MARK: - resetForCameraFlip
 
+    @MainActor
     private func makeFlipState(
         aoRecipe: String? = "panning-sharp-subject",
         appliedRecipe: String? = "panning-sharp-subject",
@@ -155,6 +156,7 @@ final class AutoOptimizeControllerTests: XCTestCase {
         return (optimizer, session)
     }
 
+    @MainActor
     func testFlip_clearsAOState() {
         let (optimizer, session) = makeFlipState()
         optimizer.resetForCameraFlip(session: session)
@@ -166,6 +168,7 @@ final class AutoOptimizeControllerTests: XCTestCase {
         XCTAssertNil(session.activeCreativeLook, "AO auto-applied look must not survive the flip")
     }
 
+    @MainActor
     func testFlip_keepsUserAppliedLook() {
         // User picked the look via the Look chip: autoAppliedLookId is nil.
         let (optimizer, session) = makeFlipState(aoLook: nil, activeLook: "user-look")
@@ -173,6 +176,7 @@ final class AutoOptimizeControllerTests: XCTestCase {
         XCTAssertEqual(session.activeCreativeLook?.id, "user-look")
     }
 
+    @MainActor
     func testFlip_keepsUserAppliedRecipe() {
         // appliedRecipeId is the user's own pick, not AO's.
         let (optimizer, session) = makeFlipState(
@@ -182,6 +186,7 @@ final class AutoOptimizeControllerTests: XCTestCase {
         XCTAssertNil(optimizer.chosenRecipeId, "AO state still resets")
     }
 
+    @MainActor
     func testFlip_noAOState_noop() {
         let optimizer = AutoOptimizeController()
         let session = CameraSession()
@@ -191,6 +196,7 @@ final class AutoOptimizeControllerTests: XCTestCase {
         XCTAssertEqual(optimizer.phase, .idle)
     }
 
+    @MainActor
     func testFlip_cancelsInFlightRun() {
         let (optimizer, session) = makeFlipState(phase: .verifying("Checking exposure…"))
         optimizer.resetForCameraFlip(session: session)

@@ -22,9 +22,6 @@ struct ControlsSheet: View {
     @State private var tab: Tab = .core
     @State private var lookIntensity: Double = CreativeLookCatalog.defaultIntensity
 
-    private let shutterStops: [Double] = [1/1000, 1/500, 1/250, 1/125, 1/60, 1/30, 1/15, 1/8, 1/4, 1/2, 1, 2, 4, 8, 15, 30]
-    private let isoStops: [Float] = [50, 100, 200, 400, 800, 1600, 3200]
-
     var onTeach: (() -> Void)?
     var onLookApplied: ((CreativeLook) -> Void)?
 
@@ -40,15 +37,13 @@ struct ControlsSheet: View {
                     .zIndex(10)
 
                 ScrollView {
-                    Group {
-                        switch tab {
-                        case .core: coreTab
-                        case .light: lightTab
-                        case .lens: lensTab
-                        case .capture: captureTab
-                        case .looks: looksTab
-                        }
-                    }
+                    ControlsPanelView(
+                        session: session,
+                        optimizer: optimizer,
+                        tab: tab,
+                        lookIntensity: $lookIntensity,
+                        onLookApplied: onLookApplied
+                    )
                     .padding(AppTheme.space4)
                 }
 
@@ -148,6 +143,36 @@ struct ControlsSheet: View {
         .padding(.horizontal, AppTheme.space4)
         .padding(.vertical, AppTheme.space3)
         .background(AppTheme.surface.ignoresSafeArea(edges: .bottom))
+    }
+}
+
+/// Shared manual-controls tab content — used by ControlsSheet and by the
+/// viewfinder's slide-out controls drawer. Same sliders, same logic.
+struct ControlsPanelView: View {
+    @ObservedObject var session: CameraSession
+    @ObservedObject var optimizer: AutoOptimizeController
+    @EnvironmentObject private var entitlements: EntitlementsStore
+
+    var tab: ControlsSheet.Tab
+    @Binding var lookIntensity: Double
+    var onLookApplied: ((CreativeLook) -> Void)?
+
+    /// Server-configurable free dials (Pro always).
+    private var canApplyDials: Bool { entitlements.canApplyDials }
+
+    private let shutterStops: [Double] = [1/1000, 1/500, 1/250, 1/125, 1/60, 1/30, 1/15, 1/8, 1/4, 1/2, 1, 2, 4, 8, 15, 30]
+    private let isoStops: [Float] = [50, 100, 200, 400, 800, 1600, 3200]
+
+    var body: some View {
+        Group {
+            switch tab {
+            case .core: coreTab
+            case .light: lightTab
+            case .lens: lensTab
+            case .capture: captureTab
+            case .looks: looksTab
+            }
+        }
     }
 
     // MARK: - Core
