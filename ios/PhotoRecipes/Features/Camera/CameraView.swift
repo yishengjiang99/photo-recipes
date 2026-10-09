@@ -25,14 +25,18 @@ struct CameraView: View {
     /// In-flight voice → Recommend/AO; each new endpointed utterance cancels & replaces.
     @State private var voiceIntentTask: Task<Void, Never>?
 
-    @State private var showDials = false
     @State private var showTeach = false
     @State private var showRecipePicker = false
     @State private var showOverflow = false
     @State private var showClearConfirm = false
+    // Chrome revamp: slide-out controls drawer (replaces the old dials sheet).
+    @State private var showControlsDrawer = false
+    @State private var drawerTab: ControlsSheet.Tab = .core
+    @State private var drawerLookIntensity: Double = CreativeLookCatalog.defaultIntensity
+    // Last captured photo for the finder thumbnail.
+    @State private var lastCaptureImage: UIImage?
     @State private var isCapturing = false
     @State private var captureError: String?
-    @State private var controlsTab: ControlsSheet.Tab = .core
     @State private var showCoachMarks = false
     @State private var coachStep = 0
     @State private var lookToast: String?
@@ -209,23 +213,6 @@ struct CameraView: View {
                 .fontWeight(.semibold)
             }
         }
-        .sheet(isPresented: $showDials) {
-            ControlsSheet(
-                session: session,
-                optimizer: optimizer,
-                initialTab: controlsTab,
-                onTeach: {
-                    Analytics.shared.track("teach_open", props: ["source": "controls"])
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { showTeach = true }
-                },
-                onLookApplied: { look in
-                    Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "controls"])
-                    lookToast = nil
-                }
-            )
-            .environmentObject(entitlements)
-            .id(controlsTab)
-        }
         .sheet(isPresented: $showTeach) {
             TeachModeSheet(
                 recipeTitle: Recipe.chromeTitle(forStoredTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle, id: optimizer.chosenRecipeId ?? session.appliedRecipeId),
@@ -272,8 +259,7 @@ struct CameraView: View {
                 },
                 onDials: {
                     showOverflow = false
-                    controlsTab = .core
-                    showDials = true
+                    openControlsDrawer(tab: .core)
                 },
                 onTeach: {
                     showOverflow = false
@@ -441,6 +427,15 @@ struct CameraView: View {
                 }
                 .zIndex(10)
                 .animation(.easeOut(duration: 0.22), value: keyboardHeight)
+
+                // Side chrome: controls drawer (left) + filter rail (right),
+                // between the top/bottom chrome and the capture feedback.
+                sideChrome(
+                    compact: compact,
+                    topInset: topChromeH,
+                    bottomInset: bottomScrim
+                )
+                .zIndex(11)
 
                 // Capture feedback ABOVE chrome + preview (B20 sat at zIndex 8–9 under chrome 10;
                 // ~80ms flash was also easy to miss; heavy haptic was gated on Photos save).
@@ -649,6 +644,27 @@ struct CameraView: View {
                 floatingIcon("arrow.triangle.2.circlepath.camera", accessibility: "Flip camera") {
                     flipCameraWithFeedback()
                 }
+                // Upgrade entry — hidden once Pro.
+                if !entitlements.isPro {
+                    Button {
+                        Analytics.shared.track("upgrade_tap", props: ["source": "top_chrome"])
+                        entitlements.presentHardPaywall(trigger: "upgrade_top", force: true)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "crown.fill")
+                                .font(.caption2.weight(.bold))
+                            Text("Pro")
+                                .font(AppTheme.caption().weight(.bold))
+                        }
+                        .foregroundStyle(AppTheme.accentOnAccent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(AppTheme.accent))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Upgrade to Pro")
+                    .accessibilityHint("Opens the Pro upgrade")
+                }
                 floatingIcon("ellipsis", accessibility: "More") {
                     showOverflow = true
                 }
@@ -734,8 +750,7 @@ struct CameraView: View {
                             session.clearActiveLook()
                         },
                         onOpenLooks: {
-                            controlsTab = .looks
-                            showDials = true
+                            openControlsDrawer(tab: .looks)
                         }
                     )
                 }
@@ -881,6 +896,9 @@ struct CameraView: View {
     private func shutterRow(compact: Bool, hPad: CGFloat) -> some View {
         let outer: CGFloat = compact ? 68 : 76
         let inner: CGFloat = compact ? 56 : 62
+        // Fixed side slots keep the shutter optically centered: last-photo
+        // thumbnail on the left, Auto Optimize primary CTA on the right.
+        let sideSlot: CGFloat = compact ? 108 : 124
 
         return VStack(spacing: 4) {
             // Mode announced once, small label above the shutter.
@@ -892,34 +910,9 @@ struct CameraView: View {
             }
 
             HStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                // Auto Optimize, back on the finder — left of the shutter.
-                Button {
-                    Analytics.shared.track("ao_tap", props: ["source": "finder"])
-                    Task { await runOptimize(trigger: "manual") }
-                } label: {
-                    HStack(spacing: 6) {
-                        if optimizer.phase.isRunning {
-                            ProgressView().scaleEffect(0.7)
-                        } else {
-                            Image(systemName: "sparkles")
-                                .font(.callout.weight(.semibold))
-                        }
-                        Text(optimizer.phase.isRunning ? "Working…" : "Optimize")
-                            .font(AppTheme.caption().weight(.semibold))
-                    }
-                    .foregroundStyle(AppTheme.accent)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule().fill(AppTheme.accentSoft)
-                            .overlay(Capsule().stroke(AppTheme.accent.opacity(0.4), lineWidth: 1))
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(optimizer.phase.isRunning)
-                .accessibilityLabel("Auto Optimize")
+                // Last captured photo — opens the library.
+                lastPhotoButton(compact: compact)
+                    .frame(width: sideSlot, alignment: .leading)
 
                 Spacer(minLength: 0)
 
@@ -963,15 +956,292 @@ struct CameraView: View {
 
                 Spacer(minLength: 0)
 
-                // Balance spacer so the shutter stays optically centered.
-                Color.clear
-                    .frame(width: 96, height: 10)
-                    .allowsHitTesting(false)
-
-                Spacer(minLength: 0)
+                // Auto Optimize — the primary CTA, right of the shutter.
+                aoPrimaryButton(compact: compact)
+                    .frame(width: sideSlot, alignment: .trailing)
             }
         }
         .padding(.horizontal, hPad)
+    }
+
+    /// Auto Optimize as the primary finder CTA: filled accent, sparkles icon.
+    /// Keeps the running state (ProgressView + "Working…") and disabled-while-running.
+    private func aoPrimaryButton(compact: Bool) -> some View {
+        Button {
+            Analytics.shared.track("ao_tap", props: ["source": "finder"])
+            Task { await runOptimize(trigger: "manual") }
+        } label: {
+            HStack(spacing: 6) {
+                if optimizer.phase.isRunning {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .tint(AppTheme.accentOnAccent)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.callout.weight(.bold))
+                }
+                Text(optimizer.phase.isRunning ? "Working…" : "Optimize")
+                    .font(AppTheme.bodySmMedium())
+            }
+            .foregroundStyle(AppTheme.accentOnAccent)
+            .padding(.horizontal, compact ? 14 : 16)
+            .padding(.vertical, compact ? 10 : 12)
+            .background(
+                Capsule()
+                    .fill(AppTheme.accent)
+                    .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 0, y: 2)
+            )
+            .opacity(optimizer.phase.isRunning ? 0.85 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(optimizer.phase.isRunning)
+        .accessibilityLabel("Auto Optimize")
+        .accessibilityHint("Runs Auto Optimize on the current scene")
+    }
+
+    /// Last captured photo thumbnail — opens the library. Subtle placeholder
+    /// until the first capture.
+    private func lastPhotoButton(compact: Bool) -> some View {
+        Button {
+            Analytics.shared.track("last_photo_tap", props: ["source": "finder"])
+            router.selectedTab = .library
+        } label: {
+            Group {
+                if let img = lastCaptureImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: "photo")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.inkTertiary)
+                }
+            }
+            .frame(width: compact ? 50 : 56, height: compact ? 50 : 56)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Last photo")
+        .accessibilityHint("Opens the photo library")
+    }
+
+    // MARK: - Chrome revamp: side rails + controls drawer
+
+    /// Opens the slide-out controls drawer on the given tab.
+    private func openControlsDrawer(tab: ControlsSheet.Tab) {
+        drawerTab = tab
+        if tab == .looks, let active = session.activeCreativeLook {
+            drawerLookIntensity = active.resolvedIntensity
+        } else if tab == .looks, let suggested = optimizer.suggestedLook {
+            drawerLookIntensity = suggested.resolvedIntensity
+        }
+        Analytics.shared.track("controls_drawer_open", props: ["tab": tab.rawValue])
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            showControlsDrawer = true
+        }
+    }
+
+    private func drawerWidth(compact: Bool) -> CGFloat { compact ? 264 : 288 }
+
+    /// Side chrome: controls drawer (left, slides as one unit with its handle)
+    /// and the filter rail (right edge). Vertically centered between the top
+    /// and bottom chrome so the feed's center stays clear.
+    private func sideChrome(compact: Bool, topInset: CGFloat, bottomInset: CGFloat) -> some View {
+        ZStack(alignment: .leading) {
+            // Drawer panel + attached handle — one sliding unit. Closed, only
+            // the handle peeks out at the left edge.
+            HStack(spacing: 0) {
+                controlsDrawerPanel(compact: compact)
+                    .frame(width: drawerWidth(compact: compact), maxHeight: .infinity)
+                drawerHandleButton(compact: compact)
+                    .padding(.leading, 6)
+            }
+            .frame(maxHeight: .infinity)
+            .offset(x: showControlsDrawer ? 0 : -drawerWidth(compact: compact))
+            .animation(.spring(response: 0.32, dampingFraction: 0.82), value: showControlsDrawer)
+
+            // Filter rail pinned to the right edge.
+            filterRail(compact: compact)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .padding(.trailing, 8)
+        }
+        .padding(.top, topInset + 12)
+        .padding(.bottom, bottomInset + 12)
+    }
+
+    /// Big, easy-to-tap handle for the controls drawer. Toggles open/closed.
+    private func drawerHandleButton(compact: Bool) -> some View {
+        Button {
+            if showControlsDrawer {
+                Analytics.shared.track("controls_drawer_close", props: ["source": "handle"])
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    showControlsDrawer = false
+                }
+            } else {
+                openControlsDrawer(tab: drawerTab)
+            }
+        } label: {
+            Image(systemName: showControlsDrawer ? "chevron.left" : "slider.horizontal.3")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(Color.black.opacity(0.45)))
+                .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(showControlsDrawer ? "Close controls" : "Open controls")
+        .accessibilityHint("Slides the manual controls drawer in or out")
+    }
+
+    /// The slide-out drawer panel. Mostly transparent (ultra-thin material) and
+    /// narrow so the camera feed stays visible behind and around it.
+    private func controlsDrawerPanel(compact: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button {
+                    Analytics.shared.track("controls_drawer_close", props: ["source": "chevron"])
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        showControlsDrawer = false
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close controls")
+
+                Text("Controls")
+                    .font(AppTheme.bodySmMedium())
+                    .foregroundStyle(AppTheme.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(ControlsSheet.Tab.allCases) { t in
+                        Button {
+                            drawerTab = t
+                        } label: {
+                            Text(t.rawValue)
+                                .font(AppTheme.caption().weight(.semibold))
+                                .foregroundStyle(drawerTab == t ? AppTheme.accentOnAccent : AppTheme.inkSecondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(drawerTab == t ? AppTheme.accent : Color.white.opacity(0.08)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(t.rawValue) controls")
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .padding(.bottom, 8)
+
+            ScrollView {
+                ControlsPanelView(
+                    session: session,
+                    optimizer: optimizer,
+                    tab: drawerTab,
+                    lookIntensity: $drawerLookIntensity,
+                    onLookApplied: { look in
+                        Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": "drawer"])
+                    }
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 16)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+        )
+        .padding(.vertical, 4)
+    }
+
+    /// Right-edge vertical rail of filter/look icon buttons. Tapping applies
+    /// the look through the same path as the Looks tab.
+    private var filterRailLooks: [(id: String, icon: String)] {
+        [
+            ("warmGlow", "sun.max"),
+            ("goldenHour", "sunset"),
+            ("monoInk", "circle.lefthalf.filled"),
+            ("crispCool", "snowflake"),
+            ("moodyFilm", "film"),
+        ]
+    }
+
+    private func filterRail(compact: Bool) -> some View {
+        VStack(spacing: compact ? 10 : 12) {
+            filterRailButton(
+                icon: "slash.circle",
+                label: "No look",
+                isActive: session.activeCreativeLook == nil,
+                action: clearRailLook
+            )
+            ForEach(filterRailLooks, id: \.id) { item in
+                filterRailButton(
+                    icon: item.icon,
+                    label: CreativeLookCatalog.displayName(for: item.id),
+                    isActive: session.activeCreativeLook?.id == item.id,
+                    action: { applyRailLook(id: item.id) }
+                )
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .background(Capsule().fill(Color.black.opacity(0.35)))
+    }
+
+    private func filterRailButton(icon: String, label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.body.weight(isActive ? .bold : .medium))
+                .foregroundStyle(isActive ? AppTheme.accentOnAccent : AppTheme.ink)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(isActive ? AppTheme.accent : Color.white.opacity(0.12))
+                        .overlay(Circle().stroke(isActive ? AppTheme.accent : Color.white.opacity(0.25), lineWidth: 1))
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityHint(isActive ? "Active look" : "Applies this look")
+    }
+
+    private func applyRailLook(id: String) {
+        guard entitlements.canApplyDials else {
+            entitlements.presentHardPaywall(trigger: "dials_locked")
+            return
+        }
+        let look = CreativeLook(id: id, intensity: CreativeLookCatalog.defaultIntensity)
+        session.setActiveLook(look)
+        optimizer.dismissSuggestedLook()
+        Analytics.shared.track("look_applied", props: ["look_id": id, "source": "filter_rail"])
+        optimizer.markDirty(session: session)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func clearRailLook() {
+        if let look = session.activeCreativeLook, look.id == optimizer.autoAppliedLookId {
+            optimizer.autoAppliedLookId = nil
+        }
+        session.clearActiveLook()
+        Analytics.shared.track("look_undone", props: ["source": "filter_rail"])
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     /// Mode title for the small label above the shutter — announced once.
@@ -1432,6 +1702,8 @@ struct CameraView: View {
 
         do {
             let data = try await session.capturePhoto()
+            // Refresh the finder last-photo thumbnail.
+            if let img = UIImage(data: data) { lastCaptureImage = img }
             // Unlock shutter ASAP — feedback overlays must not gate the next shot.
             isCapturing = false
             optimizer.isUserCaptureInFlight = false
