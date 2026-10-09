@@ -1,0 +1,51 @@
+name: ASC TestFlight crash feedback (read-only)
+
+# READ-ONLY. Fetches the newest TestFlight crash feedback (betaFeedbackCrashSubmissions + crashLog)
+# for one or more apps on this ASC team and uploads them as a short-lived artifact (never committed).
+on:
+  workflow_dispatch:
+    inputs:
+      app_ids:
+        description: Comma-separated ASC app ids
+        required: false
+        type: string
+        default: "6813991381,6816476323,6818838017"
+      bundle_ids:
+        description: Comma-separated bundle ids to resolve to app ids
+        required: false
+        type: string
+        default: "com.ragnus.mvp,com.ragnus.vp,com.ragnus.w2"
+      limit:
+        description: Submissions per app
+        required: false
+        type: string
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch crash feedback
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_IDS: ${{ inputs.app_ids }}
+          BUNDLE_IDS: ${{ inputs.bundle_ids }}
+          LIMIT: ${{ inputs.limit }}
+          OUT: out
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography requests
+          python3 -u scripts/asc/crash_feedback.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crash-feedback
+          path: out
+          retention-days: 5
