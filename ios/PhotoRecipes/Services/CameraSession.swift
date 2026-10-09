@@ -76,6 +76,12 @@ final class CameraSession: NSObject, ObservableObject {
     @Published var flash: FlashCycle = .off
     @Published var showGrid = true
     @Published var isFront = false
+    /// Save front-camera stills mirrored, matching the (always mirrored) preview.
+    @Published var mirrorFrontPhotos: Bool =
+        UserDefaults.standard.object(forKey: CameraSession.mirrorFrontPhotosKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(mirrorFrontPhotos, forKey: Self.mirrorFrontPhotosKey) }
+    }
+    private static let mirrorFrontPhotosKey = "camera.mirrorFrontPhotos"
     @Published var exposureSeconds: Double = 1.0 / 60
     @Published var iso: Float = 100
     @Published var evBias: Float = 0
@@ -305,9 +311,15 @@ final class CameraSession: NSObject, ObservableObject {
         } else if connection.isVideoOrientationSupported {
             connection.videoOrientation = Self.videoOrientation(for: Self.currentInterfaceOrientation())
         }
-        if connection.isVideoMirroringSupported {
-            connection.isVideoMirrored = isFront
-        }
+        Self.setMirroring(isFront, on: output)
+    }
+
+    /// Explicit mirroring for an output's video connection. Session-queue safe.
+    nonisolated private static func setMirroring(_ mirrored: Bool, on output: AVCaptureOutput) {
+        guard let connection = output.connection(with: .video),
+              connection.isVideoMirroringSupported else { return }
+        connection.automaticallyAdjustsVideoMirroring = false
+        connection.isVideoMirrored = mirrored
     }
 
     /// Re-apply rotation/mirror, e.g. on interface rotation or camera flip.
@@ -361,6 +373,15 @@ final class CameraSession: NSObject, ObservableObject {
                     self.lensLabel = Self.label(for: device.deviceType)
                     self.exposureLocked = false
                     self.focusLocked = false
+                    // The input swap recreated the video connection: re-apply
+                    // rotation + mirroring so Vision keeps getting upright frames.
+                    self.updateVideoOutputOrientation()
+                    // Per-device state belongs to the old camera.
+                    self.selectedLens = .wide
+                    self.focusPoint = nil
+                    self.torchOn = false
+                    self.lowLightBoostOn = false
+                    self.videoHDROn = false
                 }
             } catch {
                 Task { @MainActor in self.errorMessage = error.localizedDescription }
@@ -559,7 +580,8 @@ final class CameraSession: NSObject, ObservableObject {
         var wrote = false
 
         // Prefer optical cameraDevice over zoom-only.
-        if let cam = targets.cameraDevice, switchCameraDevice(cam) {
+        // Front camera has one lens and no torch — skip both silently.
+        if let cam = targets.cameraDevice, !isFront, switchCameraDevice(cam) {
             wrote = true
         }
 
@@ -626,7 +648,7 @@ final class CameraSession: NSObject, ObservableObject {
             wrote = true
         }
 
-        if let torch = targets.torch, applyTorch(torch) {
+        if let torch = targets.torch, !isFront, applyTorch(torch) {
             wrote = true
         }
         if let flashMode = targets.flash, applyFlash(flashMode) {
@@ -1050,6 +1072,7 @@ final class CameraSession: NSObject, ObservableObject {
             lensLabel = Self.label(for: device.deviceType)
             exposureLocked = false
             focusLocked = false
+            updateVideoOutputOrientation()
             return true
         } catch {
             clampMessages.append("cameraDevice switch failed: \(error.localizedDescription)")
@@ -1221,6 +1244,7 @@ final class CameraSession: NSObject, ObservableObject {
         let baseISO = iso
         let caps = capabilities
         let maxQuality = photoOutput.maxPhotoQualityPrioritization
+        let mirror = isFront && mirrorFrontPhotos
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AOBracketFrames, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
@@ -1254,6 +1278,7 @@ final class CameraSession: NSObject, ObservableObject {
                     }
                 }
                 self.activeBracketDelegates.append(delegate)
+                Self.setMirroring(mirror, on: self.photoOutput)
                 self.photoOutput.capturePhoto(with: settings, delegate: delegate)
             }
         }
@@ -1326,6 +1351,7 @@ final class CameraSession: NSObject, ObservableObject {
 
     func capturePhoto(bakeLook: Bool = true) async throws -> Data {
         bakeLookOnNextCapture = bakeLook
+        let mirror = isFront && mirrorFrontPhotos
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
@@ -1350,6 +1376,7 @@ final class CameraSession: NSObject, ObservableObject {
                 if self.photoOutput.supportedFlashModes.contains(self.flash.av) {
                     settings.flashMode = self.flash.av
                 }
+                Self.setMirroring(mirror, on: self.photoOutput)
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
         }
@@ -1480,7 +1507,8 @@ final class CameraSession: NSObject, ObservableObject {
             exposureTargetOffset: rb.exposureTargetOffset,
             wasCustom: rb.exposureMode == "custom",
             fieldOfViewDegrees: activeFieldOfViewDegrees(),
-            fullFrameWidthPx: videoFrameWidth
+            fullFrameWidthPx: videoFrameWidth,
+            isFrontCamera: isFront
         )
     }
 

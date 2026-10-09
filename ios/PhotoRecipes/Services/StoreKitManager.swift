@@ -24,6 +24,9 @@ final class StoreKitManager: ObservableObject {
     @Published var purchaseError: String?
     @Published private(set) var isPurchasing = false
 
+    /// Result of the most recent /api/iap/verify round (server-side Pro, not just local StoreKit).
+    private var serverConfirmedPro = false
+    private var lastSyncError: String?
     private var updatesTask: Task<Void, Never>?
     private let api: APIClient
     private let entitlements: EntitlementsStore
@@ -34,6 +37,19 @@ final class StoreKitManager: ObservableObject {
         updatesTask = Task { [weak self] in
             await self?.listenForTransactions()
         }
+        api.paywallRecovery = { [weak self] in
+            await self?.recoverFromServerPaywall() ?? .notEntitled
+        }
+    }
+
+    /// Server said 402 — re-verify current App Store entitlements so a subscriber isn't gated as Free Peek.
+    func recoverFromServerPaywall() async -> APIClient.PaywallRecovery {
+        serverConfirmedPro = false
+        lastSyncError = nil
+        await refreshEntitlementsFromCurrentEntitlements()
+        if purchasedProductIDs.isEmpty { return .notEntitled }
+        if serverConfirmedPro { return .synced }
+        return .syncFailed(lastSyncError ?? "server did not confirm Pro")
     }
 
     deinit {
@@ -183,10 +199,13 @@ final class StoreKitManager: ObservableObject {
             )
             // Fail closed: only trust explicit pro from verified server payload.
             if res.pro == true {
+                serverConfirmedPro = true
                 entitlements.applyVerifiedPro(plan: plan)
             }
             await entitlements.refresh()
         } catch {
+            lastSyncError = error.localizedDescription
+            print("[IAP] server verify failed: \(error.localizedDescription)")
             // Refunded / lapsed transactions arrive via Transaction.updates too — never grant on those.
             let live = transaction.revocationDate == nil
                 && (transaction.expirationDate.map { $0 > Date() } ?? true)

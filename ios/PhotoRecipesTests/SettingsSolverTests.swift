@@ -255,6 +255,28 @@ final class SettingsSolverTests: XCTestCase {
         XCTAssertEqual(t.lowLightBoost, true)
     }
 
+    func testPortraitPop_frontCameraSelfieAdjustments() {
+        var f = baseFeatures()
+        f.subjectKind = .face
+        f.subjectBox = NormalizedBox(x: 0.3, y: 0.2, width: 0.4, height: 0.45)
+        f.sceneEV100 = 1
+        f.isFrontCamera = true
+        let sol = SettingsSolver.solve(
+            recipeId: "portrait-pop", features: f,
+            capabilities: caps, context: ctx1150)
+        let t = sol.phoneTargets
+        // No 2× zoom at arm's length, no torch target, no one-shot focus lock.
+        XCTAssertNil(t.zoom)
+        XCTAssertNil(t.torch)
+        XCTAssertNil(t.cameraDevice)
+        XCTAssertNil(t.focusPoint)
+        XCTAssertEqual(t.focusMode, "continuous")
+        XCTAssertEqual(t.lowLightBoost, true)
+        // Shutter never slower than the selfie cap, even in the dark.
+        XCTAssertLessThanOrEqual(
+            t.exposureDurationSec ?? 1, SettingsSolver.selfieShutterCapSeconds + 1e-9)
+    }
+
     func testFaceEVBias_backlitFace() {
         var f = baseFeatures()
         f.subjectKind = .face

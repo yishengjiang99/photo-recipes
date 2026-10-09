@@ -218,6 +218,10 @@ struct SceneFeatures: Codable, Equatable {
     /// (0 when none; nil when the payload predates this field). Appended
     /// Phase 3 — NOT part of the 45-dim Core ML vector.
     var faceCount: Int?
+    /// True when the frame came from the front (selfie) camera. Stamped from
+    /// the metering sample; NOT part of the 45-dim Core ML vector. Drives the
+    /// selfie recipe bias and the solver's arm's-length adjustments.
+    var isFrontCamera: Bool = false
 
     /// Subject center Y in UI space (0 top … 1 bottom). Low-in-frame subjects
     /// have high values.
@@ -355,6 +359,7 @@ struct SceneFeatures: Codable, Equatable {
         case sceneLabels
         case faceCount
         case isTripodSteady
+        case isFrontCamera
     }
 
     /// All-defaults init (the custom `init(from:)` below suppresses the
@@ -422,6 +427,8 @@ struct SceneFeatures: Codable, Equatable {
         // Tripod-steady flag (A2 review fix) — appended at the end per the
         // schema rule; older payloads decode to false.
         isTripodSteady = try c.decodeIfPresent(Bool.self, forKey: .isTripodSteady) ?? false
+        // Selfie flag — appended; older payloads decode to false.
+        isFrontCamera = try c.decodeIfPresent(Bool.self, forKey: .isFrontCamera) ?? false
     }
 }
 
@@ -906,6 +913,8 @@ struct MeteringSample {
     var fieldOfViewDegrees: Double?
     /// Full-frame width in pixels (for flow px/s scaling).
     var fullFrameWidthPx: Double?
+    /// Front (selfie) camera is active.
+    var isFrontCamera: Bool = false
 }
 
 /// One synchronous feature-extraction pass over the newest frame.
@@ -937,6 +946,7 @@ enum SceneFeatureExtractor {
         features.lensAperture = metering.aperture
         features.exposureTargetOffset = metering.exposureTargetOffset
         features.exposureWasCustom = metering.wasCustom
+        features.isFrontCamera = metering.isFrontCamera
         features.sceneEV100 = EV100Helper.ev100(
             aperture: metering.aperture,
             exposureSeconds: metering.exposureSeconds,

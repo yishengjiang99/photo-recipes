@@ -74,6 +74,36 @@ final class APIClient: ObservableObject {
     }()
     private let encoder = JSONEncoder()
 
+    /// Outcome of re-syncing the App Store entitlement after the server answered 402.
+    enum PaywallRecovery: Sendable {
+        /// No current StoreKit entitlement — the 402 is legitimate.
+        case notEntitled
+        /// Server now recognises Pro — retry the request.
+        case synced
+        /// StoreKit says Pro but the server could not verify it.
+        case syncFailed(String)
+    }
+
+    /// Set by StoreKitManager. Called once when a quota-gated request gets 402.
+    var paywallRecovery: (@Sendable () async -> PaywallRecovery)?
+
+    /// A subscriber must never see the Free Peek paywall: on 402, re-verify with the server and retry once.
+    private func withPaywallRecovery<T>(_ operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch let APIError.paywall(payload) {
+            guard let recover = paywallRecovery else { throw APIError.paywall(payload) }
+            switch await recover() {
+            case .synced:
+                return try await operation()
+            case .syncFailed(let reason):
+                throw APIError.http(402, "Your Pro subscription is active, but the server couldn't verify it (\(reason)). Try again in a moment, or use Restore Purchases in Settings.")
+            case .notEntitled:
+                throw APIError.paywall(payload)
+            }
+        }
+    }
+
     init(session: URLSession? = nil) {
         let stored = UserDefaults.standard.string(forKey: Self.baseURLKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -123,6 +153,16 @@ final class APIClient: ObservableObject {
         message: String,
         favorites: [String] = [],
         imageJPEGData: Data? = nil
+    ) async throws -> RecommendResponse {
+        try await withPaywallRecovery {
+            try await recommendOnce(message: message, favorites: favorites, imageJPEGData: imageJPEGData)
+        }
+    }
+
+    private func recommendOnce(
+        message: String,
+        favorites: [String],
+        imageJPEGData: Data?
     ) async throws -> RecommendResponse {
         var body = RecommendRequest(
             message: message,
@@ -176,6 +216,22 @@ final class APIClient: ObservableObject {
         message: String,
         favorites: [String] = [],
         imageJPEGData: Data? = nil,
+        onEvent: @escaping @Sendable (RecommendStreamEvent) -> Void
+    ) async throws -> RecommendResponse {
+        try await withPaywallRecovery {
+            try await recommendStreamOnce(
+                message: message,
+                favorites: favorites,
+                imageJPEGData: imageJPEGData,
+                onEvent: onEvent
+            )
+        }
+    }
+
+    private func recommendStreamOnce(
+        message: String,
+        favorites: [String],
+        imageJPEGData: Data?,
         onEvent: @escaping @Sendable (RecommendStreamEvent) -> Void
     ) async throws -> RecommendResponse {
         var body = RecommendRequest(

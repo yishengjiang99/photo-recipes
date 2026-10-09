@@ -80,7 +80,34 @@ enum SettingsSolver {
             solution.clampMessages.append(
                 "Thermal state critical — exposure left on system auto.")
         }
+        if features.isFrontCamera {
+            applySelfieAdjustments(&solution, recipeId: recipeId, features: features)
+        }
         return solution
+    }
+
+    /// Slowest shutter the solver allows on the front camera: arm's-length
+    /// handheld with a moving face, regardless of what the gyro says.
+    static let selfieShutterCapSeconds: Double = 1.0 / 60
+
+    /// Front camera: no torch, no lens switch, no 2× zoom at arm's length, and
+    /// continuous (system face-driven) focus instead of a one-shot lock.
+    private static func applySelfieAdjustments(
+        _ solution: inout Solution, recipeId: String, features: SceneFeatures
+    ) {
+        solution.phoneTargets.torch = nil
+        solution.phoneTargets.cameraDevice = nil
+        solution.phoneTargets.zoom = nil
+        if solution.phoneTargets.focusPoint != nil || solution.phoneTargets.focusMode != nil {
+            solution.phoneTargets.focusPoint = nil
+            solution.phoneTargets.focusMode = "continuous"
+        }
+        if (features.sceneEV100 ?? 99) < 7, solution.phoneTargets.lowLightBoost == nil {
+            solution.phoneTargets.lowLightBoost = true
+        }
+        if recipeId == "portrait-pop" {
+            solution.coachOnly?.notes = "Hold the phone slightly above eye level and turn your face toward the light."
+        }
     }
 
     private static func solveImpl(
@@ -100,6 +127,16 @@ enum SettingsSolver {
                 )
             )
         }
+        // Library-only recipe — readable as a card, never drives the camera.
+        if recipeId == "get-down-low" {
+            return Solution(
+                phoneTargets: PhoneTargets(),
+                coachOnly: CoachOnly(
+                    aperture: nil, nd: nil, tripod: false,
+                    notes: "Widest angle; the foreground becomes the main subject."
+                )
+            )
+        }
 
         let fovRad = context.fieldOfViewDegrees * .pi / 180
         let focalPx = (context.frameWidthPx / 2) / max(tan(fovRad / 2), 1e-6)
@@ -107,7 +144,11 @@ enum SettingsSolver {
         let shake = ExposurePlanner.effectiveShakeRadPerSec(Double(features.handShakeRadPerSec))
         /// Slowest shutter that keeps hand shake under ~1.5 px at full resolution.
         /// On a tripod the shake limit is dropped (subject motion still caps).
-        let tShake: Double = features.isTripodSteady ? .infinity : 1.5 / (shake * focalPx)
+        /// Front camera never goes slower than `selfieShutterCapSeconds`.
+        let tShake: Double = {
+            let t: Double = features.isTripodSteady ? .infinity : 1.5 / (shake * focalPx)
+            return features.isFrontCamera ? min(t, selfieShutterCapSeconds) : t
+        }()
         /// Shutter that freezes subject motion to ~1.5 px.
         let relSpeed = Double(features.subjectRelativeSpeedPxPerSec)
         let tMotion: Double = relSpeed > 50 ? 1.5 / relSpeed : .infinity
@@ -127,16 +168,6 @@ enum SettingsSolver {
         }
 
         /// Side-channel from planExposure: the last plan's fields for the
-        // Library-only recipe — readable as a card, never drives the camera.
-        if recipeId == "get-down-low" {
-            return Solution(
-                phoneTargets: PhoneTargets(),
-                coachOnly: CoachOnly(
-                    aperture: nil, nd: nil, tripod: false,
-                    notes: "Widest angle; the foreground becomes the main subject."
-                )
-            )
-        }
         /// Solution the verify step + telemetry consume (populated per call).
         var lastPlanPriority: ExposurePlanner.Priority?
         var lastPlanSolutionTargetEV: Double?

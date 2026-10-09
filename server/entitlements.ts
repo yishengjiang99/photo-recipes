@@ -316,7 +316,13 @@ export function findBySubscription(subscriptionId: string): Entitlement | null {
 
 export function getSubscriptionStatus(req: Request, res: Response) {
   const guestId = getGuestId(req, res)
-  const ent = getEntitlementFromCookie(req)
+  let ent = getEntitlementFromCookie(req)
+  // pr_sub can go missing (cookie dropped / verify response lost) while the signed
+  // pr_guest survives — fall back to the Pro entitlement linked to this guest.
+  if (!ent || !isProStatus(ent.status)) {
+    const linked = findEntitlementByGuestId(guestId)
+    if (linked && isProStatus(linked.status)) ent = linked
+  }
   const pro = ent ? isProStatus(ent.status) : false
   const unlimited = isUnlimitedIdentity(req, ent, guestId)
   const skipQuota = pro || unlimited
