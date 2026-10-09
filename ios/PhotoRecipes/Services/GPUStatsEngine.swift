@@ -108,7 +108,7 @@ enum GPUStatsCore {
         var crush = 0
         for l in luma {
             let d = Double(l)
-            bins[min(Int(d * Double(histogramBins)), histogramBins - 1)] += 1
+            bins[min(max(CameraValues.safeRoundedInt((d * Double(histogramBins)).rounded(.down)) ?? 0, 0), histogramBins - 1)] += 1
             sum += d
             sumSq += d * d
             if l > 0.95 { clip += 1 }

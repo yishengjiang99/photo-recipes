@@ -238,7 +238,7 @@ enum SettingsSolver {
             guard plan.useCustomExposure else { return }
             targets.exposureDurationSec = plan.shutterSeconds
             targets.shutter = RecipeCameraMapper.formatShutter(plan.shutterSeconds)
-            targets.iso = "\(Int(plan.iso.rounded()))"
+            targets.iso = CameraValues.safeRoundedInt(Double(plan.iso)).map { String($0) }
             // Folded into the ISO above — applyPhoneTargets must skip setEV.
             targets.ev = String(format: "%+.1f", plan.targetEV)
         }

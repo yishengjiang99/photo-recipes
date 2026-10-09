@@ -260,7 +260,7 @@ struct PhoneTargets: Codable, Hashable {
         if let s = try? c.decodeIfPresent(String.self, forKey: key) { return s }
         if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return String(i) }
         if let d = try? c.decodeIfPresent(Double.self, forKey: key) {
-            return d == d.rounded() ? String(Int(d)) : String(d)
+            return (d == d.rounded() && CameraValues.safeRoundedInt(d) != nil) ? String(Int(d)) : String(d)
         }
         return nil
     }

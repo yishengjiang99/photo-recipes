@@ -399,7 +399,7 @@ final class CameraSession: NSObject, ObservableObject {
 
     func updateCapabilities(_ device: AVCaptureDevice) {
         let custom = device.isExposureModeSupported(.custom)
-        capabilities = DeviceCapabilities(
+        capabilities = CameraValues.sanitized(DeviceCapabilities(
             supportsCustomExposure: custom,
             supportsExposureTargetBias: true,
             supportsWhiteBalanceLock: device.isWhiteBalanceModeSupported(.locked),
@@ -411,7 +411,7 @@ final class CameraSession: NSObject, ObservableObject {
             minEV: device.minExposureTargetBias,
             maxEV: device.maxExposureTargetBias,
             deviceTypeName: device.deviceType.rawValue
-        )
+        ))
     }
 
     /// Writes the shutter and returns the completion handler's syncTime
@@ -423,6 +423,7 @@ final class CameraSession: NSObject, ObservableObject {
             clampMessages.append("Shutter lock unavailable on this lens/format.")
             return .invalid
         }
+        guard CameraValues.finitePositive(seconds) != nil else { return .invalid }
         let clamped = min(max(seconds, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
         if clamped != seconds {
             clampMessages.append("Shutter clamped to \(RecipeCameraMapper.formatShutter(clamped)).")
@@ -431,7 +432,7 @@ final class CameraSession: NSObject, ObservableObject {
             duration: CMTime(seconds: clamped, preferredTimescale: 1_000_000),
             iso: device.iso)
         exposureLocked = true
-        exposureSeconds = clamped
+        exposureSeconds = CameraValues.exposure(clamped, fallback: exposureSeconds)
         if captureMode == .auto || captureMode == .program { captureMode = .shutter }
         return sync
     }
@@ -444,12 +445,13 @@ final class CameraSession: NSObject, ObservableObject {
             clampMessages.append("ISO lock unavailable on this lens/format.")
             return .invalid
         }
+        guard CameraValues.finitePositive(value) != nil else { return .invalid }
         let clamped = min(max(value, capabilities.minISO), capabilities.maxISO)
         let sync = await issueExposureWrite(
             duration: device.exposureDuration,
             iso: clamped)
         exposureLocked = true
-        iso = clamped
+        iso = CameraValues.iso(clamped, fallback: iso)
         if captureMode == .auto { captureMode = .manual }
         return sync
     }
@@ -458,12 +460,12 @@ final class CameraSession: NSObject, ObservableObject {
     /// Previously this switched the device back to continuous auto-exposure,
     /// silently discarding custom shutter/ISO written just before it.
     func setEV(_ bias: Float) {
-        guard let device = input?.device else { return }
+        guard let device = input?.device, bias.isFinite else { return }
         let clamped = min(max(bias, capabilities.minEV), capabilities.maxEV)
         configure(device) {
             device.setExposureTargetBias(clamped, completionHandler: nil)
         }
-        evBias = clamped
+        evBias = CameraValues.evBias(clamped, fallback: evBias)
         exposureLocked = device.exposureMode == .custom
     }
 
@@ -764,15 +766,16 @@ final class CameraSession: NSObject, ObservableObject {
     /// syncTime (`.invalid` when the write couldn't be issued).
     @discardableResult
     private func setCustom(duration: Double, iso isoVal: Float) async -> CMTime {
-        guard let device = input?.device, device.isExposureModeSupported(.custom) else { return .invalid }
+        guard let device = input?.device, device.isExposureModeSupported(.custom),
+              CameraValues.finitePositive(duration) != nil, CameraValues.finitePositive(isoVal) != nil else { return .invalid }
         let d = min(max(duration, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
         let i = min(max(isoVal, capabilities.minISO), capabilities.maxISO)
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: d, preferredTimescale: 1_000_000),
             iso: i)
         exposureLocked = true
-        exposureSeconds = d
-        iso = i
+        exposureSeconds = CameraValues.exposure(d, fallback: exposureSeconds)
+        iso = CameraValues.iso(i, fallback: iso)
         return sync
     }
 
@@ -1093,8 +1096,8 @@ final class CameraSession: NSObject, ObservableObject {
                 clampMessages.append("Format hint “\(preferFormatHint!)” unavailable — skipped.")
             }
         }
-        guard let fps, fps > 0 else { return choseFormat }
-        let duration = CMTime(value: 1, timescale: CMTimeScale(max(1, Int(fps.rounded()))))
+        guard let fps, let fpsInt = CameraValues.safeRoundedInt(fps), fps > 0, fpsInt <= 1000 else { return choseFormat }
+        let duration = CMTime(value: 1, timescale: CMTimeScale(max(1, fpsInt)))
         let ranges = device.activeFormat.videoSupportedFrameRateRanges
         guard !ranges.isEmpty else {
             clampMessages.append("No frame-rate ranges for active format — skipped.")
@@ -1423,14 +1426,16 @@ final class CameraSession: NSObject, ObservableObject {
 
     func refreshReadouts() {
         guard let device = input?.device else { return }
-        exposureSeconds = CMTimeGetSeconds(device.exposureDuration)
-        iso = device.iso
-        evBias = device.exposureTargetBias
+        // Before the session is running exposureDuration can be an invalid CMTime (NaN seconds);
+        // keep the last good readout instead of publishing NaN to the dial views.
+        exposureSeconds = CameraValues.exposure(CMTimeGetSeconds(device.exposureDuration), fallback: exposureSeconds)
+        iso = CameraValues.iso(device.iso, fallback: iso)
+        evBias = CameraValues.evBias(device.exposureTargetBias, fallback: evBias)
     }
 
     var readoutLine: String {
         let f = apertureGuidance.map { " · \($0)" } ?? ""
-        return "\(captureMode.shortLabel)\(f) · \(RecipeCameraMapper.formatShutter(exposureSeconds)) · ISO \(Int(iso.rounded()))"
+        return "\(captureMode.shortLabel)\(f) · \(RecipeCameraMapper.formatShutter(exposureSeconds)) · ISO \(RecipeCameraMapper.formatISO(iso))"
     }
 
     /// Reads the live device state back after an apply — the verify step
@@ -1623,6 +1628,7 @@ final class CameraSession: NSObject, ObservableObject {
     /// read offset. The verify loop (`ExposureVerifyLoop.run`) drives these;
     /// tests substitute a fake device.
     func issueWrite(durationSeconds: Double, iso: Float) async -> CMTime {
+        guard CameraValues.finitePositive(durationSeconds) != nil, CameraValues.finitePositive(iso) != nil else { return .invalid }
         let d = min(max(durationSeconds, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
         let i = min(max(iso, capabilities.minISO), capabilities.maxISO)
         // No clamp banners here: corrections are internal; the loop reports
@@ -1630,8 +1636,8 @@ final class CameraSession: NSObject, ObservableObject {
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: d, preferredTimescale: 1_000_000), iso: i)
         exposureLocked = true
-        exposureSeconds = d
-        self.iso = i
+        exposureSeconds = CameraValues.exposure(d, fallback: exposureSeconds)
+        self.iso = CameraValues.iso(i, fallback: self.iso)
         return sync
     }
 
@@ -1652,7 +1658,7 @@ final class CameraSession: NSObject, ObservableObject {
     func currentExposure() -> (shutterSeconds: Double, iso: Float) {
         if let device = input?.device {
             let s = CMTimeGetSeconds(device.exposureDuration)
-            if s > 0 { return (s, device.iso) }
+            if s.isFinite, s > 0, device.iso.isFinite, device.iso > 0 { return (s, device.iso) }
         }
         return (exposureSeconds, iso)
     }

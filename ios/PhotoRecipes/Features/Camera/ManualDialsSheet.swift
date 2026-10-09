@@ -136,7 +136,7 @@ struct ManualDialsSheet: View {
     }
 
     private var isoRow: some View {
-        dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !canApplyDials) {
+        dialScroller(title: "ISO", value: RecipeCameraMapper.formatISO(session.iso), locked: !canApplyDials) {
             ForEach(isoStops, id: \.self) { v in
                 Button {
                     guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }

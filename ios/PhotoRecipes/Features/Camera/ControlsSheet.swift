@@ -216,7 +216,7 @@ struct ControlsPanelView: View {
                     }
                 }
             }
-            dialScroller(title: "ISO", value: "\(Int(session.iso.rounded()))", locked: !canApplyDials) {
+            dialScroller(title: "ISO", value: RecipeCameraMapper.formatISO(session.iso), locked: !canApplyDials) {
                 ForEach(isoStops, id: \.self) { v in
                     dialChip("\(Int(v))") {
                         guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }

@@ -60,7 +60,7 @@ struct RecipeCameraMapper {
                 if capabilities.supportsCustomExposure {
                     let clamped = clamp(parsed, min: capabilities.minISO, max: capabilities.maxISO)
                     if clamped != parsed {
-                        notes.append("ISO \(Int(parsed)) clamped to \(Int(clamped)).")
+                        notes.append("ISO \(formatISO(parsed)) clamped to \(formatISO(clamped)).")
                     }
                     iso = clamped
                 } else {
@@ -174,12 +174,26 @@ struct RecipeCameraMapper {
         return nil
     }
 
+    /// Placeholder shown when a camera readout is not usable yet (e.g. before the session runs).
+    static let unknownReadout = "—"
+
+    /// Never traps: AVFoundation readouts (`CMTimeGetSeconds` of an invalid `CMTime`) are NaN
+    /// until the capture session is running, and `Int(Double.nan)` is a runtime crash
+    /// (TestFlight 1.4 (71): crash in ControlsPanelView right after onboarding "Get started").
     static func formatShutter(_ seconds: Double) -> String {
+        guard let seconds = CameraValues.finitePositive(seconds) else { return unknownReadout }
         if seconds >= 1 {
             return String(format: "%.1fs", seconds)
         }
-        let denom = max(1, Int((1.0 / seconds).rounded()))
+        let denom = max(1, CameraValues.safeRoundedInt(1.0 / seconds) ?? 1)
         return "1/\(denom)s"
+    }
+
+    /// `"400"` for a usable ISO, the placeholder for NaN / infinite / non-positive values.
+    static func formatISO(_ iso: Float) -> String {
+        guard let v = CameraValues.finitePositive(iso),
+              let i = CameraValues.safeRoundedInt(Double(v)) else { return unknownReadout }
+        return "\(i)"
     }
 
     private static func clamp<T: Comparable>(_ v: T, min: T, max: T) -> T {
@@ -226,4 +240,57 @@ struct DeviceCapabilities: Equatable {
         maxEV: 2,
         deviceTypeName: "unknown"
     )
+}
+
+/// Guards for Double/Float camera values (shutter, ISO, EV, frame rate, ...) before they are
+/// published or converted with `Int(...)`, which traps on NaN, ±infinity or out-of-range values.
+enum CameraValues {
+    /// Largest magnitude we ever convert to `Int` (well inside `Int` range on every platform).
+    static let maxIntMagnitude: Double = 1e12
+
+    static func finitePositive(_ v: Double) -> Double? { v.isFinite && v > 0 ? v : nil }
+    static func finitePositive(_ v: Float) -> Float? { v.isFinite && v > 0 ? v : nil }
+
+    /// `Int(v.rounded())` that returns nil instead of trapping.
+    static func safeRoundedInt(_ v: Double) -> Int? {
+        guard v.isFinite else { return nil }
+        let r = v.rounded()
+        guard abs(r) <= maxIntMagnitude else { return nil }
+        return Int(r)
+    }
+
+    /// Exposure duration to publish: `candidate` when finite and positive, else `fallback`
+    /// (itself sanitized, defaulting to 1/60 s).
+    static func exposure(_ candidate: Double, fallback: Double) -> Double {
+        finitePositive(candidate) ?? finitePositive(fallback) ?? 1.0 / 60
+    }
+
+    /// ISO to publish: `candidate` when finite and positive, else `fallback` (default 100).
+    static func iso(_ candidate: Float, fallback: Float) -> Float {
+        finitePositive(candidate) ?? finitePositive(fallback) ?? 100
+    }
+
+    /// EV bias to publish: `candidate` when finite, else `fallback` (default 0).
+    static func evBias(_ candidate: Float, fallback: Float) -> Float {
+        candidate.isFinite ? candidate : (fallback.isFinite ? fallback : 0)
+    }
+
+    /// Device capability ranges with any NaN / infinite / inverted bound replaced by the
+    /// conservative `DeviceCapabilities.unknown` value.
+    static func sanitized(_ c: DeviceCapabilities) -> DeviceCapabilities {
+        let u = DeviceCapabilities.unknown
+        var out = c
+        out.minExposureSeconds = finitePositive(c.minExposureSeconds) ?? u.minExposureSeconds
+        out.maxExposureSeconds = finitePositive(c.maxExposureSeconds) ?? u.maxExposureSeconds
+        if out.minExposureSeconds > out.maxExposureSeconds {
+            out.minExposureSeconds = u.minExposureSeconds; out.maxExposureSeconds = u.maxExposureSeconds
+        }
+        out.minISO = finitePositive(c.minISO) ?? u.minISO
+        out.maxISO = finitePositive(c.maxISO) ?? u.maxISO
+        if out.minISO > out.maxISO { out.minISO = u.minISO; out.maxISO = u.maxISO }
+        out.minEV = c.minEV.isFinite ? c.minEV : u.minEV
+        out.maxEV = c.maxEV.isFinite ? c.maxEV : u.maxEV
+        if out.minEV > out.maxEV { out.minEV = u.minEV; out.maxEV = u.maxEV }
+        return out
+    }
 }

@@ -813,7 +813,7 @@ final class AutoOptimizeController: ObservableObject {
         if let wantISO = solution.phoneTargets.iso.flatMap({ Float($0) }), wantISO > 0 {
             let drift = abs(readback.iso - wantISO) / wantISO
             if drift > 0.15 {
-                verifyNotes.append("ISO read back \(Int(readback.iso.rounded())) vs solved \(Int(wantISO.rounded())).")
+                verifyNotes.append("ISO read back \(RecipeCameraMapper.formatISO(readback.iso)) vs solved \(RecipeCameraMapper.formatISO(wantISO)).")
             }
         }
 
@@ -1290,7 +1290,7 @@ final class AutoOptimizeController: ObservableObject {
                             apply: { durationSeconds, iso in
                                 await session.applyPhoneTargets(PhoneTargets(
                                     exposureDurationSec: durationSeconds,
-                                    iso: "\(Int(iso.rounded()))"))
+                                    iso: CameraValues.safeRoundedInt(Double(iso)).map { String($0) }))
                             },
                             verify: { targetEV, priority, shutterCapSeconds in
                                 await session.verifyExposure(
@@ -1473,7 +1473,7 @@ final class AutoOptimizeController: ObservableObject {
             mode: session.captureMode.shortLabel,
             aperture: session.apertureGuidance,
             shutter: RecipeCameraMapper.formatShutter(session.exposureSeconds),
-            iso: "\(Int(session.iso.rounded()))",
+            iso: RecipeCameraMapper.formatISO(session.iso),
             ev: String(format: "%+.1f", session.evBias),
             wb: session.whiteBalanceLocked ? "Locked" : "Auto",
             focus: session.focusLocked ? "Locked" : "Cont."
