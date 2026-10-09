@@ -1,1 +1,1 @@
-Auto Optimize now reads the scene straight from the live viewfinder, with no shutter sound or flash, and your typed scene notes are never overwritten. The Get Down Low recipe is now called Low Angle. Camera memory and stability fixes for longer shoots.
+New camera chrome: Auto Optimize is now the primary button right next to the shutter. Field looks live on a right-edge rail, every manual dial slides out from the left, and your last photo is one tap away. Dictate the scene with the mic and watch the words stream in. Stability fixes for longer shoots.

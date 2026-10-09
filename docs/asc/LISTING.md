@@ -51,9 +51,9 @@ raw, dslr, aperture, macro.
 
 ## Description (4000)
 ```
-Better photos from your iPhone — no f-stops required. Point at the scene, tap Auto Optimize, and the camera sets itself: real shutter, ISO, EV, white balance and focus dials, written for you.
+Better photos from your iPhone — no f-stops required. The camera is rebuilt around Auto Optimize: one primary button by the shutter sets every dial for you, field looks sit on a right-edge rail, and full manual control slides out from the left.
 
-ProTune AI Camera is a field camera for photographers who want the recipe AND the dial position. Auto Optimize reads the scene, picks the right photo recipe, and writes real capture dials on your iPhone — shutter, ISO, EV, white balance, focus and zoom. Not filters. Real dials.
+ProTune AI Camera is a field camera for photographers who want the recipe AND the dial position. Auto Optimize reads the scene, picks the right photo recipe, and writes real capture dials on your iPhone — shutter, ISO, EV, white balance, focus and zoom. Not filters. Real dials. Your last photo is always one tap away, and you can dictate the scene with the mic.
 
 WHAT AUTO OPTIMIZE SETS
 • Shutter / exposure duration
@@ -81,7 +81,7 @@ Recipes come from classic field technique — panning, motion control, HDR, focu
 
 ## What's New
 ```
-Auto Optimize now reads the scene straight from the live viewfinder, with no shutter sound or flash, and your typed scene notes are never overwritten. The Get Down Low recipe is now called Low Angle. Camera memory and stability fixes for longer shoots.
+New camera chrome: Auto Optimize is now the primary button right next to the shutter. Field looks live on a right-edge rail, every manual dial slides out from the left, and your last photo is one tap away. Dictate the scene with the mic and watch the words stream in. Stability fixes for longer shoots.
 ```
 
 ## Support URL
