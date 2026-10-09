@@ -276,8 +276,8 @@ def ensure_review_screenshot(sub_id, product_id):
     if cur:
         a = cur["attributes"]
         state = (a.get("assetDeliveryState") or {}).get("state")
-        if a.get("sourceFileChecksum") == md5 and state in ("COMPLETE", "UPLOAD_COMPLETE"):
-            print("FOUND review screenshot", product_id, cur["id"], state, "(same md5)")
+        if state in ("COMPLETE", "UPLOAD_COMPLETE"):
+            print("FOUND review screenshot", product_id, cur["id"], state, "(keeping existing)")
             return
         print("DELETE review screenshot", product_id, cur["id"], state)
         api("DELETE", f"/v1/subscriptionAppStoreReviewScreenshots/{cur['id']}")
@@ -331,6 +331,7 @@ def verify(app_id):
             if av and av.get("data"):
                 t, _ = get_all(f"/v1/subscriptionAvailabilities/{av['data']['id']}/availableTerritories?limit=200")
                 nterr = len(t)
+                print("      availability", av["data"]["attributes"], sorted(x["id"] for x in t)[:10])
             shot = api("GET", f"/v1/subscriptions/{s['id']}/appStoreReviewScreenshot", ok404=True)
             sd = (shot or {}).get("data")
             shot_desc = "MISSING"
@@ -344,13 +345,13 @@ def verify(app_id):
             print(f"      USA price={prices.get('USA')} priced_territories={len(prices)} available_territories={nterr} "
                   f"review_note={a.get('reviewNote')!r}")
             print(f"      review_screenshot={shot_desc}")
+            want = next((p for p in PRODUCTS if p["productId"] == a["productId"]), None)
             intro = existing_intro(s["id"])
             modes = sorted({(v.get("offerMode"), v.get("duration"), v.get("numberOfPeriods")) for v in intro.values()}, key=str)
             print(f"      intro_offers territories={len(intro)} USA={intro.get('USA')} modes={modes}")
             if want and want.get("trial") and len(intro) < max(1, len(prices)):
                 print("      INTRO OFFER INCOMPLETE")
                 ok = False
-            want = next((p for p in PRODUCTS if p["productId"] == a["productId"]), None)
             if want and (not prices.get("USA") or float(prices["USA"][0]) != float(want["usd"])):
                 ok = False
             if want and a.get("groupLevel") != want["level"]:
