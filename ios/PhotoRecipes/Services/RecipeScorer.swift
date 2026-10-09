@@ -128,8 +128,43 @@ final class JSONRecipeScorer: RecipeScoring {
         let maxLogit = rows.map { $0.logit }.max() ?? 0
         let exps = rows.map { exp(($0.logit - maxLogit) / temperature) }
         let sum = max(exps.reduce(0, +), 1e-9)
-        return zip(rows, exps)
+        let scored = zip(rows, exps)
             .map { RecipeScore(recipeId: $0.0.id, probability: $0.1 / sum, topFeatures: $0.0.top) }
+            .sorted { $0.probability > $1.probability }
+        return SelfieRecipeBias.apply(scored, features: features)
+    }
+}
+
+// MARK: - Selfie bias (front camera)
+
+/// Front camera = selfie. Drops recipes that make no sense at arm's length
+/// and favours `portrait-pop` when a face is in frame. A typed-note intent
+/// always survives; staged recipes bypass scoring entirely (RecipeDecider).
+enum SelfieRecipeBias {
+    /// Never auto-selected on the front camera.
+    static let excluded: Set<String> = [
+        "sharp-front-to-back", "get-down-low",
+        "panning-sharp-subject", "blur-moving-subjects",
+    ]
+    /// Probability multiplier for `portrait-pop` when a face is detected.
+    static let faceBoost = 4.0
+
+    static func apply(_ scores: [RecipeScore], features: SceneFeatures) -> [RecipeScore] {
+        guard features.isFrontCamera else { return scores }
+        let intentId = features.recipeIntent?.recipeId
+        var rows = scores.filter { !excluded.contains($0.recipeId) || $0.recipeId == intentId }
+        guard !rows.isEmpty else { return scores }
+        let hasFace = features.subjectKind == .face || (features.faceCount ?? 0) > 0
+        if hasFace, intentId == nil {
+            rows = rows.map { row in
+                var r = row
+                if r.recipeId == "portrait-pop" { r.probability *= faceBoost }
+                return r
+            }
+        }
+        let sum = max(rows.reduce(0) { $0 + $1.probability }, 1e-9)
+        return rows
+            .map { var r = $0; r.probability /= sum; return r }
             .sorted { $0.probability > $1.probability }
     }
 }

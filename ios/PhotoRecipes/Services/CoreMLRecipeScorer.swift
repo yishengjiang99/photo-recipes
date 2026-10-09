@@ -142,7 +142,8 @@ final class CoreMLRecipeScorer: RecipeScoring {
                 return r
             }
         }
-        return rows.sorted { $0.probability > $1.probability }
+        return SelfieRecipeBias.apply(
+            rows.sorted { $0.probability > $1.probability }, features: features)
     }
 }
 

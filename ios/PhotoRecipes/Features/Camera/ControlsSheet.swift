@@ -438,6 +438,17 @@ struct ControlsPanelView: View {
                     .foregroundStyle(AppTheme.inkTertiary)
             }
 
+            rowCard {
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Mirror selfies", isOn: $session.mirrorFrontPhotos)
+                        .tint(AppTheme.accent)
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Save front-camera photos the way the preview shows them.")
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.inkTertiary)
+                }
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("LENS POSITION")

@@ -657,6 +657,7 @@ final class AutoOptimizeController: ObservableObject {
             f.meteredISO = metering.iso
             f.exposureTargetOffset = metering.exposureTargetOffset
             f.exposureWasCustom = metering.wasCustom
+            f.isFrontCamera = session.isFront
             if let elevationDegrees { f.cameraElevationDegrees = Float(elevationDegrees) }
             if let handShake { f.handShakeRadPerSec = Float(handShake) }
             if let isTripodSteady { f.isTripodSteady = isTripodSteady }

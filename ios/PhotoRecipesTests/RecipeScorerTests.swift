@@ -33,6 +33,44 @@ final class RecipeScorerTests: XCTestCase {
         return raw
     }
 
+    // MARK: - selfie bias (front camera)
+
+    private func rawScores() -> [RecipeScore] {
+        [
+            RecipeScore(recipeId: "sharp-front-to-back", probability: 0.5, topFeatures: []),
+            RecipeScore(recipeId: "sharp-and-in-focus", probability: 0.3, topFeatures: []),
+            RecipeScore(recipeId: "portrait-pop", probability: 0.15, topFeatures: []),
+            RecipeScore(recipeId: "get-down-low", probability: 0.05, topFeatures: []),
+        ]
+    }
+
+    func testSelfieBias_backCameraUntouched() {
+        var f = SceneFeatures()
+        f.subjectKind = .face
+        let out = SelfieRecipeBias.apply(rawScores(), features: f)
+        XCTAssertEqual(out.map(\.recipeId), rawScores().map(\.recipeId))
+    }
+
+    func testSelfieBias_frontCameraFaceFavoursPortraitAndDropsArmLengthMisfits() {
+        var f = SceneFeatures()
+        f.isFrontCamera = true
+        f.subjectKind = .face
+        let out = SelfieRecipeBias.apply(rawScores(), features: f)
+        XCTAssertEqual(out.first?.recipeId, "portrait-pop")
+        XCTAssertFalse(out.contains { SelfieRecipeBias.excluded.contains($0.recipeId) })
+        XCTAssertEqual(out.reduce(0) { $0 + $1.probability }, 1, accuracy: 1e-6)
+    }
+
+    func testSelfieBias_typedIntentSurvivesOnFrontCamera() {
+        var f = SceneFeatures()
+        f.isFrontCamera = true
+        f.subjectKind = .face
+        f.recipeIntent = IntentMatcher.match(note: "landscape, everything sharp front to back")
+        XCTAssertEqual(f.recipeIntent?.recipeId, "sharp-front-to-back")
+        let out = SelfieRecipeBias.apply(rawScores(), features: f)
+        XCTAssertEqual(out.first?.recipeId, "sharp-front-to-back")
+    }
+
     // MARK: - golden fixtures
 
     /// Every fixture in Fixtures/scene-features/*.json scores its expected top
