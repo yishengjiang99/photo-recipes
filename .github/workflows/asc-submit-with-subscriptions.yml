@@ -1,0 +1,60 @@
+name: ASC submit version + first subscriptions
+
+# One reviewSubmission: app version + subscription group + both subscriptions.
+# mode=status is read-only. mode=submit SUBMITS FOR APP REVIEW — run only when the owner asks.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: status (read-only) or submit
+        type: choice
+        options: [status, submit]
+        default: status
+      version_string:
+        description: App Store versionString
+        default: "1.4"
+      build_number:
+        description: CFBundleVersion
+        default: "71"
+
+concurrency:
+  group: asc-submit
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+      BUNDLE_ID: com.ragnus.mvp
+      VERSION_STRING: ${{ inputs.version_string }}
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q PyJWT cryptography requests numpy pillow
+      - name: Wait for build VALID
+        if: ${{ inputs.mode == 'submit' }}
+        env: { MODE: wait_build }
+        run: python3 scripts/asc/submit_version_with_subscriptions.py
+      - name: Sync listing (create version, whatsNew, review notes/contact, export compliance, attach build)
+        if: ${{ inputs.mode == 'submit' }}
+        env:
+          UPLOAD_SCREENSHOTS: "true"
+          VERIFY_ONLY: "false"
+          SKIP_IF_NOT_EDITABLE: "false"
+        run: |
+          set -euo pipefail
+          python3 docs/asc/check_copy.py
+          python3 scripts/asc/upload_photo_recipes_listing.py
+      - name: Submit version + subscription group + subscriptions
+        if: ${{ inputs.mode == 'submit' }}
+        env: { MODE: submit }
+        run: python3 scripts/asc/submit_version_with_subscriptions.py
+      - name: Status (read-only)
+        if: ${{ inputs.mode == 'status' }}
+        env: { MODE: status }
+        run: python3 scripts/asc/submit_version_with_subscriptions.py

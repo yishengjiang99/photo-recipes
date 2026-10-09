@@ -90,6 +90,8 @@ def main():
     copyright_ = txt(META / "copyright.txt")
     cat1, cat2 = txt(META / "primary_category.txt"), txt(META / "secondary_category.txt")
     R = {k: txt(META / "review_information" / f"{k}.txt") for k in ("first_name", "last_name", "phone_number", "email_address", "demo_required")}
+    _notes = META / "review_information" / "notes.txt"
+    R["notes"] = _notes.read_text().strip() if _notes.exists() else ""
     blob = " ".join(L.values()).lower()
     for banned in ("grok",):
         assert banned not in blob, f"metadata mentions {banned!r}"
@@ -210,6 +212,8 @@ def write(app_id, ver, info, build, L, copyright_, cat1, cat2, R, shots, warning
     rd = api("GET", f"/v1/appStoreVersions/{vid}/appStoreReviewDetail", ok404=True)
     rattrs = {"contactFirstName": R["first_name"], "contactLastName": R["last_name"], "contactPhone": R["phone_number"],
               "contactEmail": R["email_address"], "demoAccountRequired": R["demo_required"].lower() == "true"}
+    if R.get("notes"):
+        rattrs["notes"] = R["notes"]
     if rd and rd.get("data"):
         api("PATCH", f"/v1/appStoreReviewDetails/{rd['data']['id']}", {"data": {"type": "appStoreReviewDetails", "id": rd["data"]["id"], "attributes": rattrs}})
     else:

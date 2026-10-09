@@ -1,0 +1,7 @@
+ProTune Pro is an auto-renewable subscription (group "Grepawk Photos Pro"): com.ragnus.mvp.pro.yearly ($59.99/year) and com.ragnus.mvp.pro.monthly ($7.99/month), each with a 7-day free trial for new subscribers. Pro unlocks unlimited Auto Optimize and Coach; the free tier keeps working with a daily limit.
+
+How to reach the paywall: on the Camera tab tap the "Pro" (crown) button in the top bar, or open Settings > Upgrade to Pro. It also appears after the free daily Auto Optimize limit is reached. Restore purchases is on the paywall and in Settings.
+
+No account or login is required. Purchases work with a sandbox Apple ID; the purchase is verified with StoreKit 2 and Pro unlocks immediately. Camera and microphone permissions are used only for taking photos and voice commands.
+
+Contact: Yisheng Jiang, yisheng.jiang@gmail.com, +1 669 251 7789.

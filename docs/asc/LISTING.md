@@ -84,7 +84,7 @@ Recipes come from classic field technique — panning, motion control, HDR, focu
 
 ## What's New
 ```
-New in 1.3: a rebuilt camera chrome — Auto Optimize is now the primary button next to the shutter, field looks live on a right-edge rail, every manual dial slides out from the left, and your last photo is one tap away. Selfie mode gets face-tuned Auto Optimize with front-camera fixes. Tap to focus now meters at the exact point you tapped. Name a look out loud or type it — golden hour, mono ink — and it's applied on-device. Plus a more accurate Auto Optimize in bright light, and stability fixes for longer shoots.
+New in 1.4: ProTune Pro is here — unlimited Auto Optimize and Coach, with a 7-day free trial on yearly and monthly plans. Plans now load more reliably on the paywall, with a one-tap retry if the App Store is slow to respond. Plus stability fixes.
 ```
 
 ## Support URL
