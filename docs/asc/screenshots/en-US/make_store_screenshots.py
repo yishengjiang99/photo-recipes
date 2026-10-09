@@ -7,8 +7,9 @@ carries LARGE ExtraBold hero text at the top explaining the functionality; hero
 value frame first.
 
 Phone screens are UI-chrome mock frames (not pixel-perfect device captures): the
-shared viewfinder still from source/viewfinder-scene.jpg plus drawn dials, cards
-and pills in the app's visual language.
+shared viewfinder still from source/viewfinder-scene.jpg plus the NEW camera
+chrome (v1.3 redesign): Auto Optimize as the primary button next to the shutter,
+last-photo thumbnail, right-edge filter rail, left slide-out controls drawer.
 
 Usage: python3 docs/asc/screenshots/en-US/make_store_screenshots.py   (Pillow + numpy)
 """
@@ -32,12 +33,13 @@ CARD = (26, 26, 29)
 CARD_EDGE = (58, 58, 62)
 
 # (slug, hero text, sub text) — every hero line must stay <= 5 words (check_copy.py).
+# v1.3: the set features the redesigned camera chrome.
 SHOTS = [
-    ("01-set-the-shot", "Set the shot.\nThen take it.", "Auto Optimize sets every dial for you"),
-    ("02-auto-optimize", "Auto Optimize sets\nshutter, ISO, EV,\nWB and focus", "One tap reads the scene, applies the recipe"),
-    ("03-real-dials", "Real capture dials.\nNot filters.", "Manual control whenever you want it"),
-    ("04-teach-mode", "Every dial,\nexplained.", "Teach Mode shows the why behind the shot"),
-    ("05-field-looks", "Field looks,\ngraded live.", "Capture grades in the viewfinder"),
+    ("01-new-chrome", "The camera,\nrebuilt around you.", "Auto Optimize is now the primary button"),
+    ("02-auto-optimize", "One tap sets\nevery dial.", "Shutter, ISO, EV, WB, focus — written for you"),
+    ("03-filter-rail", "Looks live on\nthe right rail.", "Field grades, one tap in the viewfinder"),
+    ("04-control-drawer", "Every dial,\none swipe away.", "Slide out full manual control"),
+    ("05-last-photo", "Your last shot,\none tap away.", "Review it without leaving the finder"),
 ]
 
 _fonts: dict[tuple[int, str], ImageFont.FreeTypeFont] = {}
@@ -150,35 +152,185 @@ def viewfinder(w, h, dim=0.0, warm=0.0):
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGB")
 
 
+# ---------------------------------------------------------------------------
+# v1.3 camera chrome — matches the approved redesign mockup
+# (docs/camera-chrome-mockup.html).
+# ---------------------------------------------------------------------------
+
+FILTERS = [("N", "Natural"), ("V", "Vivid"), ("W", "Warm"), ("M", "Mono"), ("K", "Noir")]
+
+
+def draw_sparkle(d, cx, cy, r, fill):
+    """4-point star glyph (Inter lacks ✦)."""
+    import math
+    pts = []
+    for i in range(8):
+        ang = math.pi / 4 * i - math.pi / 2
+        rr = r if i % 2 == 0 else r * 0.36
+        pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
+    d.polygon(pts, fill=fill)
+
+
+def draw_mic(d, cx, cy, r, fill):
+    """Minimal microphone glyph (Inter lacks ◉)."""
+    w = r * 0.95
+    d.rounded_rectangle((cx - w / 2, cy - r, cx + w / 2, cy + r * 0.35),
+                        max(1, int(w / 4)), fill=fill)
+    d.arc((cx - r * 0.78, cy - r * 0.55, cx + r * 0.78, cy + r * 0.95),
+          25, 155, fill=fill, width=max(2, int(r * 0.24)))
+    d.line((cx, cy + r * 0.95, cx, cy + r * 1.3), fill=fill, width=max(2, int(r * 0.24)))
+
+
 def top_bar(d, w, s, wordmark="AI CAMERA"):
+    """Top chrome: wordmark, upgrade pill, utility icons."""
     f = font(round(30 * s), "Bold")
     d.text((round(36 * s), round(30 * s)), wordmark, font=f, fill=INK)
-    for i, cx in enumerate((w - round(150 * s), w - round(80 * s))):
+    # Upgrade pill (amber outline)
+    fu = font(round(26 * s), "Bold")
+    ut = "PRO"
+    uw = d.textlength(ut, font=fu)
+    upw, uph = uw + round(44 * s), round(52 * s)
+    ux1 = w - round(36 * s)
+    ux0 = ux1 - upw
+    uy = round(28 * s)
+    d.rounded_rectangle((ux0, uy, ux1, uy + uph), uph // 2, outline=AMBER,
+                        width=max(2, round(3 * s)))
+    ctext(d, ((ux0 + ux1) / 2, uy + uph / 2), ut, fu, AMBER_SOFT)
+    for i, cx in enumerate((ux0 - round(70 * s), ux0 - round(140 * s))):
         r = round(22 * s)
-        cy = round(48 * s)
+        cy = round(52 * s)
         d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=MUTED, width=max(2, round(3 * s)))
 
 
-def amber_pill(d, cx, cy, s, text="Auto Optimize"):
-    f = font(round(40 * s), "Bold")
+def filter_rail(d, w, h, s, active=1):
+    """Right-edge vertical stack of filter/look buttons."""
+    f = font(round(30 * s), "Bold")
+    r = round(44 * s)
+    gap = round(28 * s)
+    n = len(FILTERS)
+    total = n * (2 * r) + (n - 1) * gap
+    y = round(h * 0.44) - total // 2
+    cx = w - round(64 * s)
+    for i, (glyph, _name) in enumerate(FILTERS):
+        cy = y + r + i * (2 * r + gap)
+        if i == active:
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=AMBER)
+            ctext(d, (cx, cy), glyph, f, (18, 18, 18))
+        else:
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(24, 24, 28),
+                      outline=(90, 90, 96), width=max(2, round(3 * s)))
+            ctext(d, (cx, cy), glyph, f, INK)
+
+
+def drawer_handle(d, h, s):
+    """Big left-edge handle that opens the manual-controls drawer."""
+    hw, hh = round(64 * s), round(190 * s)
+    x0, y0 = 0, round(h * 0.44) - hh // 2
+    d.rounded_rectangle((x0 - round(20 * s), y0, x0 + hw, y0 + hh), round(24 * s),
+                        fill=(24, 24, 28), outline=(90, 90, 96), width=max(2, round(3 * s)))
+    # chevron ›
+    f = font(round(44 * s), "Bold")
+    ctext(d, (x0 + hw // 2 + round(6 * s), y0 + hh // 2), "›", f, AMBER_SOFT)
+
+
+def ao_primary_button(d, cx, cy, s, text="Auto Optimize", running=False):
+    """The primary Auto Optimize CTA — filled amber, next to the shutter."""
+    f = font(round(36 * s), "Bold")
     tw = d.textlength(text, font=f)
-    pw, ph = tw + round(110 * s), round(104 * s)
+    sr = round(20 * s)
+    gap = round(18 * s)
+    pw = sr * 2 + gap + tw + round(96 * s)
+    ph = round(116 * s)
     x0, y0 = cx - pw / 2, cy - ph / 2
-    d.rounded_rectangle((x0, y0, x0 + pw, y0 + ph), ph // 2, fill=AMBER)
-    ctext(d, (cx, cy), text, f, (18, 18, 18))
-    return y0 + ph
+    if running:
+        d.rounded_rectangle((x0, y0, x0 + pw, y0 + ph), ph // 2, fill=(60, 60, 64))
+        ctext(d, (cx, cy), "Working…", f, MUTED)
+    else:
+        d.rounded_rectangle((x0, y0, x0 + pw, y0 + ph), ph // 2, fill=AMBER)
+        sx = x0 + round(48 * s) + sr
+        draw_sparkle(d, sx, cy, sr, (18, 18, 18))
+        d.text((sx + sr + gap, cy - round(24 * s)), text, font=f, fill=(18, 18, 18))
+    return pw
 
 
-def shutter_row(d, w, y, s):
+def last_photo_thumb(img, d, x, cy, s, highlight=False):
+    """Rounded-square last-photo thumbnail (mini crop of the viewfinder)."""
+    ts = round(128 * s)
+    y0 = cy - ts // 2
+    # mini crop of the scene itself as the "photo"
+    thumb = img.crop((img.width // 3, img.height // 3,
+                      img.width // 3 + ts * 2, img.height // 3 + ts * 2)).resize((ts, ts), Image.LANCZOS)
+    img.paste(thumb, (x, y0), rounded_mask((ts, ts), round(24 * s)))
+    d.rounded_rectangle((x, y0, x + ts, y0 + ts), round(24 * s),
+                        outline=AMBER if highlight else (240, 240, 240),
+                        width=max(3, round(6 * s) if highlight else round(4 * s)))
+    return ts
+
+
+def scene_field(d, w, y, s, text="Golden hour, backlit ridge…"):
+    """Dictation scene field above the shutter row, with mic button."""
+    f = font(round(32 * s), "SemiBold")
+    ph = round(88 * s)
+    x0, x1 = round(60 * s), w - round(60 * s)
+    d.rounded_rectangle((x0, y, x1, y + ph), ph // 2, fill=(22, 22, 26),
+                        outline=(80, 80, 86), width=max(2, round(3 * s)))
+    d.text((x0 + round(36 * s), y + ph // 2 - round(22 * s)), text, font=f, fill=MUTED)
+    # mic button
+    mr = round(32 * s)
+    mcx = x1 - round(52 * s)
+    mcy = y + ph // 2
+    d.ellipse((mcx - mr, mcy - mr, mcx + mr, mcy + mr), fill=AMBER)
+    draw_mic(d, mcx, mcy - round(4 * s), round(20 * s), (18, 18, 18))
+    return y + ph
+
+
+def shutter_row_new(img, d, w, y, s, ao_text="Auto Optimize", thumb_highlight=False):
+    """v1.3 shutter row: last-photo thumb | shutter | primary AO button."""
     cy = y
-    r = round(64 * s)
-    cx = w // 2
+    # last-photo thumbnail, left
+    last_photo_thumb(img, d, round(60 * s), cy, s, highlight=thumb_highlight)
+    # shutter, center-left of the remaining space
+    r = round(62 * s)
+    cx = w // 2 - round(60 * s)
     d.ellipse((cx - r - round(10 * s), cy - r - round(10 * s), cx + r + round(10 * s), cy + r + round(10 * s)),
               outline=(255, 255, 255), width=max(3, round(6 * s)))
     d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(245, 245, 245))
-    for sx in (round(150 * s), w - round(150 * s)):
-        rr = round(34 * s)
-        d.ellipse((sx - rr, cy - rr, sx + rr, cy + rr), outline=MUTED, width=max(2, round(4 * s)))
+    # AO primary button, right of shutter (clear of the ring)
+    ao_cx = cx + r + round(10 * s) + round(215 * s)
+    ao_primary_button(d, ao_cx, cy, s, text=ao_text)
+
+
+def drawer_panel(img, w, h, s):
+    """Mostly-transparent slide-out drawer with manual sliders (left edge)."""
+    dw = min(round(430 * s), w // 2)
+    dh = round(760 * s)
+    y0 = round(h * 0.44) - dh // 2
+    panel = Image.new("RGBA", (dw, dh), (14, 14, 17, 178))  # ~70% transparent
+    pd = ImageDraw.Draw(panel)
+    f_t = font(round(32 * s), "Bold")
+    pd.text((round(36 * s), round(30 * s)), "Manual controls", font=f_t, fill=INK)
+    sliders = [("Exposure", 0.55), ("Warmth", 0.62), ("Tint", 0.45),
+               ("Contrast", 0.70), ("Saturation", 0.58)]
+    f_l = font(round(28 * s), "SemiBold")
+    f_v = font(round(28 * s), "Bold")
+    y = round(110 * s)
+    rh = round(118 * s)
+    for lab, frac in sliders:
+        pd.text((round(36 * s), y), lab, font=f_l, fill=MUTED)
+        val = f"{int(frac * 100)}"
+        vw = pd.textlength(val, font=f_v)
+        pd.text((dw - round(36 * s) - vw, y), val, font=f_v, fill=AMBER_SOFT)
+        ty = y + round(56 * s)
+        tx0, tx1 = round(36 * s), dw - round(36 * s)
+        pd.rounded_rectangle((tx0, ty, tx1, ty + round(14 * s)), round(7 * s), fill=(70, 70, 76))
+        pd.rounded_rectangle((tx0, ty, tx0 + (tx1 - tx0) * frac, ty + round(14 * s)),
+                             round(7 * s), fill=AMBER)
+        kx = tx0 + (tx1 - tx0) * frac
+        kr = round(20 * s)
+        pd.ellipse((kx - kr, ty + round(7 * s) - kr, kx + kr, ty + round(7 * s) + kr),
+                   fill=(245, 245, 245))
+        y += rh
+    img.paste(panel, (0, y0), panel)
 
 
 def dial_rows_card(w, s):
@@ -203,7 +355,6 @@ def dial_rows_card(w, s):
         d.text((pad, y + round(8 * s)), lab, font=f_l, fill=MUTED)
         vr = f"{before}  →  {after}"
         vw = d.textlength(vr, font=f_v)
-        # amber only on the new value
         bw = d.textlength(before, font=f_v)
         aw = d.textlength("  →  ", font=f_v)
         x = cw - pad - vw
@@ -215,136 +366,79 @@ def dial_rows_card(w, s):
 
 
 def screen_01(s):
+    """Hero: the full v1.3 chrome — AO primary, thumb, filter rail, drawer handle."""
     w, h = round(940 * s), round(1920 * s)
     img = viewfinder(w, h)
     d = ImageDraw.Draw(img)
     top_bar(d, w, s)
-    amber_pill(d, w // 2, round(h * 0.60), s)
-    shutter_row(d, w, round(h * 0.90), s)
+    filter_rail(d, w, h, s, active=1)
+    drawer_handle(d, h, s)
+    scene_field(d, w, round(h * 0.70), s)
+    shutter_row_new(img, d, w, round(h * 0.88), s)
     return img
 
 
 def screen_02(s):
+    """Auto Optimize burst: settings-applied card over the new chrome."""
     w, h = round(940 * s), round(1920 * s)
     img = viewfinder(w, h, dim=0.45)
     d = ImageDraw.Draw(img)
     top_bar(d, w, s)
     card = dial_rows_card(w, s)
-    img.paste(card, ((w - card.width) // 2, round(h * 0.30)), rounded_mask(card.size, round(36 * s)))
+    img.paste(card, ((w - card.width) // 2, round(h * 0.26)), rounded_mask(card.size, round(36 * s)))
     f = font(round(38 * s), "Bold")
     bw, bh = round(560 * s), round(104 * s)
-    bx, by = (w - bw) // 2, round(h * 0.30) + card.height + round(56 * s)
+    bx, by = (w - bw) // 2, round(h * 0.26) + card.height + round(56 * s)
     d.rounded_rectangle((bx, by, bx + bw, by + bh), bh // 2, fill=AMBER)
     ctext(d, (w // 2, by + bh // 2), "Apply to camera", f, (18, 18, 18))
-    shutter_row(d, w, round(h * 0.90), s)
+    drawer_handle(d, h, s)
+    filter_rail(d, w, h, s, active=1)
     return img
 
 
 def screen_03(s):
+    """Filter rail spotlight: warm grade applied, rail highlighted."""
     w, h = round(940 * s), round(1920 * s)
-    img = Image.new("RGB", (w, h), (16, 16, 18))
+    img = viewfinder(w, h, warm=0.22)
     d = ImageDraw.Draw(img)
     top_bar(d, w, s)
-    f_h = font(round(36 * s), "Bold")
-    d.text((round(60 * s), round(h * 0.10)), "MANUAL DIALS", font=f_h, fill=MUTED)
-    dials = [("SHUTTER", "1/250"), ("ISO", "400"), ("EV", "±0.0"), ("WB", "5200K"),
-             ("FOCUS", "Locked"), ("ZOOM", "1.0x"), ("TORCH", "Off"), ("LOOK", "goldenHour")]
-    f_l = font(round(28 * s), "SemiBold")
-    f_v = font(round(44 * s), "Bold")
-    cols, gap = 2, round(28 * s)
-    cw = (w - round(120 * s) - gap) // cols
-    chh = round(190 * s)
-    x0, y0 = round(60 * s), round(h * 0.155)
-    for i, (lab, val) in enumerate(dials):
-        x = x0 + (i % cols) * (cw + gap)
-        y = y0 + (i // cols) * (chh + gap)
-        d.rounded_rectangle((x, y, x + cw, y + chh), round(28 * s), fill=CARD,
-                            outline=CARD_EDGE, width=max(2, round(3 * s)))
-        d.text((x + round(32 * s), y + round(28 * s)), lab, font=f_l, fill=MUTED)
-        d.text((x + round(32 * s), y + round(84 * s)), val, font=f_v, fill=AMBER_SOFT)
-    f_n = font(round(32 * s), "SemiBold")
-    ctext(d, (w // 2, round(h * 0.90)), "Tap a dial to adjust", f_n, MUTED)
+    filter_rail(d, w, h, s, active=2)  # Warm
+    drawer_handle(d, h, s)
+    # active look label
+    f = font(round(34 * s), "Bold")
+    label = "Warm"
+    lw = d.textlength(label, font=f)
+    lx = w - round(64 * s) - lw // 2
+    d.text((lx - lw // 2, round(h * 0.44) + round(330 * s)), label, font=f, fill=AMBER_SOFT)
+    scene_field(d, w, round(h * 0.70), s)
+    shutter_row_new(img, d, w, round(h * 0.88), s)
     return img
 
 
 def screen_04(s):
+    """Control drawer open: translucent panel with manual sliders."""
     w, h = round(940 * s), round(1920 * s)
-    img = Image.new("RGB", (w, h), (16, 16, 18))
+    img = viewfinder(w, h, dim=0.15)
     d = ImageDraw.Draw(img)
     top_bar(d, w, s)
-    f_t = font(round(44 * s), "Bold")
-    f_b = font(round(36 * s), "SemiBold")
-    f_c = font(round(34 * s), "SemiBold")
-    cw = w - round(120 * s)
-    body = ("Backlit ridge at golden hour. 1/250s freezes the drifting "
-            "clouds; ISO 400 keeps shadow detail clean without noise.")
-    # wrap body
-    words = body.split()
-    lines, line = [], ""
-    maxw = cw - round(88 * s)
-    for wd in words:
-        t = (line + " " + wd).strip()
-        if d.textlength(t, font=f_b) <= maxw:
-            line = t
-        else:
-            lines.append(line); line = wd
-    lines.append(line)
-    ch = round(120 * s) + len(lines) * round(56 * s) + 3 * round(92 * s) + round(60 * s)
-    card = Image.new("RGB", (cw, ch), CARD)
-    cd = ImageDraw.Draw(card)
-    cd.rounded_rectangle((0, 0, cw - 1, ch - 1), round(36 * s), outline=CARD_EDGE,
-                         width=max(2, round(3 * s)))
-    cd.rectangle((0, round(28 * s), round(10 * s), ch - round(28 * s)), fill=AMBER)
-    cd.text((round(44 * s), round(36 * s)), "Why this recipe?", font=f_t, fill=AMBER_SOFT)
-    y = round(120 * s)
-    for ln in lines:
-        cd.text((round(44 * s), y), ln, font=f_b, fill=INK)
-        y += round(56 * s)
-    checks = ["Shutter 1/250 — freeze motion", "ISO 400 — clean shadows", "EV 0.0 — hold highlights"]
-    y += round(28 * s)
-    for c in checks:
-        r = round(22 * s)
-        cx, cy = round(44 * s) + r, y + round(24 * s)
-        cd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=AMBER)
-        cd.line([(cx - r * 0.45, cy), (cx - r * 0.08, cy + r * 0.38), (cx + r * 0.5, cy - r * 0.35)],
-                fill=(18, 18, 18), width=max(3, round(7 * s)), joint="curve")
-        cd.text((cx + r + round(28 * s), y), c, font=f_c, fill=INK)
-        y += round(92 * s)
-    img.paste(card, ((w - cw) // 2, round(h * 0.22)), rounded_mask(card.size, round(36 * s)))
-    f_n = font(round(32 * s), "SemiBold")
-    ctext(d, (w // 2, round(h * 0.90)), "Ask “Why this?” after any run", f_n, MUTED)
+    filter_rail(d, w, h, s, active=1)
+    scene_field(d, w, round(h * 0.70), s)
+    # shutter row BEFORE the drawer: the last-photo thumbnail crops the clean scene
+    shutter_row_new(img, d, w, round(h * 0.88), s)
+    drawer_panel(img, w, h, s)
     return img
 
 
 def screen_05(s):
+    """Last-photo thumbnail spotlight."""
     w, h = round(940 * s), round(1920 * s)
-    img = viewfinder(w, h, warm=0.16)
+    img = viewfinder(w, h)
     d = ImageDraw.Draw(img)
     top_bar(d, w, s)
-    looks = ["goldenHour", "monoInk", "tealOrange", "warmGlow", "crispCool"]
-    f = font(round(32 * s), "Bold")
-    gap = round(20 * s)
-    hh = round(88 * s)
-    rows = [looks[:3], looks[3:]]
-    y = round(h * 0.68)
-    for row in rows:
-        ws = [d.textlength(l, font=f) + round(72 * s) for l in row]
-        tw = sum(ws) + gap * (len(row) - 1)
-        x = (w - tw) // 2
-        for lab, ww in zip(row, ws):
-            hl = lab == "goldenHour"
-            d.rounded_rectangle((x, y, x + ww, y + hh), hh // 2,
-                                fill=AMBER if hl else (30, 30, 34))
-            ctext(d, (x + ww / 2, y + hh / 2), lab, f, (18, 18, 18) if hl else INK)
-            x += ww + gap
-        y += hh + gap
-    # intensity slider
-    f_s = font(round(30 * s), "SemiBold")
-    sy = y + round(36 * s)
-    sx0, sx1 = round(120 * s), w - round(120 * s)
-    d.text((sx0, sy - round(64 * s)), "Intensity", font=f_s, fill=MUTED)
-    d.rounded_rectangle((sx0, sy, sx1, sy + round(16 * s)), round(8 * s), fill=(60, 60, 64))
-    d.rounded_rectangle((sx0, sy, sx0 + (sx1 - sx0) * 0.7, sy + round(16 * s)), round(8 * s), fill=AMBER)
+    filter_rail(d, w, h, s, active=1)
+    drawer_handle(d, h, s)
+    scene_field(d, w, round(h * 0.70), s)
+    shutter_row_new(img, d, w, round(h * 0.88), s, thumb_highlight=True)
     return img
 
 
