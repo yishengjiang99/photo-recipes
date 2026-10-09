@@ -80,8 +80,13 @@ final class SettingsSolverTests: XCTestCase {
         let sol = SettingsSolver.solve(
             recipeId: "blur-moving-subjects", features: f,
             capabilities: caps, context: ctx1150)
-        // t = 0.04 × 1150 / 900 ≈ 0.051 s.
-        XCTAssertEqual(sol.phoneTargets.exposureDurationSec ?? -1, 0.051, accuracy: 0.01)
+        // t = 0.04 × 1150 / 900 ≈ 0.051 s wanted, but sceneEV100=13
+        // overexposes at min ISO — the shutter yields to the slowest
+        // correctly-exposed one (E_auto/ISO_min ≈ 0.033 s).
+        XCTAssertEqual(sol.phoneTargets.exposureDurationSec ?? -1, 0.0333, accuracy: 0.01)
+        XCTAssertTrue(
+            sol.clampMessages.contains(where: { $0.contains("Bright light") }),
+            "expected the shutter-yield message, got: \(sol.clampMessages)")
         XCTAssertEqual(sol.phoneTargets.focusMode, "locked")
     }
 

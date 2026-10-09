@@ -150,8 +150,8 @@ final class AOTelemetryTests: XCTestCase {
         let data = try JSONEncoder().encode(f)
         let back = try JSONDecoder().decode(SceneFeatures.self, from: data)
         XCTAssertEqual(back.faceCount, 3)
-        // Still schema v3; still out of the Core ML vector.
-        XCTAssertEqual(back.schemaVersion, 3)
+        // Schema v4 (Step 2: pan-meaning change); still out of the Core ML vector.
+        XCTAssertEqual(back.schemaVersion, 4)
         XCTAssertEqual(back.featureVector().count, 45)
     }
 

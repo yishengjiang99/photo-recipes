@@ -34,7 +34,7 @@ final class SceneFeaturesV3Tests: XCTestCase {
         let data = try JSONEncoder().encode(f)
         let back = try JSONDecoder().decode(SceneFeatures.self, from: data)
         XCTAssertEqual(back, f)
-        XCTAssertEqual(back.schemaVersion, 3)
+        XCTAssertEqual(back.schemaVersion, 4)
         XCTAssertEqual(back.lumaHistogram64?.count, 64)
         XCTAssertEqual(back.gradientScores?.count, 13)
         XCTAssertEqual(back.sceneLabels?.count, 2)
