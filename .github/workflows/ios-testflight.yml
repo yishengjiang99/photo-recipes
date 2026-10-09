@@ -8,9 +8,9 @@ on:
         required: false
         default: CI build
       marketing_version:
-        description: CFBundleShortVersionString (must exceed the live version; 1.2 is live)
+        description: CFBundleShortVersionString (must exceed the live version; 1.3 is approved)
         required: false
-        default: "1.3"
+        default: "1.4"
 
 concurrency:
   group: ios-testflight
