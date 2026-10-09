@@ -62,4 +62,3 @@ jobs:
           set -euo pipefail
           pip install -q PyJWT cryptography
           python3 scripts/asc/submit_app_store.py
-          python3 /tmp/submit_app_store.py
