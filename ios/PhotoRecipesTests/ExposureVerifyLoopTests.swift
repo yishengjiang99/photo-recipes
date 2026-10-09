@@ -211,8 +211,8 @@ final class ExposureVerifyLoopTests: XCTestCase {
     // MARK: - A6: priority-respecting corrections
 
     func testShutterPriority_neverMovesShutterWhenISOClamps() {
-        // 2 stops over with ISO already at max: ISO clamps, shutter (the
-        // creative objective) must NOT move.
+        // 2 stops under with ISO already at max: ISO clamps, shutter (the
+        // creative objective) must NOT lengthen.
         let c = ExposureVerifyLoop.correctionTarget(
             error: -2.0, priority: .shutter(seconds: 1 / 250),
             shutterCapSeconds: nil,
@@ -234,13 +234,55 @@ final class ExposureVerifyLoopTests: XCTestCase {
         XCTAssertFalse(c.clamped)
     }
 
-    func testRun_shutterPriorityEndToEnd_shutterNeverMoves() async {
-        // Scene needs less light than min ISO allows at the locked 1/250 s:
-        // ISO clamps at 50 and the loop must report the residual without
-        // ever touching the shutter.
+    func testShutterPriority_overexposedAtMinISO_shortensShutter() {
+        // Daylight pan: 1/30 s at ISO 50 is ~6 stops over. ISO can't go
+        // lower, so exposure wins and the shutter shortens 64×.
+        let c = ExposureVerifyLoop.correctionTarget(
+            error: 6.0, priority: .shutter(seconds: 1 / 30),
+            shutterCapSeconds: nil,
+            currentShutterSeconds: 1 / 30, currentISO: 50,
+            isoRange: 50...3200, shutterRange: 1.0 / 8000...1.0)
+        XCTAssertEqual(c.iso, 50)
+        XCTAssertEqual(c.shutterSeconds, (1.0 / 30) / 64, accuracy: 1e-9)
+        XCTAssertFalse(c.clamped)
+    }
+
+    func testShutterPriority_partialISODrop_thenShutterMakesUpTheRest() {
+        // 3 stops over at ISO 200: ISO takes 2 stops (→ 50), shutter takes 1.
+        let c = ExposureVerifyLoop.correctionTarget(
+            error: 3.0, priority: .shutter(seconds: 1 / 60),
+            shutterCapSeconds: nil,
+            currentShutterSeconds: 1 / 60, currentISO: 200,
+            isoRange: 50...3200, shutterRange: 1.0 / 8000...1.0)
+        XCTAssertEqual(c.iso, 50)
+        XCTAssertEqual(c.shutterSeconds, 1.0 / 120, accuracy: 1e-9)
+    }
+
+    func testRun_shutterPriorityEndToEnd_overexposedConverges() async {
+        // Scene needs less light than min ISO allows at the locked 1/250 s.
+        // Previously the loop gave up ("A bit bright") and left the frame
+        // ~6 stops over; now the shutter yields and the loop converges.
         let device = FakeExposureDevice(
-            sceneProduct: (1 / 250) * 25, // below min ISO — unreachable
+            sceneProduct: (1 / 250) * 25,
             initialShutter: 1 / 250, initialISO: 3200,
+            isoRange: 50...3200, shutterRange: 1.0 / 8000...1.0)
+
+        let result = await ExposureVerifyLoop.run(
+            targetEV: 0, priority: .shutter(seconds: 1 / 250),
+            shutterCapSeconds: nil, maxIterations: 2, clock: device)
+
+        XCTAssertTrue(result.verified)
+        XCTAssertLessThan(abs(result.residualEV), 0.3, "must converge, got \(result.residualEV)")
+        XCTAssertEqual(device.programmedISO, 50)
+        XCTAssertEqual(device.programmedShutter, 1.0 / 500, accuracy: 1e-9)
+    }
+
+    func testRun_shutterPriorityEndToEnd_underexposedNeverLengthensShutter() async {
+        // Scene needs more light than max ISO gives at 1/250 s: the creative
+        // shutter is never lengthened; the residual is reported instead.
+        let device = FakeExposureDevice(
+            sceneProduct: (1 / 250) * 12_800,
+            initialShutter: 1 / 250, initialISO: 800,
             isoRange: 50...3200, shutterRange: 1.0 / 8000...1.0)
 
         let result = await ExposureVerifyLoop.run(
@@ -251,9 +293,9 @@ final class ExposureVerifyLoopTests: XCTestCase {
         XCTAssertTrue(result.clamped)
         XCTAssertTrue(
             device.shutterHistory.allSatisfy { abs($0 - 1 / 250) < 1e-12 },
-            "shutter-priority: the shutter is the creative objective — never moved: \(device.shutterHistory)")
-        XCTAssertEqual(device.programmedISO, 50)
-        XCTAssertGreaterThan(abs(result.residualEV), 0.3, "residual reported, not hidden")
+            "underexposed: the creative shutter must not lengthen: \(device.shutterHistory)")
+        XCTAssertEqual(device.programmedISO, 3200)
+        XCTAssertLessThan(result.residualEV, -0.3, "residual reported, not hidden")
     }
 
     func testAutoPriority_shutterNeverExceedsShutterCap() {

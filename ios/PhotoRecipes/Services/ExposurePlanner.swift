@@ -86,7 +86,15 @@ enum ExposurePlanner {
         /// priorities) — consumed by the verify step via
         /// `SettingsSolver.Solution.shutterCapSeconds`.
         var shutterCapSeconds: Double? = nil
+        /// Set when `.shutter` priority had to shorten the recipe's shutter
+        /// because min ISO still overexposed it (bright light, no ND): the
+        /// shutter the recipe wanted. `shutterSeconds` holds the one used.
+        var yieldedFromShutterSeconds: Double? = nil
     }
+
+    /// Overexposure (in EV) tolerated at min ISO before a creative shutter
+    /// yields to correct exposure.
+    static let overexposureToleranceEV = 0.3
 
     // MARK: - Safe-shutter limits
 
@@ -151,14 +159,35 @@ enum ExposurePlanner {
                 clamped: false, clampMessages: []
             )
         case .shutter(let seconds):
-            let shutter = clamp(
+            var shutter = clamp(
                 seconds,
                 min: limits.minShutterSeconds, max: limits.maxShutterSeconds)
             let iso = clamp(
                 Float(eTarget / shutter), min: limits.minISO, max: limits.maxISO)
-            return finish(
+            // Correct exposure is a hard constraint; the creative shutter is a
+            // soft objective. A phone has no aperture or ND, so when even min
+            // ISO overexposes at the recipe's shutter, shorten the shutter to
+            // the slowest correctly exposed one. Never lengthen it to fix
+            // underexposure — that stays a reported residual.
+            var wantedShutter: Double? = nil
+            let overEV = log2(max(shutter * Double(iso), 1e-12) / eTarget)
+            if overEV > overexposureToleranceEV {
+                wantedShutter = shutter
+                shutter = clamp(
+                    eTarget / Double(iso),
+                    min: limits.minShutterSeconds, max: limits.maxShutterSeconds)
+            }
+            var plan = finish(
                 shutter: shutter, iso: iso, eTarget: eTarget,
                 targetEV: targetEV, limits: limits)
+            if let wanted = wantedShutter {
+                plan.yieldedFromShutterSeconds = wanted
+                plan.clampMessages.append(
+                    "Bright light: used \(RecipeCameraMapper.formatShutter(shutter))" +
+                    " instead of \(RecipeCameraMapper.formatShutter(wanted))" +
+                    " — shade or an ND filter keeps the effect.")
+            }
+            return plan
         case .iso(let value):
             let iso = clamp(value, min: limits.minISO, max: limits.maxISO)
             let shutter = clamp(

@@ -425,6 +425,29 @@ final class AutoOptimizeController: ObservableObject {
         phase = .ready
     }
 
+    /// Called before a camera flip: AO's result belongs to the old camera.
+    /// Clears only what AO itself set — never a user-chosen recipe or look.
+    func resetForCameraFlip(session: CameraSession) {
+        // Read these BEFORE clear(): clear() nils chosenRecipeId and autoAppliedLookId.
+        let aoRecipeId = chosenRecipeId
+        let aoLookId = autoAppliedLookId
+        guard phase.isRunning || aoRecipeId != nil else { return }
+        if let aoLookId, session.activeCreativeLook?.id == aoLookId {
+            session.clearActiveLook()
+        }
+        if let aoRecipeId, session.appliedRecipeId == aoRecipeId {
+            session.appliedRecipeId = nil
+            session.appliedRecipeTitle = nil
+        }
+        session.setSubjectAreaMonitoring(false)
+        session.pendingBracket = nil
+        clear() // bumps runGeneration (cancels an in-flight run), resets phase,
+                // verifyWarning, suggestedLook, also-try, scene-changed chip
+        Analytics.shared.track("ao_reset_on_flip", props: [
+            "recipe_id": aoRecipeId ?? "", "cleared_look": aoLookId ?? "",
+        ])
+    }
+
     func clear() {
         cloudRefineTask?.cancel()
         cloudRefineTask = nil
@@ -448,6 +471,47 @@ final class AutoOptimizeController: ObservableObject {
         alsoTryRecipeId = nil; alsoTryRecipeTitle = nil; alsoTryProbability = nil
         sceneChangedSuggestion = nil
         applyFeedbackToken = 0
+    }
+
+    // MARK: - Staged recipe pinning
+
+    /// Which recipe, if any, pins the run and skips scoring. Only a recipe
+    /// the *user* picked may pin: AO's own previous pick is also written to
+    /// `session.appliedRecipeId`, and feeding that back as "staged" skipped
+    /// scoring forever — one Panning pick then stuck across every scene,
+    /// re-run and camera flip.
+    nonisolated static func pinnedRecipeId(staged: String?, applied: String?, aoChosen: String?) -> String? {
+        if let staged { return staged }
+        guard let applied else { return nil }
+        return applied == aoChosen ? nil : applied
+    }
+
+    /// Pure verify-note copy: the yield note (if any) first, then what the
+    /// closed loop did. Multi-stop misses are stated plainly — "A bit bright"
+    /// hid ~2–7 stop misses.
+    nonisolated static func verifyNotes(residual: Double, iterations: Int, initialError: Double, yieldNote: String?) -> [String] {
+        var notes: [String] = []
+        if let yieldNote { notes.append(yieldNote) }
+        if iterations > 0 {
+            // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
+            // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
+            let stops = abs(initialError)
+            let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
+            let direction = initialError < 0 ? "Brightened" : "Darkened"
+            if abs(residual) > 0.3 {
+                let still = residual < 0 ? "still a bit dark" : "still a bit bright"
+                notes.append("\(direction) \(stopsText), \(still)")
+            } else {
+                notes.append("\(direction) \(stopsText)")
+            }
+        } else if abs(residual) >= 1 {
+            // Say how far off: "A bit bright" hid a ~2–7 stop miss.
+            let stops = String(format: "%.0f", abs(residual))
+            notes.append(residual < 0 ? "~\(stops) stops too dark" : "~\(stops) stops too bright")
+        } else if abs(residual) > 0.3 {
+            notes.append(residual < 0 ? "A bit dark" : "A bit bright")
+        }
+        return notes
     }
 
     // MARK: - Pass 1 (on-device ML loop: features → score → solve → apply → verify)
@@ -492,6 +556,11 @@ final class AutoOptimizeController: ObservableObject {
         sceneWatchTask?.cancel()
         captureWindowTask?.cancel()
         captureWindowTask = nil
+        // `pillStatus` shows verifyWarning ahead of the phase: a stale warning
+        // from the previous run hid this run entirely (an automatic
+        // subject-change re-run converged, re-locked and looked like nothing
+        // happened under "A bit bright").
+        verifyWarning = nil
         runGeneration &+= 1
         let generation = runGeneration
         lastTrigger = trigger
@@ -698,6 +767,7 @@ final class AutoOptimizeController: ObservableObject {
         // The residual is hoisted into the AO Ready telemetry (Phase 3).
         var verifyResidualEV: Double? = nil
         var verifyIterations = 0
+        var shutterYieldNote: String? = nil
         if let targetEV = solution.targetEV,
            solution.phoneTargets.exposureDurationSec != nil,
            entitlements.canApplyDials {
@@ -708,22 +778,12 @@ final class AutoOptimizeController: ObservableObject {
             verifyIterations = v.iterations
             if v.verified {
                 verifyResidualEV = v.residualEV
-                if v.iterations > 0 {
-                    // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
-                    // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
-                    let stops = abs(v.initialError)
-                    let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
-                    let direction = v.initialError < 0 ? "Brightened" : "Darkened"
-                    if abs(v.residualEV) > 0.3 {
-                        let still = v.residualEV < 0 ? "still a bit dark" : "still a bit bright"
-                        verifyNotes.append("\(direction) \(stopsText), \(still)")
-                    } else {
-                        verifyNotes.append("\(direction) \(stopsText)")
-                    }
-                } else if abs(v.residualEV) > 0.3 {
-                    let still = v.residualEV < 0 ? "A bit dark" : "A bit bright"
-                    verifyNotes.append(still)
-                }
+                // Bright light shortened the recipe's creative shutter — say so
+                // plainly, first.
+                shutterYieldNote = solution.clampMessages.first(where: { $0.hasPrefix("Bright light:") })
+                verifyNotes = Self.verifyNotes(
+                    residual: v.residualEV, iterations: v.iterations,
+                    initialError: v.initialError, yieldNote: shutterYieldNote)
                 Analytics.shared.track("auto_optimize_verify", props: [
                     "run_id": runId,
                     "recipe_id": recipe.id,
@@ -768,7 +828,10 @@ final class AutoOptimizeController: ObservableObject {
 
         publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId)
 
-        if suggestedLook != nil { verifyWarning = nil }
+        // A look suggestion may replace a minor note, never a real miss: the
+        // device showed "Ready · Warm Pop" over a frame ~2 stops over.
+        let majorMiss = (verifyResidualEV.map { abs($0) >= 1 } ?? false) || shutterYieldNote != nil
+        if suggestedLook != nil, !majorMiss { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
         captureAppliedDials(session: session, recipeId: recipe.id)
@@ -1024,6 +1087,44 @@ final class AutoOptimizeController: ObservableObject {
     }
 
     // MARK: - Scene-change watch (never a silent re-run)
+
+    /// Minimum seconds between subject-change re-runs.
+    static let subjectChangeCooldown: TimeInterval = 10
+    /// Minimum top-recipe probability for a subject-change re-run to be worth it.
+    static let subjectChangeMinProbability = 0.55
+
+    enum SubjectChangeDecision: Equatable {
+        case rerun
+        case skip(reason: String)
+    }
+
+    /// Pure, testable gate for subject-area-change re-runs. A re-run pulses
+    /// the preview (converge to auto, then re-lock), so it only happens when
+    /// the scene would actually pick a different recipe with confidence.
+    nonisolated static func subjectChangeDecision(
+        now: Date, lastRunDate: Date?, isRunning: Bool,
+        currentRecipeId: String?, sceneTop: RecipeScore?
+    ) -> SubjectChangeDecision {
+        if isRunning { return .skip(reason: "running") }
+        guard currentRecipeId != nil else { return .skip(reason: "no_result") }
+        if let lastRunDate, now.timeIntervalSince(lastRunDate) < subjectChangeCooldown {
+            return .skip(reason: "cooldown")
+        }
+        guard let top = sceneTop else { return .skip(reason: "low_confidence") }
+        if top.recipeId == currentRecipeId { return .skip(reason: "same_recipe") }
+        if top.probability < subjectChangeMinProbability { return .skip(reason: "low_confidence") }
+        return .rerun
+    }
+
+    /// Scores the current scene and decides whether a subject-area change
+    /// warrants a re-run.
+    func shouldRerunOnSubjectChange() async -> SubjectChangeDecision {
+        let snapshot = await SceneSensor.shared.current()
+        let top = scorer.score(snapshot.features).first
+        return Self.subjectChangeDecision(
+            now: Date(), lastRunDate: lastRunDate, isRunning: phase.isRunning,
+            currentRecipeId: chosenRecipeId, sceneTop: top)
+    }
 
     /// After Ready, polls the sensor every 2 s. When a *different* recipe
     /// scores ≥ 0.75 twice in a row, or the scene EV shifted by > 1.5 stops,

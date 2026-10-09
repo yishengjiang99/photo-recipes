@@ -102,19 +102,64 @@ final class ExposurePlannerTests: XCTestCase {
             "Max shutter 1/3s on this lens — 3.0 stops short; tripod + Night mode recommended.")
     }
 
-    func testClamping_overexposedAtMinISO() {
-        // Blazing scene, fixed 1/2 s shutter: ISO bottoms out, residual > 0
-        // (+ = brighter than target).
+    func testShutterPriority_overexposedAtMinISO_shutterYields() {
+        // Fixed 1/2 s shutter in a scene that needs 1/5 s at ISO 50: ISO
+        // bottoms out, so the creative shutter yields to correct exposure
+        // instead of shipping a ~1.3-stop overexposed frame.
         let plan = ExposurePlanner.plan(
             eAuto: 10, targetEV: 0,
             priority: .shutter(seconds: 1.0 / 2),
             motion: motion, limits: limits)
+        XCTAssertEqual(plan.iso, 50)
+        XCTAssertEqual(plan.shutterSeconds, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(plan.residualEV, 0, accuracy: 0.05)
+        XCTAssertEqual(plan.yieldedFromShutterSeconds ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertTrue(
+            plan.clampMessages.contains(where: { $0.contains("Bright light") }),
+            "got: \(plan.clampMessages)")
+    }
+
+    func testShutterPriority_daylightPan_yieldsFromOneThirtieth() {
+        // Direct sun: AE meters ~1/4000 s at ISO 50. A 1/30 s pan would be
+        // ~7 stops over — the plan must come back correctly exposed.
+        let eAuto = (1.0 / 4000) * 50
+        let plan = ExposurePlanner.plan(
+            eAuto: eAuto, targetEV: 0,
+            priority: .shutter(seconds: 1.0 / 30),
+            motion: motion, limits: limits)
+        XCTAssertEqual(plan.iso, 50)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 4000, accuracy: 1e-9)
+        XCTAssertEqual(plan.residualEV, 0, accuracy: 0.05)
+        XCTAssertNotNil(plan.yieldedFromShutterSeconds)
+    }
+
+    func testClamping_overexposedEvenAtFastestShutter() {
+        // Brighter than min ISO at the fastest shutter allows: the shutter
+        // yields as far as it can and the residual is still reported.
+        let plan = ExposurePlanner.plan(
+            eAuto: 0.001, targetEV: 0,
+            priority: .shutter(seconds: 1.0 / 2),
+            motion: motion, limits: limits)
         XCTAssertTrue(plan.clamped)
         XCTAssertEqual(plan.iso, 50)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 8000, accuracy: 1e-12)
         XCTAssertGreaterThan(plan.residualEV, 0)
         XCTAssertTrue(
-            plan.clampMessages[0].contains("Overexposed"),
+            plan.clampMessages.contains(where: { $0.contains("Overexposed") }),
             "got: \(plan.clampMessages)")
+    }
+
+    func testShutterPriority_underexposedNeverLengthens() {
+        // Dark scene at max ISO: the creative shutter is kept and the
+        // residual is reported (no yield in this direction).
+        let plan = ExposurePlanner.plan(
+            eAuto: 1000, targetEV: 0,
+            priority: .shutter(seconds: 1.0 / 30),
+            motion: motion, limits: limits)
+        XCTAssertEqual(plan.shutterSeconds, 1.0 / 30, accuracy: 1e-12)
+        XCTAssertEqual(plan.iso, 3200)
+        XCTAssertLessThan(plan.residualEV, 0)
+        XCTAssertNil(plan.yieldedFromShutterSeconds)
     }
 
     // MARK: - 1d(d): face +0.7 EV

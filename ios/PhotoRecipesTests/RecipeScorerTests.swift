@@ -84,6 +84,32 @@ final class RecipeScorerTests: XCTestCase {
         XCTAssertEqual(scores.first?.recipeId, "blur-moving-subjects")
     }
 
+    /// Device report 2026-10-08: a parked car in direct sun, phone held by
+    /// hand. Wobble moved subject and background together, which read as a
+    /// perfect pan (Panning p≈0.82) and locked 1/30 s in daylight.
+    func testParkedCarHandheld_isNotPanningOrBlur() throws {
+        let scores = scorer.score(try fixture("parked-car-handheld-sun"))
+        let top = try XCTUnwrap(scores.first)
+        XCTAssertNotEqual(top.recipeId, "panning-sharp-subject")
+        XCTAssertNotEqual(top.recipeId, "blur-moving-subjects")
+        let pan = scores.first(where: { $0.recipeId == "panning-sharp-subject" })?.probability ?? 0
+        XCTAssertLessThan(pan, 0.3, "handheld wobble must not read as a pan")
+    }
+
+    func testHandheldWobble_panMatchIsZero() {
+        var f = SceneFeatures()
+        f.subjectSpeedPxPerSec = 150
+        f.backgroundSpeedPxPerSec = 140
+        f.subjectRelativeSpeedPxPerSec = 15
+        let i = SceneFeatures.vectorFeatureNames.firstIndex(of: "motion.panMatchesSubject")!
+        XCTAssertEqual(f.featureVector()[i], 0)
+        // A real sweep still counts.
+        f.backgroundSpeedPxPerSec = 1400
+        f.subjectSpeedPxPerSec = 1500
+        f.subjectRelativeSpeedPxPerSec = 120
+        XCTAssertGreaterThan(f.featureVector()[i], 0.9)
+    }
+
     func testSunsetSilhouette_isHDR() throws {
         let scores = scorer.score(try fixture("sunset-silhouette"))
         XCTAssertEqual(scores.first?.recipeId, "hdr-brights-darks")

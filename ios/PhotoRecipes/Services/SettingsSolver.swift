@@ -239,7 +239,11 @@ enum SettingsSolver {
             if relSpeed > 1 {
                 shutter = targetBlurPx / relSpeed
             } else {
-                shutter = capabilities.maxExposureSeconds
+                // Handheld, a full-second guess just smears the whole frame;
+                // the longest shutter is only for a tripod-steady phone.
+                shutter = features.isTripodSteady
+                    ? capabilities.maxExposureSeconds
+                    : min(capabilities.maxExposureSeconds, 1.0 / 4)
                 messages.append("No subject motion measured — using the longest shutter; re-aim at moving water or traffic.")
             }
             shutter = clamp(shutter, min: 1 / 250, max: capabilities.maxExposureSeconds)
@@ -257,7 +261,10 @@ enum SettingsSolver {
             }()
             targets.focusMode = "locked"
             targets.focusPoint = FocusPointNorm(x: Double(staticPoint.x), y: Double(staticPoint.y))
-            let ndNote: String? = messages.contains(where: { $0.contains("Overexposed") })
+            // Too bright for the blur shutter: the planner shortened it (or
+            // still overexposes at the fastest one) — coach an ND filter.
+            let ndNote: String? = (plan.yieldedFromShutterSeconds != nil
+                || messages.contains(where: { $0.contains("Overexposed") }))
                 ? "ND filter — scene too bright for silky blur at base ISO" : nil
             return withPlanFields(Solution(
                 phoneTargets: targets, clampMessages: messages,
