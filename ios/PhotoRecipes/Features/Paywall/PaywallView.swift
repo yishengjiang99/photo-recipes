@@ -58,6 +58,20 @@ struct PaywallView: View {
                             placeholderMonthly
                         }
 
+                        if storeKit.products.isEmpty {
+                            Button {
+                                Task { await storeKit.loadProducts() }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if storeKit.isLoading { ProgressView().tint(AppTheme.ink) }
+                                    Text(storeKit.isLoading ? "Loading plans…" : "Retry loading plans")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle(filled: false, disabled: storeKit.isLoading))
+                            .disabled(storeKit.isLoading)
+                        }
+
                         comparison
 
                         if let err = storeKit.purchaseError {
@@ -116,7 +130,7 @@ struct PaywallView: View {
                 }
             }
             .toolbarBackground(AppTheme.surface, for: .navigationBar)
-            .task { await storeKit.loadProducts() }
+            .task { if storeKit.products.isEmpty { await storeKit.loadProducts() } }
         }
     }
 
@@ -220,7 +234,7 @@ struct PaywallView: View {
                 .foregroundStyle(AppTheme.accentOnAccent)
                 .frame(minHeight: AppTheme.touchMin)
                 .background(RoundedRectangle(cornerRadius: AppTheme.radiusMd).fill(AppTheme.accent.opacity(0.55)))
-            Text("Load products via StoreKit config / App Store Connect")
+            Text("Loading plans from the App Store…")
                 .font(AppTheme.caption()).foregroundStyle(AppTheme.inkTertiary)
         }
         .padding(AppTheme.space4)

@@ -64,21 +64,45 @@ final class StoreKitManager: ObservableObject {
         products.first { $0.id == IAPProductID.monthly }
     }
 
+    /// Loads both subscriptions. StoreKit returns an EMPTY array (no error) when products are not yet
+    /// available to this storefront/sandbox, so retry with backoff and surface a message instead of
+    /// leaving the paywall stuck on disabled placeholders.
     func loadProducts() async {
+        if isLoading { return }
         isLoading = true
         purchaseError = nil
         defer { isLoading = false }
-        do {
-            let loaded = try await Product.products(for: IAPProductID.all)
-            products = loaded.sorted { lhs, rhs in
-                if lhs.id == IAPProductID.yearly { return true }
-                if rhs.id == IAPProductID.yearly { return false }
-                return lhs.price < rhs.price
+        let delays: [UInt64] = [0, 1, 2, 4]
+        var lastError: Error?
+        for delay in delays {
+            if delay > 0 { try? await Task.sleep(nanoseconds: delay * 1_000_000_000) }
+            if Task.isCancelled { return }
+            do {
+                let loaded = try await Product.products(for: IAPProductID.all)
+                if !loaded.isEmpty {
+                    products = loaded.sorted { lhs, rhs in
+                        if lhs.id == IAPProductID.yearly { return true }
+                        if rhs.id == IAPProductID.yearly { return false }
+                        return lhs.price < rhs.price
+                    }
+                    if loaded.count < IAPProductID.all.count {
+                        print("[IAP] partial products: \(loaded.map(\.id))")
+                    }
+                    return
+                }
+                lastError = nil
+            } catch {
+                lastError = error
             }
-        } catch {
-            purchaseError = "Could not load products: \(error.localizedDescription)"
+        }
+        if let lastError {
+            purchaseError = "Could not load subscriptions: \(lastError.localizedDescription). Tap Retry."
+        } else {
+            purchaseError = "Subscriptions are not available from the App Store right now. Tap Retry."
         }
     }
+
+    var productsUnavailable: Bool { products.isEmpty && !isLoading }
 
     func purchase(_ product: Product) async -> Bool {
         isPurchasing = true
