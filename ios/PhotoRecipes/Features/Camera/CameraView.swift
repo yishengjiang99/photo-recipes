@@ -1328,6 +1328,7 @@ struct CameraView: View {
         case .none:
             return
         case .recommend(let utterance):
+            if applyNamedLookLocally(utterance, source: "voice") { return }
             // Pass utterance as Recommend message so server look-force (monoInk @ 0.55) sees B&W.
             voiceIntentTask = Task { await runRecommend(messageOverride: utterance) }
         case .optimize:
@@ -1861,10 +1862,31 @@ struct CameraView: View {
         case .none:
             return
         case .recommend(let utterance):
+            if applyNamedLookLocally(utterance, source: "scene_field") { return }
             voiceIntentTask = Task { await runRecommend(messageOverride: utterance) }
         case .optimize:
             voiceIntentTask = Task { await runOptimize(trigger: "manual") }
         }
+    }
+
+    /// Named look ("black and white", "moody", …) → bake it onto the finder right away.
+    /// No Recommend round trip: the look is already known, and waiting on the server meant
+    /// a slow / failed / over-quota request left the finder unchanged.
+    /// Returns false when the utterance names no look or dials are locked (server path decides).
+    private func applyNamedLookLocally(_ utterance: String, source: String) -> Bool {
+        guard entitlements.canApplyDials,
+              var look = ApplyFiltersIntent.forcedLook(for: utterance) else { return false }
+        // Asked-for B&W means no colour left — the default 0.55 blend still reads as colour.
+        if look.id == "monoInk" { look.intensity = 1 }
+        session.setActiveLook(look)
+        optimizer.dismissSuggestedLook()
+        optimizer.markDirty(session: session)
+        Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": source])
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        presentLookToastIfNeeded()
+        // Query applied — clear the box for the next one.
+        sceneNote = ""
+        return true
     }
 
     private func dismissSceneKeyboard() {
