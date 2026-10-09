@@ -1,0 +1,33 @@
+name: ASC create subscriptions (ProTune AI Camera Pro)
+
+# Idempotent: finds existing subscription group / subscriptions / localizations / availability /
+# prices and creates only what is missing. Never submits anything for review.
+on:
+  workflow_dispatch:
+    inputs:
+      verify_only:
+        description: Read-only verification, no writes
+        type: boolean
+        default: false
+
+concurrency:
+  group: asc-create-subscriptions
+  cancel-in-progress: false
+
+jobs:
+  subscriptions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create / verify subscriptions
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          BUNDLE_ID: com.ragnus.mvp
+          VERIFY_ONLY: ${{ inputs.verify_only }}
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography requests
+          python3 -u scripts/asc/create_subscriptions.py
