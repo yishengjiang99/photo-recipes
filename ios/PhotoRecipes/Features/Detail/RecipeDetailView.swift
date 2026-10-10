@@ -79,9 +79,11 @@ struct RecipeDetailView: View {
                         .background(tint.opacity(0.18))
                         .clipShape(Capsule())
                 }
-                Text("Book p.\(recipe.page)")
-                    .font(AppTheme.caption())
-                    .foregroundStyle(AppTheme.inkTertiary)
+                if recipe.page > 0 {
+                    Text("Book p.\(recipe.page)")
+                        .font(AppTheme.caption())
+                        .foregroundStyle(AppTheme.inkTertiary)
+                }
             }
 
             Text(recipe.title)

@@ -480,10 +480,16 @@ final class AutoOptimizeController: ObservableObject {
     /// `session.appliedRecipeId`, and feeding that back as "staged" skipped
     /// scoring forever — one Panning pick then stuck across every scene,
     /// re-run and camera flip.
+    /// Selfie-pack recipes never pin: they are iOS-only library presets (not in the server
+    /// recommender catalog or the scorer), so AO scores normally and the selfie look stays active.
     nonisolated static func pinnedRecipeId(staged: String?, applied: String?, aoChosen: String?) -> String? {
-        if let staged { return staged }
-        guard let applied else { return nil }
+        if let staged { return isSelfieRecipe(staged) ? nil : staged }
+        guard let applied, !isSelfieRecipe(applied) else { return nil }
         return applied == aoChosen ? nil : applied
+    }
+
+    nonisolated static func isSelfieRecipe(_ id: String) -> Bool {
+        id.hasPrefix("selfie-")
     }
 
     /// Pure verify-note copy: the yield note (if any) first, then what the

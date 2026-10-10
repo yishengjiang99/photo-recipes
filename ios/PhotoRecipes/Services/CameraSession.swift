@@ -570,7 +570,107 @@ final class CameraSession: NSObject, ObservableObject {
            let ev = mapped.evCompensation {
             setEV(ev)
         }
+        // Selfie preset recipes carry front-camera targets + their look.
+        if let preset = SelfiePresets.preset(recipeId: recipe.id) {
+            await applySelfiePreset(preset, switchToFront: true, setLook: true)
+        }
         return true
+    }
+
+    // MARK: - Selfie presets (front camera)
+
+    /// Applies a selfie preset's capture targets on the front camera: EV via
+    /// `ExposureApplyPolicy` (no custom shutter/ISO is written), Retina Flash via
+    /// `flashMode` when supported, low-light boost when the device has it, face-weighted
+    /// AF/AE, and (Studio Crisp) a white-balance hold once auto exposure settles.
+    /// - switchToFront: Library apply flips to the front camera; a look-picker tap does not.
+    /// - setLook: also activate the preset's look (Library apply). Intensity keeps the user's.
+    func applySelfiePreset(_ preset: SelfiePresets.Preset, switchToFront: Bool, setLook: Bool) async {
+        if switchToFront, !isFront {
+            await ensureFrontCamera()
+        }
+        if setLook {
+            let current = activeCreativeLook?.id == preset.lookId ? activeCreativeLook?.intensity : nil
+            let look = CreativeLook(id: preset.lookId, intensity: current ?? CreativeLookCatalog.defaultIntensity)
+            activeCreativeLook = look
+            applyNotes.append(
+                String(format: "Look “\(look.displayName)” @ %.0f%% — baking still.", look.resolvedIntensity * 100)
+            )
+        }
+        guard isFront else {
+            applyNotes.append("Selfie light settings apply on the front camera.")
+            return
+        }
+        var targets = preset.targets
+        targets.creativeLook = nil // look handled above; never recurse through setActiveLook
+        _ = await applyPhoneTargets(targets, autoApplyLook: true)
+        if preset.meterOnFace {
+            _ = await meterOnDetectedFace()
+        }
+        if preset.lockWhiteBalanceAfterAE {
+            await lockWhiteBalanceAfterExposureSettles()
+        }
+    }
+
+    /// Flips to the front camera and waits (≤ 2 s) for the input swap to land.
+    private func ensureFrontCamera() async {
+        guard !isFront else { return }
+        flipCamera()
+        for _ in 0..<40 where !isFront {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
+    /// Face-weighted continuous AF/AE at the face the scene sensor last saw.
+    /// Guards point-of-interest support (many front cameras are fixed-focus).
+    @discardableResult
+    func meterOnDetectedFace() async -> Bool {
+        let snapshot = await SceneSensor.shared.current()
+        guard snapshot.age < 3, snapshot.features.subjectKind == .face,
+              let box = snapshot.features.subjectBox,
+              let ui = SelfiePresets.faceMeteringPoint(uiFaceBox: box.cgRect),
+              let device = input?.device else { return false }
+        let dp = CoordinateSpaces.clamp01(devicePointOfInterest(fromUINormalized: ui))
+        var wrote = false
+        configure(device) {
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = dp
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                wrote = true
+            }
+            // Leave custom exposure alone; re-writing the mode applies the new point.
+            if device.isExposurePointOfInterestSupported, device.exposureMode != .custom {
+                device.exposurePointOfInterest = dp
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+                wrote = true
+            }
+        }
+        if wrote {
+            focusPoint = ui
+            focusLocked = false
+        }
+        return wrote
+    }
+
+    /// Hold white balance at the current gains once auto exposure stops adjusting (≤ 1.5 s).
+    func lockWhiteBalanceAfterExposureSettles(timeout: TimeInterval = 1.5) async {
+        guard let device = input?.device else { return }
+        guard device.isWhiteBalanceModeSupported(.locked) else {
+            clampMessages.append("WB lock unavailable — guidance only.")
+            return
+        }
+        let start = Date()
+        while (device.isAdjustingExposure || device.isAdjustingWhiteBalance),
+              Date().timeIntervalSince(start) < timeout {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        configure(device) { device.whiteBalanceMode = .locked }
+        whiteBalanceLocked = true
+        applyNotes.append("White balance held once exposure settled.")
     }
 
 
@@ -985,11 +1085,20 @@ final class CameraSession: NSObject, ObservableObject {
 
     @discardableResult
     func applyFlash(_ raw: String) -> Bool {
+        let wanted: FlashCycle
         switch raw.lowercased() {
-        case "on": flash = .on
-        case "auto": flash = .auto
-        default: flash = .off
+        case "on": wanted = .on
+        case "auto": wanted = .auto
+        default: wanted = .off
         }
+        // Front camera: no torch; Retina Flash (screen flash) rides AVCapturePhotoSettings.flashMode
+        // only when the photo output lists it. Otherwise say so and keep going.
+        if isFront, wanted != .off, !photoOutput.supportedFlashModes.contains(wanted.av) {
+            clampMessages.append("Front flash isn’t available on this camera — shooting with available light.")
+            flash = .off
+            return false
+        }
+        flash = wanted
         return true
     }
 
@@ -1308,10 +1417,17 @@ final class CameraSession: NSObject, ObservableObject {
         }
         var copy = look
         if copy.intensity == nil { copy.intensity = CreativeLookCatalog.defaultIntensity }
+        let changed = activeCreativeLook?.id != copy.id
         activeCreativeLook = copy
         applyNotes.append(
             String(format: "Look “\(copy.displayName)” @ %.0f%% — baking preview & still.", copy.resolvedIntensity * 100)
         )
+        // Selfie look picked on the front camera → also set its capture light (not on intensity drags).
+        if changed, isFront, let preset = SelfiePresets.preset(lookId: copy.id) {
+            Task { @MainActor [weak self] in
+                await self?.applySelfiePreset(preset, switchToFront: false, setLook: false)
+            }
+        }
     }
 
     func clearActiveLook() {

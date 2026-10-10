@@ -153,9 +153,11 @@ struct RecipeCard: View {
                             .background(railColor.opacity(0.18))
                             .clipShape(Capsule())
                     }
-                    Text("p.\(recipe.page)")
-                        .font(AppTheme.caption())
-                        .foregroundStyle(AppTheme.inkTertiary)
+                    if recipe.page > 0 {
+                        Text("p.\(recipe.page)")
+                            .font(AppTheme.caption())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                    }
                     Spacer()
                     Button {
                         entitlements.toggleFavorite(recipe.id)

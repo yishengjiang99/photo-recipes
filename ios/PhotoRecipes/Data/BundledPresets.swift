@@ -1,8 +1,11 @@
 import Foundation
 
-/// Faithful port of `src/data/presets.ts` — do not invent recipes beyond these ten.
+/// Faithful port of `src/data/presets.ts` (the ten `core` recipes — do not invent more there),
+/// plus the iOS-only front-camera selfie pack (`selfie`, see `SelfiePresets`). Selfie recipes
+/// are library presets that route through `CameraSession.apply(recipe:)` → `applySelfiePreset`;
+/// they are not in the server recommender catalog and never chosen by Auto Optimize scoring.
 enum BundledPresets {
-    static let all: [Recipe] = [
+    static let core: [Recipe] = [
         leadingLines,
         minimalistPhotos,
         exposureTriangleCheatsheet,
@@ -14,6 +17,17 @@ enum BundledPresets {
         getDownLow,
         hdrBrightsDarks,
     ]
+
+    /// Front-camera selfie pack — one recipe per `SelfiePresets` look.
+    static let selfie: [Recipe] = [
+        selfieNaturalLight,
+        selfieSoftGlow,
+        selfieStudioCrisp,
+        selfieLowLight,
+        selfiePortraitBlur,
+    ]
+
+    static let all: [Recipe] = core + selfie
 
     static func recipe(id: String) -> Recipe? {
         all.first { $0.id == id }
@@ -492,5 +506,127 @@ enum BundledPresets {
             ),
         ],
         phoneTip: "Most phone cameras have an HDR setting in the camera app that will fire off a few photos very quickly. Use a tripod so your phone doesn’t move while the shots are being taken."
+    )
+
+    // MARK: - Selfie pack (front camera, iOS only)
+
+    private static let selfieDials = DialSettings(
+        mode: .auto,
+        notes: "Front camera. Exposure bias, flash and focus are set with the look; the still gets a light + texture pass."
+    )
+
+    static let selfieNaturalLight = Recipe(
+        id: "selfie-natural-light",
+        page: 0, // not from the book — page label hidden
+        title: "Selfie: Natural Light",
+        blurb: "Window-light selfie: exposure weighted to your face, a little warmth and softer light under the eyes.",
+        whenToUse: "Daylight selfies near a window or in open shade, when you want it to look like you on a good-light day.",
+        tags: [.composition],
+        gear: [.phone],
+        dials: selfieDials,
+        steps: [
+            "Face a window or open sky so the light falls on your face, not behind you.",
+            "Hold the phone at or slightly above eye level, arm relaxed.",
+            "The look meters on your face and lifts exposure +0.3 EV.",
+            "Look at the lens, not the screen, and take a few frames.",
+        ],
+        tips: [
+            "Soft, broad light does more than any retouch.",
+            "Skin texture is kept — this is light, not a filter.",
+        ],
+        equipmentChecklist: ["Phone (front camera)"],
+        phoneTip: "Applies the Natural Light look: face-weighted exposure, gentle under-eye light, crisp eyes."
+    )
+
+    static let selfieSoftGlow = Recipe(
+        id: "selfie-soft-glow",
+        page: 0, // not from the book — page label hidden
+        title: "Selfie: Soft Glow",
+        blurb: "A brighter key with a soft highlight glow on skin, like light bouncing back off a white wall.",
+        whenToUse: "Indoor or evening selfies where you want a lifted, luminous feel.",
+        tags: [.composition],
+        gear: [.phone, .flash],
+        dials: selfieDials,
+        steps: [
+            "Turn toward the brightest light source in the room.",
+            "The look sets +0.5 EV and front flash to auto when your phone has it.",
+            "Keep a little distance — arm's length softens the light on your face.",
+        ],
+        tips: [
+            "Glow sits on skin highlights only; eyes and hair stay crisp.",
+            "Lower the look intensity for a subtler glow.",
+        ],
+        equipmentChecklist: ["Phone (front camera)"],
+        phoneTip: "Applies the Soft Glow look: +0.5 EV, front flash auto when supported, soft highlight bloom."
+    )
+
+    static let selfieStudioCrisp = Recipe(
+        id: "selfie-studio-crisp",
+        page: 0, // not from the book — page label hidden
+        title: "Selfie: Studio Crisp",
+        blurb: "Clean, even light with white balance held steady, crisp eyes and hair, and a quieter background.",
+        whenToUse: "Profile photos and headshots against a plain or busy background.",
+        tags: [.depthOfField],
+        gear: [.phone],
+        dials: selfieDials,
+        steps: [
+            "Stand facing even light with some distance from the wall behind you.",
+            "The look sets +0.2 EV, then holds white balance once exposure settles.",
+            "Keep your shoulders square and chin slightly forward.",
+        ],
+        tips: [
+            "Sharpening only touches eyes, brows, lips and hair — never skin.",
+            "The background softens a little; move away from it for more separation.",
+        ],
+        equipmentChecklist: ["Phone (front camera)"],
+        phoneTip: "Applies the Studio Crisp look: WB hold after AE, feature-only sharpening, light background blur."
+    )
+
+    static let selfieLowLight = Recipe(
+        id: "selfie-low-light",
+        page: 0, // not from the book — page label hidden
+        title: "Selfie: Low Light",
+        blurb: "Dim-room selfies with front flash when your phone has it, calmer noise and gentle texture.",
+        whenToUse: "Restaurants, evenings and dim interiors where the front camera gets noisy.",
+        tags: [.hdr],
+        gear: [.phone, .flash],
+        dials: selfieDials,
+        steps: [
+            "Find the nearest light (a lamp, a screen, a window) and face it.",
+            "The look turns on low-light boost where supported and front flash when available.",
+            "Brace your elbow against your body and hold still for the shot.",
+        ],
+        tips: [
+            "Noise is reduced before any smoothing so skin keeps its texture.",
+            "If there's no front flash on your phone, any nearby light helps more than exposure.",
+        ],
+        equipmentChecklist: ["Phone (front camera)"],
+        phoneTip: "Applies the Low Light look: +0.3 EV, low-light boost and front flash when supported, noise reduction."
+    )
+
+    static let selfiePortraitBlur = Recipe(
+        id: "selfie-portrait-blur",
+        page: 0, // not from the book — page label hidden
+        title: "Selfie: Portrait Blur",
+        blurb: "Portrait light with the background softened so your face carries the frame.",
+        whenToUse: "Selfies with a distracting background when portrait mode isn't handy.",
+        tags: [.depthOfField],
+        gear: [.phone],
+        dials: DialSettings(
+            mode: .auto,
+            aperture: "f/2.0 (guidance)",
+            notes: "Front camera. The lens is fixed — the background blur is added to the still from a person mask."
+        ),
+        steps: [
+            "Put a few meters between you and the background.",
+            "The look meters on your face and lifts exposure +0.3 EV.",
+            "Keep hair edges against a simple background for the cleanest separation.",
+        ],
+        tips: [
+            "More distance to the background = more natural-looking blur.",
+            "Lower the look intensity for a lighter blur.",
+        ],
+        equipmentChecklist: ["Phone (front camera)"],
+        phoneTip: "Applies the Portrait Blur look: face-weighted exposure and a masked background blur on the still."
     )
 }

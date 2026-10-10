@@ -96,6 +96,9 @@ struct CameraPreviewView: UIViewRepresentable {
             case "monoInk", "filmGrain", "moodyFilm": return UIColor(white: 0.25, alpha: 1)
             case "tealOrange", "blockbuster": return UIColor(red: 0.2, green: 0.55, blue: 0.55, alpha: 1)
             case "loFiPunch": return UIColor(red: 0.7, green: 0.35, blue: 0.2, alpha: 1)
+            // Selfie pack: neutral warm hint only — the retouch is still-only (no live retouch).
+            case "selfieNatural", "selfieGlow", "selfieStudio", "selfieLowLight", "selfiePortrait":
+                return UIColor(red: 1.0, green: 0.86, blue: 0.74, alpha: 1)
             default: return UIColor(white: 0.4, alpha: 1)
             }
         }
