@@ -1,0 +1,59 @@
+name: Authorize deploy key (root@grepawk.com)
+
+# Manually dispatched. Appends ONE public key to root's authorized_keys on grepawk.com if it is not
+# already there (idempotent; nothing else on the server is changed), then prints the server's SSH host
+# public keys so they can be used as a known_hosts value. Only public keys pass through this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_key:
+        description: 'One ssh-ed25519 public key line (e.g. "ssh-ed25519 AAAA... earsheet-deploy")'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate key
+        env:
+          PUB: ${{ inputs.public_key }}
+        run: |
+          set -euo pipefail
+          [[ "$PUB" =~ ^ssh-ed25519\ [A-Za-z0-9+/]{68}\ [A-Za-z0-9._@-]{1,64}$ ]] || { echo "not a single ssh-ed25519 public key line" >&2; exit 1; }
+          printf '%s\n' "$PUB" > pub.txt
+          ssh-keygen -l -f pub.txt
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          if [[ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]]; then printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true; fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Append key if missing (idempotent)
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'set -eu
+            umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys
+            IFS= read -r key
+            if grep -qxF "$key" ~/.ssh/authorized_keys; then echo "already authorized"; else printf "%s\n" "$key" >> ~/.ssh/authorized_keys; echo "appended"; fi
+            grep -cxF "$key" ~/.ssh/authorized_keys | sed "s/^/copies of key: /"
+            echo "== host public keys (for known_hosts)"
+            for f in /etc/ssh/ssh_host_ed25519_key.pub /etc/ssh/ssh_host_ecdsa_key.pub /etc/ssh/ssh_host_rsa_key.pub; do
+              [ -f "$f" ] && awk "{print \"grepawk.com \" \$1 \" \" \$2}" "$f"
+            done' < pub.txt
