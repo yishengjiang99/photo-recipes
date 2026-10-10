@@ -431,15 +431,15 @@ final class SelfieRetouchEngine {
     // MARK: - Kernels (Core Image built-ins have no signed add; small color kernels instead)
 
     private static let recombineKernel: CIColorKernel? = CIColorKernel(source: """
-    kernel vec4 selfieRecombine(__sample base, __sample low, __sample smooth, float keep) {
-        return vec4(smooth.rgb + keep * (base.rgb - low.rgb), base.a);
+    kernel vec4 selfieRecombine(__sample src, __sample lowf, __sample smoothed, float keep) {
+        return vec4(smoothed.rgb + keep * (src.rgb - lowf.rgb), src.a);
     }
     """)
 
     private static let underEyeKernel: CIColorKernel? = CIColorKernel(source: """
-    kernel vec4 selfieUnderEye(__sample base, __sample low, __sample mask, vec4 delta, vec4 regionMean, float cut) {
-        vec3 add = delta.rgb - cut * (low.rgb - regionMean.rgb);
-        return vec4(base.rgb + mask.r * add, base.a);
+    kernel vec4 selfieUnderEye(__sample src, __sample lowf, __sample m, vec4 offset, vec4 regionMean, float cut) {
+        vec3 lift = offset.rgb - cut * (lowf.rgb - regionMean.rgb);
+        return vec4(src.rgb + m.r * lift, src.a);
     }
     """)
 
