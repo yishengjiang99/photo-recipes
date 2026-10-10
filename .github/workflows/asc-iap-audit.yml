@@ -1,0 +1,35 @@
+name: ASC IAP audit (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_ids:
+        description: Comma-separated ASC app ids
+        required: false
+        default: "6815060815,6818838017,6813991381,6816476323"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit subscriptions and in-app purchases (GET only)
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_IDS: ${{ inputs.app_ids }}
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography requests
+          python3 -u scripts/asc/audit_iap.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iap-audit
+          path: iap_audit.json
+          if-no-files-found: ignore
