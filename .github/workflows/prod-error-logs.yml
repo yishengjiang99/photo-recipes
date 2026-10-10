@@ -1,0 +1,48 @@
+# READ-ONLY: prints recent error-level prod logs from the droplet. Never changes the server.
+name: Prod error logs
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'journalctl --since value (e.g. "2026-10-09 15:00:00 UTC" or "24 hours ago")'
+        default: '24 hours ago'
+        required: true
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          if [[ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]]; then printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts; else ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Collect logs (read-only)
+        env:
+          SINCE: ${{ inputs.since }}
+        run: |
+          set -uo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" "SINCE='$SINCE' bash -s" > raw.txt 2>&1 <<'REMOTE'
+          echo "== units"; systemctl list-units --type=service --all --no-pager --plain | grep -Ei 'finalcut|photo|temple|priestess|nginx|node' || true
+          for u in $(systemctl list-units --type=service --all --no-legend --plain | awk '{print $1}' | grep -Ei 'finalcut|photo|temple|priestess'); do
+            echo "== journal $u (prio<=err)"; journalctl -u "$u" --since "$SINCE" -p err --no-pager -o short-iso | tail -n 300
+            echo "== journal $u (error keywords)"; journalctl -u "$u" --since "$SINCE" --no-pager -o short-iso | grep -Ei 'error|exception|traceback|fatal|unhandled|ECONN|SQLITE|killed|oom|Main process exited' | tail -n 300
+            echo "== restarts $u"; journalctl -u "$u" --since "$SINCE" --no-pager -o short-iso | grep -Ei 'Started|Stopped|Failed|restart' | tail -n 50
+          done
+          echo "== kernel OOM"; journalctl -k --since "$SINCE" --no-pager -o short-iso | grep -i 'out of memory\|oom' | tail -n 50
+          echo "== pm2"; command -v pm2 >/dev/null && pm2 jlist 2>/dev/null | head -c 0; ls ~/.pm2/logs 2>/dev/null
+          echo "== nginx error.log"; for f in /var/log/nginx/*error*.log; do echo "-- $f"; tail -n 400 "$f"; done
+          echo "== nginx 5xx"; for f in /var/log/nginx/*access*.log; do echo "-- $f"; awk '$9 ~ /^5[0-9][0-9]$/' "$f" | tail -n 300; done
+          REMOTE
+          sed -E -e 's/(Authorization|Bearer|token|api[_-]?key|password|secret)([=: "]+)[^ "&]+/\1\2[REDACTED]/Ig' \
+                 -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[EMAIL]/g' \
+                 -e 's/(sk|xai|ghp|gho|pk)[-_][A-Za-z0-9_-]{12,}/[REDACTED]/g' raw.txt > logs.txt
+          rm raw.txt; cat logs.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: prod-error-logs, path: logs.txt }
