@@ -18,11 +18,11 @@ export function LandingDialProof() {
           Ready to capture
         </div>
         <img
-          src="/phones-duo-iphone-android-camera.png"
-          alt="Auto Optimize before and after — shutter, ISO, EV, WB, and focus dials on the live camera."
-          width={900}
-          height={680}
-          className="h-full min-h-[220px] w-full object-cover object-center sm:min-h-[280px]"
+          src="/protune-manual-controls.webp"
+          alt="ProTune AI Camera on iPhone with the manual controls drawer open: exposure, warmth, tint, contrast and saturation sliders next to the Auto Optimize button."
+          width={600}
+          height={1143}
+          className="mx-auto h-auto max-h-[520px] w-auto max-w-full object-contain"
           loading="lazy"
           decoding="async"
         />
