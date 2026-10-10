@@ -1,6 +1,6 @@
 import Foundation
 
-/// Capture grade (V1 look pack). Baked into preview + still when intensity > 0 — not a beauty filter.
+/// Capture grade (V1 look pack + selfie pack). Baked into preview + still when intensity > 0 — not a beauty filter.
 struct CreativeLook: Codable, Hashable, Identifiable {
     var id: String
     /// Blend 0…1 (0 = identity, 1 = full look). Default when agent omits: 0.55.
@@ -45,12 +45,23 @@ struct CreativeLook: Codable, Hashable, Identifiable {
 enum CreativeLookCatalog {
     static let defaultIntensity: Double = 0.55
 
-    /// Exact V1 ids from server `CREATIVE_LOOK_IDS` / design-handoff-capabilities-comms-v1.
-    static let allIds: [String] = [
+    /// Exact V1 ids from server `V1_CREATIVE_LOOK_IDS` / design-handoff-capabilities-comms-v1.
+    /// The voice utterance matrix (`ApplyFiltersIntent.lookUtteranceMatrix`) covers exactly these.
+    static let v1Ids: [String] = [
         "crispCool", "warmGlow", "warmPop", "editorialRed", "softVintage", "monoInk",
         "goldenHour", "loFiPunch", "tealOrange", "blockbuster", "moodyFilm", "coolBlue",
         "softDream", "filmGrain",
     ]
+
+    /// Selfie preset pack (front camera) — server `SELFIE_CREATIVE_LOOK_IDS`.
+    /// Global grade + face-aware still retouch (`SelfieRetouchEngine`): light and texture
+    /// choices only — no reshaping, slimming, eye enlarging or skin-tone lightening.
+    static let selfieIds: [String] = [
+        "selfieNatural", "selfieGlow", "selfieStudio", "selfieLowLight", "selfiePortrait",
+    ]
+
+    /// Every bakeable id — server `CREATIVE_LOOK_IDS` (V1 pack + selfie pack).
+    static let allIds: [String] = v1Ids + selfieIds
 
     static let displayNames: [String: String] = [
         "crispCool": "Crisp Cool",
@@ -67,6 +78,11 @@ enum CreativeLookCatalog {
         "coolBlue": "Cool Blue",
         "softDream": "Soft Dream",
         "filmGrain": "Film Grain",
+        "selfieNatural": "Natural Light",
+        "selfieGlow": "Soft Glow",
+        "selfieStudio": "Studio Crisp",
+        "selfieLowLight": "Low Light",
+        "selfiePortrait": "Portrait Blur",
     ]
 
     /// One craft sentence for Teach — capture grade language, never “filter” / beauty.
@@ -85,6 +101,11 @@ enum CreativeLookCatalog {
         "coolBlue": "Cool blue cast with crisp shadow separation.",
         "softDream": "Soft lift and dreamy low contrast for haze / mist.",
         "filmGrain": "Subtle grain texture plus a mild film curve.",
+        "selfieNatural": "Face-weighted exposure, a touch of warmth and softer light under the eyes — your skin texture stays.",
+        "selfieGlow": "Brighter key and soft highlight glow on skin, like window light bouncing back at you.",
+        "selfieStudio": "Clean studio-style light: white balance held, crisp eyes and hair, a quieter background.",
+        "selfieLowLight": "Low-light selfie: front flash when the phone has it, calmer noise and gentle texture.",
+        "selfiePortrait": "Portrait light with the background softened so your face carries the frame.",
     ]
 
     static func displayName(for id: String) -> String {
@@ -97,6 +118,11 @@ enum CreativeLookCatalog {
 
     static func isKnown(_ id: String) -> Bool {
         allIds.contains(id)
+    }
+
+    /// Selfie pack ids route through `SelfieRetouchEngine` on stills.
+    static func isSelfie(_ id: String) -> Bool {
+        selfieIds.contains(id)
     }
 
     static var catalog: [CreativeLook] {

@@ -9,12 +9,22 @@ final class CreativeLookEngine: ObservableObject {
     static let shared = CreativeLookEngine()
 
     private let context = CIContext(options: [.useSoftwareRenderer: false])
+    /// Face-aware still retouch for the selfie pack (shares this engine's CIContext).
+    private lazy var selfie = SelfieRetouchEngine(context: context)
 
     /// Apply look to a UIImage (preview strip / Teach / still bake). Returns nil if unknown or intensity ≤ 0.
     func bake(image: UIImage, look: CreativeLook) -> UIImage? {
         let intensity = look.resolvedIntensity
         guard intensity > 0, CreativeLookCatalog.isKnown(look.id),
               let cg = image.cgImage else { return nil }
+        if CreativeLookCatalog.isSelfie(look.id) {
+            // Orientation first: CIImage(cgImage:) drops imageOrientation, and Vision landmarks
+            // must run on the upright frame. Bake upright and return `.up`.
+            let upright = SelfieRetouchEngine.orientedInput(cgImage: cg, orientation: image.imageOrientation)
+            guard let blended = blend(look: look, input: upright, intensity: intensity),
+                  let out = context.createCGImage(blended, from: blended.extent) else { return nil }
+            return UIImage(cgImage: out, scale: image.scale, orientation: .up)
+        }
         let input = CIImage(cgImage: cg)
         guard let blended = blend(look: look, input: input, intensity: intensity) else { return nil }
         guard let out = context.createCGImage(blended, from: blended.extent) else { return nil }
@@ -36,6 +46,11 @@ final class CreativeLookEngine: ObservableObject {
     }
 
     func apply(look: CreativeLook, to image: CIImage) -> CIImage {
+        if CreativeLookCatalog.isSelfie(look.id) {
+            // Selfie pack: face-aware retouch + light warmth. Strengths already scale linearly
+            // with intensity inside the engine (see `blend`).
+            return selfie.apply(lookId: look.id, intensity: look.resolvedIntensity, to: image)
+        }
         switch look.id {
         case "crispCool":
             return temperature(contrast(image, 1.12), neutral: 6500, target: 7200)
@@ -83,6 +98,12 @@ final class CreativeLookEngine: ObservableObject {
     }
 
     private func blend(look: CreativeLook, input: CIImage, intensity: Double) -> CIImage? {
+        if CreativeLookCatalog.isSelfie(look.id) {
+            // Selfie strengths are scaled by intensity per step (capped); dissolving on top would
+            // square the effect and ghost the background blur. Intensity 0 stays identity.
+            if intensity <= 0.01 { return input }
+            return apply(look: look, to: input)
+        }
         let graded = apply(look: look, to: input)
         if intensity >= 0.99 { return graded }
         if intensity <= 0.01 { return input }

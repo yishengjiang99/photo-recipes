@@ -95,7 +95,7 @@ export type MaxPhotoDimensions = {
 }
 
 /** V1 creative look pack — ORIGINAL ids only (never trademarked filter brand names). */
-export const CREATIVE_LOOK_IDS = [
+export const V1_CREATIVE_LOOK_IDS = [
   'crispCool',
   'warmGlow',
   'warmPop',
@@ -111,6 +111,23 @@ export const CREATIVE_LOOK_IDS = [
   'softDream',
   'filmGrain',
 ] as const
+
+/**
+ * Selfie preset pack (front camera). Light + texture choices with a face-aware
+ * still retouch on device — never reshaping or skin-tone changes.
+ * Must match iOS `CreativeLookCatalog.selfieIds` (docs/selfie/selfie-presets-prompt.md).
+ * Not part of the voice utterance matrix (LOOK_UTTERANCE_MATRIX covers V1 only).
+ */
+export const SELFIE_CREATIVE_LOOK_IDS = [
+  'selfieNatural',
+  'selfieGlow',
+  'selfieStudio',
+  'selfieLowLight',
+  'selfiePortrait',
+] as const
+
+/** Every id the client can bake — V1 pack + selfie pack. Keep in sync with iOS `CreativeLookCatalog.allIds`. */
+export const CREATIVE_LOOK_IDS = [...V1_CREATIVE_LOOK_IDS, ...SELFIE_CREATIVE_LOOK_IDS] as const
 
 export type CreativeLookId = (typeof CREATIVE_LOOK_IDS)[number]
 
@@ -676,23 +693,8 @@ const tools = [
                 properties: {
                   id: {
                     type: 'string',
-                    enum: [
-                      'crispCool',
-                      'warmGlow',
-                      'warmPop',
-                      'editorialRed',
-                      'softVintage',
-                      'monoInk',
-                      'goldenHour',
-                      'loFiPunch',
-                      'tealOrange',
-                      'blockbuster',
-                      'moodyFilm',
-                      'coolBlue',
-                      'softDream',
-                      'filmGrain',
-                    ],
-                    description: 'V1 creative look id (exact spelling)',
+                    enum: [...CREATIVE_LOOK_IDS],
+                    description: 'Creative look id (exact spelling). selfie* ids are front-camera selfie presets.',
                   },
                   intensity: {
                     type: 'number',
@@ -760,22 +762,7 @@ const tools = [
             properties: {
               id: {
                 type: 'string',
-                enum: [
-                  'crispCool',
-                  'warmGlow',
-                  'warmPop',
-                  'editorialRed',
-                  'softVintage',
-                  'monoInk',
-                  'goldenHour',
-                  'loFiPunch',
-                  'tealOrange',
-                  'blockbuster',
-                  'moodyFilm',
-                  'coolBlue',
-                  'softDream',
-                  'filmGrain',
-                ],
+                enum: [...CREATIVE_LOOK_IDS],
               },
               intensity: { type: 'number', description: '0…1; optional, default 0.55' },
             },
@@ -1009,7 +996,7 @@ function parseCreativeLook(
   if (typeof id !== 'string' || !CREATIVE_LOOK_ID_SET.has(id)) {
     return {
       error:
-        `${pathLabel}.id must be one of the V1 look pack (crispCool, warmGlow, warmPop, editorialRed, softVintage, monoInk, goldenHour, loFiPunch, tealOrange, blockbuster, moodyFilm, coolBlue, softDream, filmGrain)`,
+        `${pathLabel}.id must be one of the creative look pack (${CREATIVE_LOOK_IDS.join(', ')})`,
     }
   }
   // Omit / null → default 0.55; explicit number must be finite 0…1

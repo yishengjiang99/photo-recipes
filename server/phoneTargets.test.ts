@@ -1,9 +1,14 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import {
   parsePhoneTargets,
   CREATIVE_LOOK_DEFAULT_INTENSITY,
   CREATIVE_LOOK_IDS,
+  V1_CREATIVE_LOOK_IDS,
+  SELFIE_CREATIVE_LOOK_IDS,
   LOOK_UTTERANCE_MATRIX,
   inferCreativeLookOverride,
   applyCreativeLookMessageOverride,
@@ -256,7 +261,9 @@ describe('creativeLook message override (named looks / look replace)', () => {
       )
       seen.add(id)
     }
-    for (const id of CREATIVE_LOOK_IDS) {
+    // Voice matrix covers the V1 pack only; selfie presets are picked from the
+    // look picker / Library, not by utterance (see SELFIE_CREATIVE_LOOK_IDS).
+    for (const id of V1_CREATIVE_LOOK_IDS) {
       assert.ok(seen.has(id), `missing matrix coverage for V1 id: ${id}`)
     }
   })
@@ -379,5 +386,49 @@ describe('isApplyFiltersIntent', () => {
     assert.equal(isApplyFiltersIntent('add a look'), true)
     assert.equal(isApplyFiltersIntent('exposure up'), false)
     assert.equal(inferCreativeLookOverride('apply filters'), undefined)
+  })
+})
+
+describe('selfie preset pack (CREATIVE_LOOK_IDS sync with iOS)', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const swift = readFileSync(
+    path.join(here, '..', 'ios', 'PhotoRecipes', 'Models', 'CreativeLook.swift'),
+    'utf8',
+  )
+  function swiftIds(name: string): string[] {
+    const m = swift.match(new RegExp(`static let ${name}: \\[String\\] = \\[([\\s\\S]*?)\\]`))
+    assert.ok(m, `CreativeLookCatalog.${name} not found in CreativeLook.swift`)
+    return [...m![1].matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1])
+  }
+
+  it('CREATIVE_LOOK_IDS = V1 pack + selfie pack', () => {
+    assert.deepEqual([...CREATIVE_LOOK_IDS], [...V1_CREATIVE_LOOK_IDS, ...SELFIE_CREATIVE_LOOK_IDS])
+    assert.equal(V1_CREATIVE_LOOK_IDS.length, 14)
+    assert.deepEqual(
+      [...SELFIE_CREATIVE_LOOK_IDS],
+      ['selfieNatural', 'selfieGlow', 'selfieStudio', 'selfieLowLight', 'selfiePortrait'],
+    )
+    assert.equal(new Set(CREATIVE_LOOK_IDS).size, CREATIVE_LOOK_IDS.length)
+  })
+
+  it('matches the iOS CreativeLookCatalog v1Ids / selfieIds exactly', () => {
+    assert.deepEqual(swiftIds('v1Ids'), [...V1_CREATIVE_LOOK_IDS])
+    assert.deepEqual(swiftIds('selfieIds'), [...SELFIE_CREATIVE_LOOK_IDS])
+  })
+
+  it('parsePhoneTargets accepts every selfie id with default intensity', () => {
+    for (const id of SELFIE_CREATIVE_LOOK_IDS) {
+      const r = parsePhoneTargets({ ev: '+0.3', flash: 'auto', creativeLook: { id } })
+      assert.equal(isError(r), false, `rejected ${id}`)
+      if (isError(r)) return
+      assert.deepEqual(r.creativeLook, { id, intensity: CREATIVE_LOOK_DEFAULT_INTENSITY })
+    }
+  })
+
+  it('selfie ids are never forced by voice utterances', () => {
+    for (const u of ['selfie', 'soft glow', 'studio crisp', 'natural light', 'portrait blur', 'low light']) {
+      const o = inferCreativeLookOverride(u)
+      assert.ok(!o || !(SELFIE_CREATIVE_LOOK_IDS as readonly string[]).includes(o.id), `${u} → ${o?.id}`)
+    }
   })
 })

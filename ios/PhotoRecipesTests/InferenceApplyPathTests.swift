@@ -18,7 +18,8 @@ final class InferenceApplyPathTests: XCTestCase {
 
     func testLookUtteranceMatrix_coversEveryV1Id() {
         let seen = Set(ApplyFiltersIntent.lookUtteranceMatrix.map(\.id))
-        for id in CreativeLookCatalog.allIds {
+        // Voice matrix covers the V1 pack only; selfie presets are not voice-mapped.
+        for id in CreativeLookCatalog.v1Ids {
             XCTAssertTrue(seen.contains(id), "missing matrix coverage for V1 id: \(id)")
         }
         for id in seen {
