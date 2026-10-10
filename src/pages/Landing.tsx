@@ -7,36 +7,36 @@ import { LandingDialProof } from '../components/LandingDialProof'
 import { LandingEmailCapture } from '../components/LandingEmailCapture'
 import { Seo } from '../components/Seo'
 import { useSubscription } from '../hooks/useSubscription'
-import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, APP_STORE_URL } from '../lib/site'
+import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, APP_STORE_URL, OG_IMAGE_PATH, SISTER_SITES } from '../lib/site'
 import { track } from '../lib/analytics'
 
 const TRUST_LINE =
-  'Free Peek · 5 Auto Optimize/day · Pro $7.99/mo or $59.99/yr · 7-day trial'
+  'Free Peek with daily Auto Optimize runs · Pro $7.99/mo or $59.99/yr · 7-day free trial'
 
 const HOW_STEPS = [
   {
     title: 'Sense',
-    body: 'Light, motion, subject — from the viewfinder note',
+    body: 'Reads light, motion and subject from the live viewfinder and your scene note',
     status: 'Reading light…',
   },
   {
     title: 'Reason',
-    body: 'Matches a field recipe; clamps to what the phone can set',
+    body: 'Matches a field recipe and keeps every value within what your iPhone can set',
     status: 'Matching a recipe…',
   },
   {
     title: 'Apply',
-    body: 'Writes shutter / ISO / EV / WB / focus',
+    body: 'Writes shutter, ISO, EV, white balance and focus to the camera',
     status: 'Applying shutter & ISO…',
   },
   {
     title: 'Verify',
-    body: 'Soft pan ← → if you should reframe',
+    body: 'Suggests a small pan left or right if you should reframe',
     status: 'Checking exposure…',
   },
   {
     title: 'Capture',
-    body: 'You still press shutter',
+    body: 'You still press the shutter',
     status: 'Ready to capture',
   },
 ] as const
@@ -74,43 +74,43 @@ const COACH_ONLY = ['Aperture', 'ND filter', 'Tripod / support'] as const
 const FAQ_ITEMS = [
   {
     q: 'Is this an AI filter app?',
-    a: 'No — not a filter app. The iOS app writes dials via Auto Optimize; this site’s Field Coach recommends dials from your viewfinder or photo. Technique before the shutter, not filters after.',
+    a: 'No. The iPhone app writes real camera dials with Auto Optimize, and this site’s Field Coach recommends dials from your viewfinder or a photo. Technique before the shutter, not filters after.',
   },
   {
     q: 'What does Auto Optimize change?',
-    a: 'On iOS: shutter / exposure duration, ISO, EV, white balance, focus (zoom when available). Aperture, ND, and tripod stay coach-only. On this website, Field Coach only recommends dials — it does not apply them in the browser.',
+    a: 'On iPhone: shutter (exposure duration), ISO, EV, white balance and focus, plus zoom when available. Aperture, ND filters and tripod use stay coaching tips. On this website, Field Coach only recommends dials; it does not apply them in the browser.',
   },
   {
     q: 'What’s free?',
-    a: 'Free Peek: browse recipes · 5 Auto Optimize/day until Pro.',
+    a: 'Free Peek lets you browse every recipe and use a limited number of Auto Optimize runs each day.',
   },
   {
     q: 'What’s in Pro?',
-    a: 'Unlimited Auto Optimize, manual dials, Teach, checklists. $59.99/yr or $7.99/mo · 7-day trial.',
+    a: 'Unlimited Auto Optimize, full manual dials, Teach Mode and interactive field checklists. $59.99 a year or $7.99 a month, with a 7-day free trial.',
   },
   {
-    q: 'iPhone and Android?',
-    a: 'Designed for both; duo art shows Auto Optimize + dials.',
+    q: 'Is there an Android app?',
+    a: 'Not yet. ProTune AI Camera is an iPhone app on the App Store. The web Field Coach on this site works in a modern mobile browser, including on Android, and recommends dials without applying them.',
   },
   {
     q: 'Can I override the agent?',
-    a: 'Yes — manual dials (Pro). Teach explains why.',
+    a: 'Yes. Pro includes full manual dials, and Teach Mode explains why each dial moved.',
   },
   {
     q: 'Do I need an account?',
-    a: 'Browse Free Peek without buying; Pro via Stripe (web) / IAP (iOS).',
+    a: 'No sign-in is needed. Pro is bought with Apple In-App Purchase on iPhone or Stripe on the web.',
   },
   {
     q: 'What are field notes?',
-    a: 'Occasional craft emails — not a daily blast. Join via Get field notes.',
+    a: 'Occasional craft emails, not a daily blast. Sign up under Get field notes.',
   },
   {
     q: 'Voice?',
-    a: 'Optional dictate for a scene note on web Field Coach (recommend path). On iOS, voice can feed the same Auto Optimize apply path.',
+    a: 'You can dictate a scene note instead of typing it. On the web it feeds Field Coach recommendations; on iPhone it feeds Auto Optimize.',
   },
   {
     q: 'Publisher affiliation?',
-    a: 'Educational presets inspired by field recipes — not affiliated with the publisher.',
+    a: 'The recipes are educational presets inspired by classic field technique. ProTune AI Camera is not affiliated with any publisher.',
   },
 ] as const
 
@@ -140,17 +140,27 @@ export function Landing() {
     () => [
       {
         '@context': 'https://schema.org',
-        '@type': 'SoftwareApplication',
+        '@type': 'MobileApplication',
         name: 'ProTune AI Camera',
         applicationCategory: 'PhotographyApplication',
-        operatingSystem: 'iOS, Android, Web',
+        operatingSystem: 'iOS',
         description: DEFAULT_DESCRIPTION,
         url: SITE_URL,
+        installUrl: APP_STORE_URL,
+        sameAs: [APP_STORE_URL],
+        image: `${SITE_URL}${OG_IMAGE_PATH}`,
+        publisher: { '@type': 'Person', name: 'Yisheng Jiang' },
         offers: [
           {
             '@type': 'Offer',
             name: 'Free Peek',
             price: '0',
+            priceCurrency: 'USD',
+          },
+          {
+            '@type': 'Offer',
+            name: 'Pro monthly',
+            price: '7.99',
             priceCurrency: 'USD',
           },
           {
@@ -281,15 +291,16 @@ export function Landing() {
           <div className="mx-auto grid max-w-[1120px] items-center gap-10 px-4 pb-14 pt-10 sm:px-6 sm:pt-14 lg:grid-cols-[0.42fr_0.58fr] lg:gap-12 lg:pb-20">
             <div className="text-left">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
-                Field technique · iOS dials · web coach
+                AI camera app for iPhone · web Field Coach
               </p>
               <h1 className="font-display mt-3 max-w-[16ch] text-[clamp(2.15rem,4.2vw,3.25rem)] leading-[1.12] tracking-tight text-ink">
-                Point at the shot — iOS Auto Optimize writes dials; web Field Coach recommends them
+                The AI camera that sets shutter, ISO and focus for you
               </h1>
               <p className="mt-4 max-w-md text-base leading-relaxed text-ink-secondary sm:text-lg">
-                On iPhone, Auto Optimize writes shutter, ISO, EV, white balance, and focus on the live
-                camera. On this site, Field Coach reads your viewfinder or photo and recommends dials —
-                it does not apply them in the browser. Not a filter app.
+                Point your iPhone at the shot and tap Auto Optimize: ProTune AI Camera picks a photo
+                recipe and writes shutter, ISO, EV, white balance and focus to the live camera. On this
+                site, Field Coach reads your viewfinder or a photo and recommends the dials, without
+                applying them. Real camera settings, not filters.
               </p>
               <p className="mt-2 text-sm italic text-ink-tertiary">Set the shot. Then take it.</p>
               <div className="mt-7 flex flex-col gap-3 min-[400px]:flex-row min-[400px]:flex-wrap min-[400px]:items-center">
@@ -298,9 +309,10 @@ export function Landing() {
                 <a
                   href="#notes"
                   onClick={() => track('landing_cta_waitlist', { source: 'hero' })}
+                  aria-label="Get field notes by email"
                   className="inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium text-ink-secondary hover:text-ink min-[400px]:w-auto"
                 >
-                  Join waitlist
+                  Get field notes
                 </a>
               </div>
               <p className="mt-3 text-xs text-ink-tertiary">{TRUST_LINE}</p>
@@ -308,8 +320,8 @@ export function Landing() {
 
             <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
               <img
-                src="/phones-duo-iphone-android-camera.png"
-                alt="ProTune AI Camera on iPhone and Android — Auto Optimize camera with recipe dials."
+                src="/protune-hero.webp"
+                alt="ProTune AI Camera on iPhone: the Auto Optimize viewfinder and the list of settings it applied (shutter, ISO, EV, white balance, focus)."
                 width={1200}
                 height={900}
                 className="h-auto w-full rounded-xl object-contain shadow-[0_24px_60px_-24px_rgba(0,0,0,0.65)] ring-1 ring-border"
@@ -345,7 +357,7 @@ export function Landing() {
         <section id="how" className="scroll-mt-20 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Sense. Reason. Apply. Verify. Shoot.
+              How Auto Optimize works: sense, reason, apply, verify, shoot
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-ink-secondary sm:text-base">
               One loop on the live viewfinder — status you can trust, dials you can override.
@@ -368,7 +380,7 @@ export function Landing() {
         <section id="dials" className="scroll-mt-20 border-y border-border/50 bg-bg-elevated py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Watch the dials move — then take the shot.
+              See exactly which camera settings Auto Optimize changed
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-ink-secondary sm:text-base">
               Before → after chips show exactly what Auto Optimize wrote. Tap through Teach anytime.
@@ -398,7 +410,7 @@ export function Landing() {
         <section className="py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Honest about what the phone can write.
+              What the iPhone camera can set, and what stays a coaching tip
             </h2>
             <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
               <article className="rounded-2xl border border-border bg-surface p-6 text-left">
@@ -437,7 +449,7 @@ export function Landing() {
         <section id="recipes" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Technique recipes, not LUTs.
+              Photo technique recipes: panning, HDR, depth of field and motion
             </h2>
             <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-ink-secondary sm:text-base">
               Panning, HDR, depth of field, motion — dials, steps, and teach-why tips.
@@ -470,7 +482,7 @@ export function Landing() {
         {/* Pricing */}
         <section id="pricing" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
-            <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">Free Peek vs Pro</h2>
+            <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">Pricing: Free Peek vs ProTune Pro</h2>
             <div className="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
               <article className="rounded-2xl border border-border bg-surface p-6 text-left">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">
@@ -482,7 +494,7 @@ export function Landing() {
                     <Check className="h-4 w-4 shrink-0 text-success" /> Browse recipe library
                   </li>
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> 5 Auto Optimize / day
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Daily Auto Optimize runs
                   </li>
                   <li className="flex gap-2">
                     <Check className="h-4 w-4 shrink-0 text-success" /> Teach mode teaser
@@ -509,13 +521,13 @@ export function Landing() {
                 <p className="mt-1 text-xs text-ink-tertiary">or $7.99/mo</p>
                 <ul className="mt-4 space-y-2 text-sm text-ink-secondary">
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> Browse + checklists
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Interactive field checklists
                   </li>
                   <li className="flex gap-2">
                     <Check className="h-4 w-4 shrink-0 text-success" /> Unlimited Auto Optimize
                   </li>
                   <li className="flex gap-2">
-                    <Check className="h-4 w-4 shrink-0 text-success" /> Full manual dials + Teach
+                    <Check className="h-4 w-4 shrink-0 text-success" /> Full manual dials and Teach Mode
                   </li>
                 </ul>
                 <button
@@ -540,9 +552,9 @@ export function Landing() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
                 Field notes
               </p>
-              <h2 className="font-display mt-2 text-3xl text-ink sm:text-4xl">Get field notes</h2>
+              <h2 className="font-display mt-2 text-3xl text-ink sm:text-4xl">Get field notes by email</h2>
               <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-secondary sm:text-base">
-                Occasional craft notes and launch updates — shutter discipline, not promo blasts.
+                Occasional craft notes and app updates: shutter discipline, not promo blasts.
                 Unsubscribe anytime.
               </p>
               <p className="mt-3 text-xs text-ink-tertiary">No spam · No filter tips · Craft only</p>
@@ -555,7 +567,7 @@ export function Landing() {
         <section id="faq" className="scroll-mt-20 border-t border-border/50 py-14 sm:py-20 lg:py-24">
           <div className="mx-auto max-w-[720px] px-4 sm:px-6">
             <h2 className="font-display text-center text-3xl text-ink sm:text-4xl">
-              Questions before you head out.
+              ProTune AI Camera FAQ
             </h2>
             <div className="mt-8">
               {FAQ_ITEMS.map((item) => (
@@ -604,9 +616,9 @@ export function Landing() {
               <Camera className="h-4 w-4 text-accent-soft" />
               <span className="font-display text-lg text-ink">ProTune AI Camera</span>
             </div>
-            <p className="mt-2 text-sm text-ink-tertiary">Field presets for live capture</p>
+            <p className="mt-2 text-sm text-ink-tertiary">AI camera app for iPhone with field recipes</p>
             <p className="mt-1 text-xs text-ink-tertiary">
-              Educational · Not affiliated with the publisher
+              Educational recipes · Not affiliated with any publisher
             </p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-ink-tertiary">
@@ -633,7 +645,23 @@ export function Landing() {
             </Link>
           </div>
         </div>
-        <p className="mx-auto mt-8 max-w-[1120px] px-4 text-xs text-ink-tertiary sm:px-6">
+        <nav
+          aria-label="More apps by the same developer"
+          className="mx-auto mt-8 flex max-w-[1120px] flex-wrap gap-x-4 gap-y-2 px-4 text-xs text-ink-tertiary sm:px-6"
+        >
+          <span>More apps by the same developer:</span>
+          {SISTER_SITES.map((site) => (
+            <a
+              key={site.href}
+              href={site.href}
+              className="underline-offset-2 hover:text-ink hover:underline"
+              onClick={() => track('outbound_click', { target: new URL(site.href).hostname, source: 'footer' })}
+            >
+              {site.label}
+            </a>
+          ))}
+        </nav>
+        <p className="mx-auto mt-4 max-w-[1120px] px-4 text-xs text-ink-tertiary sm:px-6">
           © {new Date().getFullYear()} ProTune AI Camera
         </p>
       </footer>

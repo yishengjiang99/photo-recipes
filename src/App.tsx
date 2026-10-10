@@ -1,15 +1,19 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
-import { Layout } from './components/Layout'
 import { PricingModal } from './components/PricingModal'
-import { Admin } from './pages/Admin'
-import { CameraPage } from './pages/Camera'
 import { Landing } from './pages/Landing'
-import { Library } from './pages/Library'
-import { PresetDetail } from './pages/PresetDetail'
 import { Privacy } from './pages/Privacy'
-import { Success } from './pages/Success'
 import { Support } from './pages/Support'
 import { Terms } from './pages/Terms'
+
+// The marketing and legal pages ship in the main bundle (they are also pre-rendered at build time);
+// the app shell, camera and admin load on demand so the landing page downloads less JavaScript.
+const Layout = lazy(() => import('./components/Layout').then((m) => ({ default: m.Layout })))
+const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
+const CameraPage = lazy(() => import('./pages/Camera').then((m) => ({ default: m.CameraPage })))
+const Library = lazy(() => import('./pages/Library').then((m) => ({ default: m.Library })))
+const PresetDetail = lazy(() => import('./pages/PresetDetail').then((m) => ({ default: m.PresetDetail })))
+const Success = lazy(() => import('./pages/Success').then((m) => ({ default: m.Success })))
 
 function LegacyPresetRedirect() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +23,7 @@ function LegacyPresetRedirect() {
 export default function App() {
   return (
     <>
+      <Suspense fallback={<div className="min-h-dvh bg-bg" aria-busy="true" />}>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/privacy" element={<Privacy />} />
@@ -39,6 +44,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
       <PricingModal />
     </>
   )

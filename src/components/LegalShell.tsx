@@ -6,6 +6,7 @@ import { Seo } from './Seo'
 type LegalShellProps = {
   title: string
   description: string
+  updated?: string
   path: '/privacy' | '/terms' | '/support'
   children: ReactNode
 }
@@ -16,7 +17,7 @@ const NAV = [
   { to: '/support', label: 'Support' },
 ] as const
 
-export function LegalShell({ title, description, path, children }: LegalShellProps) {
+export function LegalShell({ title, description, updated, path, children }: LegalShellProps) {
   return (
     <div className="min-h-dvh">
       <Seo title={`${title} — ProTune AI Camera`} description={description} path={path} />
@@ -42,7 +43,7 @@ export function LegalShell({ title, description, path, children }: LegalShellPro
 
       <main className="mx-auto max-w-[720px] px-4 py-10 sm:px-6 sm:py-14">
         <h1 className="font-display text-3xl text-ink sm:text-4xl">{title}</h1>
-        <p className="mt-2 text-sm text-ink-tertiary">{description}</p>
+        <p className="mt-2 text-sm text-ink-tertiary">{updated ? `Last updated ${updated}. ` : ''}{description}</p>
         <div className="mt-8 space-y-6 text-[15px] leading-relaxed text-ink-secondary">
           {children}
         </div>

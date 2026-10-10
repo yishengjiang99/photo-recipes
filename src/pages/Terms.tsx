@@ -17,7 +17,8 @@ export function Terms() {
   return (
     <LegalShell
       title="Terms of Use"
-      description={`Last updated ${LAST_UPDATED}. Terms for ProTune AI Camera (by Grepawk Photos).`}
+      description="Terms of Use for ProTune AI Camera on iPhone and the web: Free Peek, ProTune Pro subscriptions and trials, acceptable use, AI features and your rights."
+      updated={LAST_UPDATED}
       path="/terms"
     >
       <p>

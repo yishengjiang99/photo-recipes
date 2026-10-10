@@ -13,10 +13,23 @@ server {
     # default 1m; keep in sync with Express json + MAX_IMAGE_BYTES (~100MB).
     client_max_body_size 100m;
 
+    # Real 404s: unknown paths get dist/404.html with status 404 (SPA routes are listed below).
+    error_page 404 /404.html;
+
     # Hashed Vite assets — long cache
-    location /assets/ {
-        expires 7d;
-        add_header Cache-Control "public, immutable";
+    location ^~ /assets/ {
+        # ^~ so the regex locations below do not take over hashed files; same Safari-friendly JS type.
+        types {
+            text/javascript js mjs;
+            text/css css;
+            image/png png;
+            image/jpeg jpg jpeg;
+            image/webp webp;
+            image/svg+xml svg;
+            font/woff2 woff2;
+        }
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
         try_files $uri =404;
     }
 
@@ -58,23 +71,49 @@ server {
     location ~* \.js$ {
         types { text/javascript js; }
         default_type application/javascript;
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
         expires 7d;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
     }
 
+    # Unhashed public images/icons: one week (hashed /assets/ above get a year).
     location ~* \.(css|png|jpg|jpeg|gif|svg|ico|webp|woff2?)$ {
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
         expires 7d;
-        add_header Cache-Control "public, immutable";
+        add_header Cache-Control "public, max-age=604800" always;
         try_files $uri =404;
     }
 
-    # SPA HTML — never cache (prevents blank page after deploy when old
-    # index.html points at deleted hashed JS)
-    location / {
+    # HTML — never cache (prevents blank page after deploy when old index.html points at deleted
+    # hashed JS). Pre-rendered pages: / (index.html), /privacy, /terms, /support (*.html).
+    location = / {
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Pragma "no-cache";
         add_header Expires "0";
-        try_files $uri $uri/ /index.html;
+        try_files /index.html =404;
+    }
+    location ~ ^/(privacy|terms|support)/?$ {
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        default_type text/html;
+        try_files /$1.html /index.html;
+    }
+    # Client-side routes of the SPA (src/App.tsx): app shell, admin UI, checkout return, legacy paths.
+    location ~ ^/(app(/.*)?|admin|success|preset/[^/]+)/?$ {
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        try_files /index.html =404;
+    }
+    # Everything else: real files from dist/ (robots.txt, sitemap.xml, manifest, OG image), else 404.
+    location / {
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        try_files $uri =404;
     }
 }

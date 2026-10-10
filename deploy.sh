@@ -218,6 +218,30 @@ sed -e "s|DEPLOY_PATH_PLACEHOLDER|\${DEPLOY_PATH}|g" \\
 sudo cp "\$TMP_UNIT" /etc/systemd/system/photo-recipes.service
 rm -f "\$TMP_UNIT"
 
+# Guarded nginx update for photo.grepawk.com: back up the current site file, write the new one,
+# re-attach TLS, then nginx -t + reload + local smoke. Any failure restores the backup and reloads.
+NGX_SITE=/etc/nginx/sites-available/photo-recipes
+NGX_BK="/var/backups/photo-recipes-nginx/\$(date -u +%Y%m%dT%H%M%SZ)"
+sudo mkdir -p "\$NGX_BK"
+[[ -f "\$NGX_SITE" ]] && sudo cp -a "\$NGX_SITE" "\$NGX_BK/site.conf"
+code_https() { curl -sk -o /dev/null -m 10 -w '%{http_code}' --resolve "\$1:443:127.0.0.1" "https://\$1\$2" || echo 000; }
+others_snapshot() {
+  local h
+  for h in \$(sudo grep -RhoE '(^|[{;[:space:]])server_name\s+[^;]+;' /etc/nginx/sites-enabled 2>/dev/null | sed -E 's/^.*server_name\s+//; s/;\$//' | tr ' ' '\n' | grep -E '\.' | grep -vxF "\${SERVER_NAME}" | sort -u || true); do
+    echo "https://\$h/ \$(code_https "\$h" /)"
+  done
+  echo "https://grepawk.com/api/health \$(code_https grepawk.com /api/health)"
+  echo "https://grepawk.com/.well-known/skadnetwork/report-attribution/ \$(code_https grepawk.com /.well-known/skadnetwork/report-attribution/)"
+}
+others_snapshot > "\$NGX_BK/others-before.txt" || true
+echo '--> other vhosts before:'; sed 's/^/    /' "\$NGX_BK/others-before.txt"
+nginx_restore() {
+  echo "ERROR: \$1 — restoring \$NGX_SITE from \$NGX_BK" >&2
+  if [[ -f "\$NGX_BK/site.conf" ]]; then sudo cp -a "\$NGX_BK/site.conf" "\$NGX_SITE"; fi
+  sudo nginx -t && sudo systemctl reload nginx && echo 'restored + reloaded' >&2
+  exit 1
+}
+
 echo '--> Writing nginx site…'
 TMP_NGX=\$(mktemp)
 sed -e "s|DEPLOY_PATH_PLACEHOLDER|\${DEPLOY_PATH}|g" \\
@@ -237,6 +261,21 @@ if [[ -d "/etc/letsencrypt/live/\${SERVER_NAME}" ]] && command -v certbot >/dev/
   sudo certbot --nginx -d "\${SERVER_NAME}" --redirect --non-interactive --reinstall || \
     echo "WARNING: certbot reinstall failed; HTTPS may need manual fix"
 fi
+
+# HTTP/2 on the certbot-managed 443 listeners (nginx applies http2 per listening socket, so this
+# matches what grepawk.com already enables on 0.0.0.0:443).
+sudo sed -i -E 's/^(\s*listen 443 ssl)(;.*managed by Certbot)/\1 http2\2/; s/^(\s*listen \[::\]:443 ssl)( ipv6only=on)?(;.*managed by Certbot)/\1 http2\2\3/' "\$NGX_SITE"
+sudo nginx -t || nginx_restore 'nginx -t failed for the new photo site'
+sudo systemctl reload nginx || nginx_restore 'nginx reload failed'
+sleep 2
+smoke_fail=0
+chk() { local got; got="\$(code_https "\${SERVER_NAME}" "\$1")"; if [[ "\$got" == "\$2" ]]; then echo "    ok   \$1 -> \$got"; else echo "    FAIL \$1 -> \$got (want \$2)" >&2; smoke_fail=1; fi; }
+echo '--> nginx smoke (local)'
+chk / 200; chk /privacy 200; chk /terms 200; chk /support 200; chk /app 200; chk /admin 200
+chk /robots.txt 200; chk /sitemap.xml 200; chk /this-page-does-not-exist 404; chk /api/health 200
+others_snapshot > "\$NGX_BK/others-after.txt" || true
+if ! diff "\$NGX_BK/others-before.txt" "\$NGX_BK/others-after.txt"; then echo '    FAIL other vhosts changed status' >&2; smoke_fail=1; else echo '    ok   other vhosts unchanged'; fi
+[[ "\$smoke_fail" == 0 ]] || nginx_restore 'post-reload smoke failed'
 
 # grepawk.com (finalcut site) must also route Apple attribution postbacks to this API:
 # Apple ignores subdomains, so SKAN / AdAttributionKit copies hit grepawk.com.

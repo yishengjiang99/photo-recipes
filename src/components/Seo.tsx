@@ -39,6 +39,11 @@ function upsertLink(rel: string, href: string) {
   el.href = href
 }
 
+/** Filled during build-time prerendering (scripts/prerender.tsx); unused in the browser. */
+export const ssrHead: { current: Required<Omit<SeoProps, 'jsonLd'>> & { jsonLd?: SeoProps['jsonLd'] } | null } = {
+  current: null,
+}
+
 export function Seo({
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
@@ -47,6 +52,7 @@ export function Seo({
   imageAlt = OG_IMAGE_ALT,
   jsonLd,
 }: SeoProps) {
+  if (import.meta.env.SSR) ssrHead.current = { title, description, path, image, imageAlt, jsonLd }
   useEffect(() => {
     const origin = SITE_URL.replace(/\/$/, '')
     const url = `${origin}${path}`

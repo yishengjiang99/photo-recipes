@@ -17,7 +17,7 @@ export function Support() {
   return (
     <LegalShell
       title="Support"
-      description="Help for ProTune AI Camera — billing, camera, and Pro."
+      description="Get help with ProTune AI Camera: contact support, manage or cancel ProTune Pro on iPhone or the web, and get answers about the camera and Auto Optimize."
       path="/support"
     >
       <p>

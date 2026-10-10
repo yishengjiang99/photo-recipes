@@ -17,7 +17,8 @@ export function Privacy() {
   return (
     <LegalShell
       title="Privacy Policy"
-      description={`Last updated ${LAST_UPDATED}. How ProTune AI Camera (by Grepawk Photos) handles your data.`}
+      description="How ProTune AI Camera handles your data on iPhone and the web: camera frames for Auto Optimize, anonymous telemetry, ad attribution, payments and your choices."
+      updated={LAST_UPDATED}
       path="/privacy"
     >
       <p>

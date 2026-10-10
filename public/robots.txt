@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /app/success
+Disallow: /success
 
-Sitemap: https://photorecipes.app/sitemap.xml
+Sitemap: https://photo.grepawk.com/sitemap.xml
