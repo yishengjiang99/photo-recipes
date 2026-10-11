@@ -150,6 +150,18 @@ final class AutoOptimizeController: ObservableObject {
         if phase.isRunning { clear() }
     }
 
+    /// "Reset camera": cancel the in-flight run (its verify loop / WB wait
+    /// are fenced by `CameraSession.resetEpoch`) and Pass 2 refine, and drop
+    /// everything this controller holds about the last run — status, suggested
+    /// look, selfie-auto ownership, also-try — so the next run chooses afresh.
+    /// Never touches the device; `CameraSession.resetToDefaults` does that.
+    func handleUserReset() {
+        // clear() cancels cloud refine / scene watch and bumps runGeneration —
+        // the in-flight run reports auto_optimize_cancel at its next stage.
+        clear()
+        aoTurnedFlashOn = false
+    }
+
     /// (c) The capture session restarted: the device was reset to continuous
     /// AE/AF, so the last run's exposure status no longer describes the finder.
     func handleSessionRestarted() {
@@ -784,6 +796,8 @@ final class AutoOptimizeController: ObservableObject {
         var wroteTargets = false
         if entitlements.canApplyDials {
             wroteTargets = await session.applyPhoneTargets(selfieTargets.targets)
+            // "Reset camera" / flip / pause during the apply: nothing more may land.
+            if wasCancelled(stage: "apply_targets") { return }
             if selfieTargets.targets.flash?.lowercased() == "on", session.flash == .on {
                 aoTurnedFlashOn = true
             } else if selfieTargets.targets.flash?.lowercased() == "off" {
@@ -794,6 +808,7 @@ final class AutoOptimizeController: ObservableObject {
             }
             if let choice = selfieDecision.choice {
                 if choice.meterOnFace { _ = await session.meterOnDetectedFace() }
+                if wasCancelled(stage: "meter_on_face") { return }
                 if choice.lockWhiteBalanceAfterAE { await session.lockWhiteBalanceAfterExposureSettles() }
             }
         }
