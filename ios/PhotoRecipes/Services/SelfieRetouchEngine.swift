@@ -24,18 +24,33 @@ struct SelfieFaceGeometry: Equatable {
     var eyeBoxes: [CGRect] {
         [leftEye, rightEye].compactMap(SelfieRetouchMath.boundingRect)
     }
+
+    /// Head roll (radians, counter-clockwise, bottom-left origin) from the two eye centres.
+    var roll: CGFloat { SelfieRetouchMath.roll(eyes: [leftEye, rightEye]) }
 }
 
-/// Elliptical retouch region (center + full width/height), bottom-left origin pixels.
+/// Elliptical retouch region (center + full width/height in the face's own frame, rotated
+/// by `angle` radians counter-clockwise), bottom-left origin pixels.
 struct SelfieEllipse: Equatable {
     var center: CGPoint
     var width: CGFloat
     var height: CGFloat
+    /// Rotation of the ellipse axes (head roll). 0 = axis-aligned.
+    var angle: CGFloat = 0
 
+    /// Axis-aligned bounding box (accounts for `angle`; equals the plain box at angle 0).
     var rect: CGRect {
-        CGRect(x: center.x - width / 2, y: center.y - height / 2, width: width, height: height)
+        let a = width / 2, b = height / 2
+        let c = abs(cos(angle)), s = abs(sin(angle))
+        let hx = angle == 0 ? a : (a * a * c * c + b * b * s * s).squareRoot()
+        let hy = angle == 0 ? b : (a * a * s * s + b * b * c * c).squareRoot()
+        return CGRect(x: center.x - hx, y: center.y - hy, width: hx * 2, height: hy * 2)
     }
+    /// Top edge in the face's own frame (image top when `angle` is 0).
     var top: CGFloat { center.y + height / 2 }
+
+    /// Unit vector pointing "down the face" (toward the chin) for this ellipse's angle.
+    var faceDown: CGVector { CGVector(dx: sin(angle), dy: -cos(angle)) }
 }
 
 /// Small pure helpers for the selfie retouch pass. Everything here is
@@ -53,18 +68,86 @@ enum SelfieRetouchMath {
     /// Centered 0.55 × eye height below the lower lid, 1.1 × eye width wide, 0.7 × eye
     /// height tall, and kept at least 0.1 × eye height clear of the lower lash line.
     static func underEyeRegion(eye: CGRect) -> SelfieEllipse {
-        let w = eye.width * 1.1
-        let h = eye.height * 0.7
-        var center = CGPoint(x: eye.midX, y: eye.minY - 0.55 * eye.height)
-        let maxTop = eye.minY - 0.1 * eye.height
-        if center.y + h / 2 > maxTop { center.y = maxTop - h / 2 }
-        return SelfieEllipse(center: center, width: w, height: h)
+        underEyeRegion(eyeCenter: CGPoint(x: eye.midX, y: eye.midY),
+                       eyeWidth: eye.width, eyeHeight: eye.height, roll: 0)
     }
 
-    /// Reference cheek patch: same size, directly below the region (offset by one region height).
+    /// Roll-aware under-eye region from an eye's landmark points. The eye is measured in the
+    /// face's own frame (rotated by `roll`), and the region sits "below" along the face's down
+    /// vector, so a tilted head keeps the region under the lid instead of drifting toward the
+    /// nose / outer cheek. `roll == 0` gives exactly `underEyeRegion(eye:)` of the bounding box.
+    static func underEyeRegion(eyePoints: [CGPoint], roll: CGFloat) -> SelfieEllipse? {
+        guard let f = eyeFrame(points: eyePoints, roll: roll) else { return nil }
+        return underEyeRegion(eyeCenter: f.center, eyeWidth: f.width, eyeHeight: f.height, roll: roll)
+    }
+
+    private static func underEyeRegion(eyeCenter: CGPoint, eyeWidth: CGFloat, eyeHeight: CGFloat,
+                                       roll: CGFloat) -> SelfieEllipse {
+        let w = eyeWidth * 1.1
+        let h = eyeHeight * 0.7
+        // Distance (along face-down) from the lower lid to the region centre; keep ≥ 0.1 × eye
+        // height between the region's top and the lower lash line.
+        var belowLid = 0.55 * eyeHeight
+        let minBelowLid = 0.1 * eyeHeight + h / 2
+        if belowLid < minBelowLid { belowLid = minBelowLid }
+        let d = eyeHeight / 2 + belowLid
+        let down = CGVector(dx: sin(roll), dy: -cos(roll))
+        let center = CGPoint(x: eyeCenter.x + down.dx * d, y: eyeCenter.y + down.dy * d)
+        return SelfieEllipse(center: center, width: w, height: h, angle: roll)
+    }
+
+    /// Reference cheek patch: same size, directly below the region along the face's down
+    /// vector (offset by one region height).
     static func cheekPatch(for region: SelfieEllipse) -> SelfieEllipse {
-        SelfieEllipse(center: CGPoint(x: region.center.x, y: region.center.y - region.height),
-                      width: region.width, height: region.height)
+        let down = region.faceDown
+        return SelfieEllipse(center: CGPoint(x: region.center.x + down.dx * region.height,
+                                             y: region.center.y + down.dy * region.height),
+                             width: region.width, height: region.height, angle: region.angle)
+    }
+
+    /// Max head roll handled (±45°). Beyond that the face is lying sideways; clamp.
+    static let maxRoll: CGFloat = .pi / 4
+
+    /// Head roll from the two eye centres (radians, counter-clockwise, bottom-left origin).
+    /// 0 when fewer than two non-empty eyes. Clamped to ±`maxRoll`.
+    static func roll(eyes: [[CGPoint]]) -> CGFloat {
+        let centers = eyes.compactMap(boundingRect).map { CGPoint(x: $0.midX, y: $0.midY) }
+        guard centers.count >= 2 else { return 0 }
+        let sorted = centers.sorted { $0.x < $1.x }
+        let a = sorted[0], b = sorted[sorted.count - 1]
+        let dx = b.x - a.x, dy = b.y - a.y
+        guard dx.isFinite, dy.isFinite, dx != 0 || dy != 0 else { return 0 }
+        let r = atan2(dy, dx)
+        return min(max(r, -maxRoll), maxRoll)
+    }
+
+    /// Eye extent in the face's own frame: centre, width along the eye axis, height across it.
+    static func eyeFrame(points: [CGPoint], roll: CGFloat) -> (center: CGPoint, width: CGFloat, height: CGFloat)? {
+        guard !points.isEmpty else { return nil }
+        let u = CGVector(dx: cos(roll), dy: sin(roll))     // along the eye axis
+        let v = CGVector(dx: -sin(roll), dy: cos(roll))    // face up
+        var minU = CGFloat.infinity, maxU = -CGFloat.infinity
+        var minV = CGFloat.infinity, maxV = -CGFloat.infinity
+        for p in points {
+            let pu = p.x * u.dx + p.y * u.dy
+            let pv = p.x * v.dx + p.y * v.dy
+            minU = min(minU, pu); maxU = max(maxU, pu)
+            minV = min(minV, pv); maxV = max(maxV, pv)
+        }
+        let w = maxU - minU, h = maxV - minV
+        guard w > 0, h > 0, w.isFinite, h.isFinite else { return nil }
+        let cu = (minU + maxU) / 2, cv = (minV + maxV) / 2
+        let center = CGPoint(x: u.dx * cu + v.dx * cv, y: u.dy * cu + v.dy * cv)
+        return (center, w, h)
+    }
+
+    /// Faces worth retouching: at least `primaryFaceFraction` of the largest face's width.
+    /// Small background faces would otherwise be smoothed with the main face's blur sigma.
+    static let primaryFaceFraction: CGFloat = 0.40
+
+    static func primaryFaces(_ faces: [SelfieFaceGeometry]) -> [SelfieFaceGeometry] {
+        guard let largest = faces.map(\.faceWidth).max(), largest > 0 else { return faces }
+        return faces.filter { $0.faceWidth >= largest * primaryFaceFraction }
     }
 
     /// Rec. 709 luminance of a linear RGB triple.
@@ -87,7 +170,29 @@ enum SelfieRetouchMath {
             let y = luminance(d)
             d -= SIMD3(repeating: y)
         }
+        // Lift cap: scale uniformly so no channel moves more than `underEyeMaxLift`. Uniform
+        // scaling keeps the chroma direction and keeps the result between region and cheek.
+        let peak = max(abs(d.x), abs(d.y), abs(d.z))
+        if peak > underEyeMaxLift, peak.isFinite {
+            d *= underEyeMaxLift / peak
+        }
         return d
+    }
+
+    /// Max per-channel under-eye lift (working-space linear units). Stops a wrong reference
+    /// (glasses, hair, a hand) from turning into a visible patch.
+    static let underEyeMaxLift: Double = 0.10
+    /// Skip under-eye when the cheek is more than this many times brighter than the region:
+    /// that gap is an occluder (glasses frame, sunglasses, hair, hand) or glare, not a shadow.
+    static let underEyeMaxCheekRatio: Double = 3.0
+    /// Skip under-eye when the region is essentially black (lens, deep occlusion).
+    static let underEyeMinRegionLuma: Double = 0.005
+
+    /// Whether the region / cheek pair looks like skin in shadow next to skin (safe to lift).
+    static func underEyeIsReliable(region: SIMD3<Double>, cheek: SIMD3<Double>) -> Bool {
+        let r = luminance(region), c = luminance(cheek)
+        guard r.isFinite, c.isFinite, r >= underEyeMinRegionLuma else { return false }
+        return c <= r * underEyeMaxCheekRatio
     }
 
     /// Background blur radius in pixels: ≤ 18 px at 12 MP (4032 px long edge), scaled by image size.
@@ -166,8 +271,11 @@ struct SelfieAnalysis {
 /// masks → noise reduction (low light) → frequency-separation smoothing → highlight
 /// bloom → under-eye softening → feature-only sharpen → masked background blur →
 /// global warmth. No face → global grade only.
-@MainActor
-final class SelfieRetouchEngine {
+///
+/// Not main-actor bound: the still bake runs off the main thread (see `CameraSession`'s
+/// photo delegate). The only state is an immutable, thread-safe `CIContext`; every call
+/// builds its own Vision requests and CIFilters.
+final class SelfieRetouchEngine: @unchecked Sendable {
     private let context: CIContext
 
     init(context: CIContext) {
@@ -227,7 +335,9 @@ final class SelfieRetouchEngine {
         var faces: [SelfieFaceGeometry] = []
         do {
             try handler.perform([faceReq])
-            faces = (faceReq.results ?? []).prefix(4).compactMap { Self.geometry(from: $0, fullSize: extent.size) }
+            faces = SelfieRetouchMath.primaryFaces(
+                (faceReq.results ?? []).prefix(4).compactMap { Self.geometry(from: $0, fullSize: extent.size) }
+            )
         } catch {
             faces = []
         }
@@ -392,11 +502,14 @@ final class SelfieRetouchEngine {
         guard s > 0 else { return image }
         var out = image
         for face in faces {
-            for eye in face.eyeBoxes {
-                let region = SelfieRetouchMath.underEyeRegion(eye: eye)
+            let roll = face.roll
+            for eye in [face.leftEye, face.rightEye] where !eye.isEmpty {
+                guard let region = SelfieRetouchMath.underEyeRegion(eyePoints: eye, roll: roll) else { continue }
                 let cheek = SelfieRetouchMath.cheekPatch(for: region)
-                guard let rMean = mean(low, in: region.rect.insetBy(dx: region.width * 0.15, dy: region.height * 0.15)),
-                      let cMean = mean(low, in: cheek.rect.insetBy(dx: cheek.width * 0.15, dy: cheek.height * 0.15))
+                let rRect = region.rect, cRect = cheek.rect
+                guard let rMean = mean(low, in: rRect.insetBy(dx: rRect.width * 0.15, dy: rRect.height * 0.15)),
+                      let cMean = mean(low, in: cRect.insetBy(dx: cRect.width * 0.15, dy: cRect.height * 0.15)),
+                      SelfieRetouchMath.underEyeIsReliable(region: rMean, cheek: cMean)
                 else { continue }
                 let delta = SelfieRetouchMath.underEyeDelta(region: rMean, cheek: cMean, strength: s)
                 let mask = Self.ellipseMask(region).cropped(to: image.extent)
@@ -518,6 +631,7 @@ final class SelfieRetouchEngine {
         let unit = g.outputImage ?? CIImage(color: .black)
         return unit
             .transformed(by: CGAffineTransform(scaleX: max(e.width / 2, 0.5), y: max(e.height / 2, 0.5)))
+            .transformed(by: CGAffineTransform(rotationAngle: e.angle))
             .transformed(by: CGAffineTransform(translationX: e.center.x, y: e.center.y))
     }
 

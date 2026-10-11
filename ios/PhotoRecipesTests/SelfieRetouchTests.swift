@@ -294,7 +294,138 @@ final class SelfieRetouchTests: XCTestCase {
         XCTAssertEqual(baked?.cgImage?.height, 40)
     }
 
+    // MARK: - Follow-ups: roll-aware under-eye
+
+    func testRoll_fromEyeCenters_levelTiltedAndClamped() {
+        let left = corners(CGRect(x: 80, y: 190, width: 30, height: 12))
+        let right = corners(CGRect(x: 130, y: 190, width: 30, height: 12))
+        XCTAssertEqual(SelfieRetouchMath.roll(eyes: [left, right]), 0, accuracy: 1e-12)
+        XCTAssertEqual(SelfieRetouchMath.roll(eyes: [right, left]), 0, accuracy: 1e-12, "eye order must not matter")
+        XCTAssertEqual(SelfieRetouchMath.roll(eyes: [left, []]), 0, "one eye → no roll")
+        let up = corners(CGRect(x: 130, y: 240, width: 30, height: 12)) // right eye 50 px higher, 50 px across
+        XCTAssertEqual(SelfieRetouchMath.roll(eyes: [left, up]), .pi / 4, accuracy: 1e-9)
+        let steep = corners(CGRect(x: 90, y: 400, width: 30, height: 12))
+        XCTAssertEqual(SelfieRetouchMath.roll(eyes: [left, steep]), SelfieRetouchMath.maxRoll, accuracy: 1e-12)
+    }
+
+    func testUnderEyeRegion_levelEyePointsMatchBoxGeometry() {
+        let eye = CGRect(x: 100, y: 200, width: 40, height: 20)
+        let fromPoints = try! XCTUnwrap(SelfieRetouchMath.underEyeRegion(eyePoints: corners(eye), roll: 0))
+        let fromBox = SelfieRetouchMath.underEyeRegion(eye: eye)
+        XCTAssertEqual(fromPoints.center.x, fromBox.center.x, accuracy: 1e-9)
+        XCTAssertEqual(fromPoints.center.y, fromBox.center.y, accuracy: 1e-9)
+        XCTAssertEqual(fromPoints.width, fromBox.width, accuracy: 1e-9)
+        XCTAssertEqual(fromPoints.height, fromBox.height, accuracy: 1e-9)
+        XCTAssertEqual(fromPoints.angle, 0)
+        XCTAssertNil(SelfieRetouchMath.underEyeRegion(eyePoints: [], roll: 0))
+    }
+
+    func testUnderEyeRegion_rotatesWithTheHead() {
+        // Rotate a level eye about the origin; the region (and cheek) must rotate with it, so it
+        // stays the same distance below the lid along the face — not straight down the image.
+        let eye = CGRect(x: 100, y: 200, width: 40, height: 20)
+        let level = SelfieRetouchMath.underEyeRegion(eye: eye)
+        let levelCheek = SelfieRetouchMath.cheekPatch(for: level)
+        let theta: CGFloat = 20 * .pi / 180
+        let rot = CGAffineTransform(rotationAngle: theta)
+        let tilted = try! XCTUnwrap(SelfieRetouchMath.underEyeRegion(eyePoints: corners(eye).map { $0.applying(rot) },
+                                                                     roll: theta))
+        let expected = level.center.applying(rot)
+        XCTAssertEqual(tilted.center.x, expected.x, accuracy: 1e-6)
+        XCTAssertEqual(tilted.center.y, expected.y, accuracy: 1e-6)
+        XCTAssertEqual(tilted.width, level.width, accuracy: 1e-6)
+        XCTAssertEqual(tilted.height, level.height, accuracy: 1e-6)
+        XCTAssertEqual(tilted.angle, theta, accuracy: 1e-12)
+        let cheek = SelfieRetouchMath.cheekPatch(for: tilted)
+        let expectedCheek = levelCheek.center.applying(rot)
+        XCTAssertEqual(cheek.center.x, expectedCheek.x, accuracy: 1e-6)
+        XCTAssertEqual(cheek.center.y, expectedCheek.y, accuracy: 1e-6)
+        // The image-space (unrotated) placement would be off by a real distance at 20°.
+        XCTAssertGreaterThan(hypot(tilted.center.x - level.center.x, tilted.center.y - level.center.y), 10)
+    }
+
+    func testEllipseRect_boundsRotation() {
+        let e = SelfieEllipse(center: CGPoint(x: 50, y: 50), width: 40, height: 10)
+        XCTAssertEqual(e.rect, CGRect(x: 30, y: 45, width: 40, height: 10))
+        var r = e; r.angle = .pi / 2
+        XCTAssertEqual(r.rect.width, 10, accuracy: 1e-9, "90° swaps the extents")
+        XCTAssertEqual(r.rect.height, 40, accuracy: 1e-9)
+        XCTAssertEqual(r.rect.midX, 50, accuracy: 1e-9)
+    }
+
+    // MARK: - Follow-ups: under-eye guards
+
+    func testUnderEyeDelta_liftIsCappedAndKeepsDirection() {
+        let region = SIMD3<Double>(0.05, 0.03, 0.05)
+        let cheek = SIMD3<Double>(0.60, 0.45, 0.35)
+        let d = SelfieRetouchMath.underEyeDelta(region: region, cheek: cheek, strength: 1)
+        XCTAssertLessThanOrEqual(max(abs(d.x), abs(d.y), abs(d.z)), SelfieRetouchMath.underEyeMaxLift + 1e-12)
+        let raw = cheek - region
+        let k = d.x / raw.x
+        XCTAssertEqual(d.y, raw.y * k, accuracy: 1e-12, "uniform scale keeps the chroma direction")
+        XCTAssertEqual(d.z, raw.z * k, accuracy: 1e-12)
+        XCTAssertGreaterThan(SelfieRetouchMath.luminance(region + d), SelfieRetouchMath.luminance(region))
+        XCTAssertLessThanOrEqual(SelfieRetouchMath.luminance(region + d), SelfieRetouchMath.luminance(cheek))
+        // Small gaps are untouched by the cap.
+        let near = SIMD3<Double>(0.50, 0.40, 0.32)
+        XCTAssertEqual(SelfieRetouchMath.underEyeDelta(region: near, cheek: cheek, strength: 0.5), (cheek - near) * 0.5)
+    }
+
+    func testUnderEyeReliability_skipsOccludersAndGlare() {
+        let cheek = SIMD3<Double>(0.40, 0.30, 0.25)
+        XCTAssertTrue(SelfieRetouchMath.underEyeIsReliable(region: cheek * 0.6, cheek: cheek), "ordinary shadow")
+        XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: cheek * 0.2, cheek: cheek), "glasses frame / hair")
+        XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: .zero, cheek: cheek), "black lens")
+        XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: cheek, cheek: SIMD3(repeating: .nan)))
+    }
+
+    func testUnderEyeImage_skipsWhenReferenceIsAnOccluder() {
+        let size = CGSize(width: 200, height: 200)
+        let eye = CGRect(x: 80, y: 120, width: 40, height: 20)
+        let region = SelfieRetouchMath.underEyeRegion(eye: eye)
+        let skin = CIImage(color: CIColor(red: 0.85, green: 0.70, blue: 0.60)).cropped(to: CGRect(origin: .zero, size: size))
+        // A near-black band under the eye (sunglasses lens / frame), not a shadow.
+        let lens = CIImage(color: CIColor(red: 0.02, green: 0.02, blue: 0.02))
+            .cropped(to: region.rect.insetBy(dx: -8, dy: -4))
+        let input = lens.composited(over: skin)
+        let face = SelfieFaceGeometry(boundingBox: CGRect(x: 40, y: 40, width: 120, height: 140), leftEye: corners(eye))
+        let low = SelfieRetouchEngine.gaussian(input, sigma: 1.5)
+        let out = engine.applyUnderEye(input, low: low, faces: [face], strength: SelfieRetouchParams.maxUnderEye)
+        XCTAssertEqual(bytes(out, size), bytes(input, size), "occluder → no lift (no grey patch on the lens)")
+    }
+
+    // MARK: - Follow-ups: primary faces
+
+    func testPrimaryFaces_dropsSmallBackgroundFaces() {
+        let main = SelfieFaceGeometry(boundingBox: CGRect(x: 0, y: 0, width: 400, height: 500))
+        let friend = SelfieFaceGeometry(boundingBox: CGRect(x: 500, y: 0, width: 200, height: 250))
+        let passerby = SelfieFaceGeometry(boundingBox: CGRect(x: 800, y: 0, width: 60, height: 75))
+        XCTAssertEqual(SelfieRetouchMath.primaryFaces([passerby, main, friend]), [main, friend])
+        XCTAssertEqual(SelfieRetouchMath.primaryFaces([]), [])
+        XCTAssertEqual(SelfieRetouchMath.primaryFaces([passerby]), [passerby])
+    }
+
+    // MARK: - Follow-ups: off-main bake
+
+    func testBake_runsOffTheMainThread() async {
+        let input = gradient(CGSize(width: 64, height: 48))
+        let cg = context.createCGImage(input, from: input.extent)!
+        let jpeg = try! XCTUnwrap(UIImage(cgImage: cg).jpegData(compressionQuality: 0.9))
+        let look = CreativeLook(id: "selfieGlow", intensity: 1)
+        let result: (Data, Bool) = await Task.detached {
+            (CreativeLookEngine.shared.bakeJPEG(jpeg, look: look), Self.onMainThread())
+        }.value
+        XCTAssertFalse(result.1, "bake must be callable off the main thread")
+        XCTAssertNotEqual(result.0, jpeg, "Soft Glow warms even a no-face frame")
+        XCTAssertNotNil(UIImage(data: result.0))
+        let viaSession = await CameraSession.bakeOffMain(jpeg, look: CreativeLook(id: "selfieGlow", intensity: 0))
+        XCTAssertEqual(viaSession, jpeg, "intensity 0 returns the original bytes")
+    }
+
     // MARK: - Helpers
+
+    /// Sync, nonisolated probe (`Thread.isMainThread` is unavailable directly in async code).
+    nonisolated private static func onMainThread() -> Bool { Thread.isMainThread }
 
     private func corners(_ r: CGRect) -> [CGPoint] {
         [CGPoint(x: r.minX, y: r.midY), CGPoint(x: r.midX, y: r.maxY), CGPoint(x: r.maxX, y: r.midY), CGPoint(x: r.midX, y: r.minY)]

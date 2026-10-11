@@ -4,13 +4,22 @@ import UIKit
 
 /// Capture-grade Creative Looks (V1 pack). CIFilter chain + intensity blend.
 /// Bakes into live preview AND still JPEG when intensity > 0 (not a beauty filter).
-@MainActor
-final class CreativeLookEngine: ObservableObject {
+///
+/// Not main-actor bound: the still bake (selfie looks run Vision + a full-resolution render)
+/// runs off the main thread from `CameraSession`'s photo delegate. All state is immutable —
+/// a thread-safe `CIContext` and the selfie engine — and every call builds its own CIFilters.
+final class CreativeLookEngine: ObservableObject, @unchecked Sendable {
     static let shared = CreativeLookEngine()
 
-    private let context = CIContext(options: [.useSoftwareRenderer: false])
+    private let context: CIContext
     /// Face-aware still retouch for the selfie pack (shares this engine's CIContext).
-    private lazy var selfie = SelfieRetouchEngine(context: context)
+    private let selfie: SelfieRetouchEngine
+
+    init() {
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        context = ctx
+        selfie = SelfieRetouchEngine(context: ctx)
+    }
 
     /// Apply look to a UIImage (preview strip / Teach / still bake). Returns nil if unknown or intensity ≤ 0.
     func bake(image: UIImage, look: CreativeLook) -> UIImage? {
