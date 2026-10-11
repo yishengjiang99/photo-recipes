@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Pure lifecycle policy for the capture session (and the mic it can share the
 /// screen with). Decides whether the camera should be running for a given
@@ -21,6 +22,15 @@ enum CameraLifecyclePolicy {
 
         init(_ phase: ScenePhase) {
             switch phase {
+            case .active: self = .active
+            case .inactive: self = .inactive
+            case .background: self = .background
+            @unknown default: self = .background
+            }
+        }
+
+        init(_ state: UIApplication.State) {
+            switch state {
             case .active: self = .active
             case .inactive: self = .inactive
             case .background: self = .background
@@ -71,6 +81,66 @@ enum CameraLifecyclePolicy {
     /// `.background` and never needs camera permission.
     static func shouldKeepMic(scenePhase: Phase, isCameraTabVisible: Bool) -> Bool {
         isCameraTabVisible && scenePhase != .background
+    }
+
+    // MARK: Still look bake vs. backgrounding
+
+    /// Core Image renders the look on the GPU, and iOS doesn't allow GPU work from the
+    /// background. A photo that arrives after the app is backgrounded keeps its un-baked JPEG,
+    /// the same fallback as any other bake failure.
+    static func shouldStartStillBake(appPhase: Phase) -> Bool {
+        appPhase != .background
+    }
+
+    /// Keep a finished bake only if the app stayed out of the background for the whole bake.
+    /// A render that ran into the background may have failed or come out wrong, so the shot
+    /// keeps its original JPEG.
+    static func keepsStillBake(enteredBackgroundDuringBake: Bool, appPhaseAfter: Phase) -> Bool {
+        !enteredBackgroundDuringBake && appPhaseAfter != .background
+    }
+}
+
+/// Watches for `didEnterBackground` while an async step (the still bake) is in flight.
+@MainActor
+final class BackgroundEntryWatch {
+    private(set) var didEnterBackground = false
+    private var token: NSObjectProtocol?
+
+    init() {
+        token = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.didEnterBackground = true }
+        }
+    }
+
+    /// Stops watching. Returns whether the app entered the background meanwhile.
+    func finish() -> Bool {
+        if let token { NotificationCenter.default.removeObserver(token) }
+        token = nil
+        return didEnterBackground
+    }
+}
+
+/// `UIApplication` background-task assertion: a shot that was mid bake / save when the user
+/// left the app still gets finished and written to Photos instead of sitting suspended in
+/// memory (and lost if iOS later jettisons the app). Idempotent `end()`. The expiration
+/// handler ends it too.
+@MainActor
+final class BackgroundTaskAssertion {
+    private var id: UIBackgroundTaskIdentifier = .invalid
+
+    init(name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            // Called on the main thread; the task must end before this returns.
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
     }
 }
 

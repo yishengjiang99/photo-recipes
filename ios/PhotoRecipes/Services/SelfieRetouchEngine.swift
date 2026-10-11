@@ -150,6 +150,16 @@ enum SelfieRetouchMath {
         return faces.filter { $0.faceWidth >= largest * primaryFaceFraction }
     }
 
+    /// Max faces retouched per still.
+    static let maxRetouchFaces = 4
+
+    /// Faces to retouch: primary faces, largest first, at most `limit`. Vision doesn't return
+    /// faces in size order, so the size filter and sort run before the limit. Otherwise a
+    /// crowded frame could drop the main face.
+    static func retouchFaces(_ faces: [SelfieFaceGeometry], limit: Int = maxRetouchFaces) -> [SelfieFaceGeometry] {
+        Array(primaryFaces(faces).sorted { $0.faceWidth > $1.faceWidth }.prefix(max(limit, 0)))
+    }
+
     /// Rec. 709 luminance of a linear RGB triple.
     static func luminance(_ rgb: SIMD3<Double>) -> Double {
         0.2126 * rgb.x + 0.7152 * rgb.y + 0.0722 * rgb.z
@@ -182,8 +192,10 @@ enum SelfieRetouchMath {
     /// Max per-channel under-eye lift (working-space linear units). Stops a wrong reference
     /// (glasses, hair, a hand) from turning into a visible patch.
     static let underEyeMaxLift: Double = 0.10
-    /// Skip under-eye when the cheek is more than this many times brighter than the region:
-    /// that gap is an occluder (glasses frame, sunglasses, hair, hand) or glare, not a shadow.
+    /// Skip under-eye when one of region / cheek is more than this many times brighter than the
+    /// other. That gap is an occluder (glasses frame, sunglasses, hair, a hand) or glare, not a
+    /// shadow. Checked both ways: glare on the region, or something dark over the cheek patch,
+    /// would otherwise turn into a chroma pull toward the occluder.
     static let underEyeMaxCheekRatio: Double = 3.0
     /// Skip under-eye when the region is essentially black (lens, deep occlusion).
     static let underEyeMinRegionLuma: Double = 0.005
@@ -192,7 +204,7 @@ enum SelfieRetouchMath {
     static func underEyeIsReliable(region: SIMD3<Double>, cheek: SIMD3<Double>) -> Bool {
         let r = luminance(region), c = luminance(cheek)
         guard r.isFinite, c.isFinite, r >= underEyeMinRegionLuma else { return false }
-        return c <= r * underEyeMaxCheekRatio
+        return c <= r * underEyeMaxCheekRatio && r <= c * underEyeMaxCheekRatio
     }
 
     /// Background blur radius in pixels: ≤ 18 px at 12 MP (4032 px long edge), scaled by image size.
@@ -273,8 +285,9 @@ struct SelfieAnalysis {
 /// global warmth. No face → global grade only.
 ///
 /// Not main-actor bound: the still bake runs off the main thread (see `CameraSession`'s
-/// photo delegate). The only state is an immutable, thread-safe `CIContext`; every call
-/// builds its own Vision requests and CIFilters.
+/// photo delegate). The only instance state is an immutable, thread-safe `CIContext`. Every
+/// call builds its own Vision requests and CIFilters. The two static color kernels are
+/// immutable and initialised once.
 final class SelfieRetouchEngine: @unchecked Sendable {
     private let context: CIContext
 
@@ -335,8 +348,8 @@ final class SelfieRetouchEngine: @unchecked Sendable {
         var faces: [SelfieFaceGeometry] = []
         do {
             try handler.perform([faceReq])
-            faces = SelfieRetouchMath.primaryFaces(
-                (faceReq.results ?? []).prefix(4).compactMap { Self.geometry(from: $0, fullSize: extent.size) }
+            faces = SelfieRetouchMath.retouchFaces(
+                (faceReq.results ?? []).compactMap { Self.geometry(from: $0, fullSize: extent.size) }
             )
         } catch {
             faces = []
@@ -506,9 +519,8 @@ final class SelfieRetouchEngine: @unchecked Sendable {
             for eye in [face.leftEye, face.rightEye] where !eye.isEmpty {
                 guard let region = SelfieRetouchMath.underEyeRegion(eyePoints: eye, roll: roll) else { continue }
                 let cheek = SelfieRetouchMath.cheekPatch(for: region)
-                let rRect = region.rect, cRect = cheek.rect
-                guard let rMean = mean(low, in: rRect.insetBy(dx: rRect.width * 0.15, dy: rRect.height * 0.15)),
-                      let cMean = mean(low, in: cRect.insetBy(dx: cRect.width * 0.15, dy: cRect.height * 0.15)),
+                guard let rMean = mean(low, in: region),
+                      let cMean = mean(low, in: cheek),
                       SelfieRetouchMath.underEyeIsReliable(region: rMean, cheek: cMean)
                 else { continue }
                 let delta = SelfieRetouchMath.underEyeDelta(region: rMean, cheek: cMean, strength: s)
@@ -522,6 +534,30 @@ final class SelfieRetouchEngine: @unchecked Sendable {
             }
         }
         return out
+    }
+
+    /// Mean working-space RGB over an ellipse's box, inset by `inset` on each side, measured in
+    /// the face's own frame. A rotated ellipse is sampled upright: the image is rotated by
+    /// −angle about the centre. The axis-aligned bounding box of a tilted ellipse would reach
+    /// past the lash line into the eye (about 5 % of the sample at 40°) and onto the side of
+    /// the nose. `angle == 0` is the plain inset-rect mean.
+    func mean(_ image: CIImage, in e: SelfieEllipse, inset: CGFloat = 0.15) -> SIMD3<Double>? {
+        if e.angle == 0 {
+            let r = e.rect
+            return mean(image, in: r.insetBy(dx: r.width * inset, dy: r.height * inset))
+        }
+        guard e.angle.isFinite, e.width >= 1, e.height >= 1,
+              !e.rect.intersection(image.extent).isNull else { return nil }
+        let c = e.center
+        let upright = CGAffineTransform(translationX: c.x, y: c.y)
+            .rotated(by: -e.angle)
+            .translatedBy(x: -c.x, y: -c.y)
+        // Clamp first so a region near the frame edge repeats edge pixels instead of averaging
+        // in transparent black.
+        let rotated = image.clampedToExtent().transformed(by: upright)
+        let box = CGRect(x: c.x - e.width / 2, y: c.y - e.height / 2, width: e.width, height: e.height)
+            .insetBy(dx: e.width * inset, dy: e.height * inset)
+        return mean(rotated, in: box)
     }
 
     /// Mean working-space RGB over a rect (CIAreaAverage → one RGBAf pixel).
@@ -543,13 +579,16 @@ final class SelfieRetouchEngine: @unchecked Sendable {
 
     // MARK: - Kernels (Core Image built-ins have no signed add; small color kernels instead)
 
-    private static let recombineKernel: CIColorKernel? = CIColorKernel(source: """
+    // `nonisolated(unsafe)`: CIColorKernel isn't marked Sendable, but these are initialised
+    // once (swift_once) and never mutated, and Core Image kernels are safe to apply from
+    // several threads. The engine runs off the main thread (see the class doc).
+    nonisolated(unsafe) private static let recombineKernel: CIColorKernel? = CIColorKernel(source: """
     kernel vec4 selfieRecombine(__sample src, __sample lowf, __sample smoothed, float keep) {
         return vec4(smoothed.rgb + keep * (src.rgb - lowf.rgb), src.a);
     }
     """)
 
-    private static let underEyeKernel: CIColorKernel? = CIColorKernel(source: """
+    nonisolated(unsafe) private static let underEyeKernel: CIColorKernel? = CIColorKernel(source: """
     kernel vec4 selfieUnderEye(__sample src, __sample lowf, __sample m, vec4 offset, vec4 regionMean, float cut) {
         vec3 lift = offset.rgb - cut * (lowf.rgb - regionMean.rgb);
         return vec4(src.rgb + m.r * lift, src.a);

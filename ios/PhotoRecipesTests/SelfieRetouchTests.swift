@@ -377,6 +377,37 @@ final class SelfieRetouchTests: XCTestCase {
         XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: cheek * 0.2, cheek: cheek), "glasses frame / hair")
         XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: .zero, cheek: cheek), "black lens")
         XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: cheek, cheek: SIMD3(repeating: .nan)))
+        // Symmetric: glare on the region, or something dark over the cheek patch.
+        XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: cheek, cheek: cheek * 0.2), "dark occluder on the cheek")
+        XCTAssertFalse(SelfieRetouchMath.underEyeIsReliable(region: cheek, cheek: .zero))
+        XCTAssertTrue(SelfieRetouchMath.underEyeIsReliable(region: cheek, cheek: cheek * 0.5), "region a bit brighter is fine")
+    }
+
+    // MARK: - Follow-ups: tilted sampling
+
+    func testMeanEllipse_tiltedRegionDoesNotAverageInTheEye() {
+        // A dark eye rotated 40° on flat skin. The under-eye sample must see skin only. The
+        // old axis-aligned box of the rotated ellipse reached past the lash line into the eye.
+        let size = CGSize(width: 240, height: 240)
+        let skin = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: CGRect(origin: .zero, size: size))
+        let eyeBox = CGRect(x: 100, y: 140, width: 40, height: 20)
+        let pivot = CGPoint(x: eyeBox.midX, y: eyeBox.midY)
+        let theta: CGFloat = 40 * .pi / 180
+        let rot = CGAffineTransform(translationX: pivot.x, y: pivot.y).rotated(by: theta).translatedBy(x: -pivot.x, y: -pivot.y)
+        let eye = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: eyeBox).transformed(by: rot)
+        let input = eye.composited(over: skin)
+        let region = try! XCTUnwrap(SelfieRetouchMath.underEyeRegion(eyePoints: corners(eyeBox).map { $0.applying(rot) },
+                                                                     roll: theta))
+        let skinMean = try! XCTUnwrap(engine.mean(skin, in: region.rect)).x
+        let tilted = try! XCTUnwrap(engine.mean(input, in: region)).x
+        XCTAssertEqual(tilted, skinMean, accuracy: skinMean * 0.005, "face-frame sample sees skin only")
+        let r = region.rect
+        let aabb = try! XCTUnwrap(engine.mean(input, in: r.insetBy(dx: r.width * 0.15, dy: r.height * 0.15))).x
+        XCTAssertLessThan(aabb, skinMean * 0.98, "the axis-aligned box would have averaged in the eye")
+        // Level ellipse: identical to the plain inset-rect mean.
+        let level = SelfieRetouchMath.underEyeRegion(eye: eyeBox)
+        let lr = level.rect
+        XCTAssertEqual(engine.mean(input, in: level), engine.mean(input, in: lr.insetBy(dx: lr.width * 0.15, dy: lr.height * 0.15)))
     }
 
     func testUnderEyeImage_skipsWhenReferenceIsAnOccluder() {
@@ -405,19 +436,47 @@ final class SelfieRetouchTests: XCTestCase {
         XCTAssertEqual(SelfieRetouchMath.primaryFaces([passerby]), [passerby])
     }
 
+    func testRetouchFaces_sizeFilterAndSortRunBeforeTheLimit() {
+        // Vision order isn't by size. The main face arriving fifth must still be retouched.
+        let small = (0..<4).map { i in
+            SelfieFaceGeometry(boundingBox: CGRect(x: CGFloat(i) * 300, y: 0, width: 260 - CGFloat(i) * 10, height: 300))
+        }
+        let main = SelfieFaceGeometry(boundingBox: CGRect(x: 0, y: 600, width: 400, height: 500))
+        let passerby = SelfieFaceGeometry(boundingBox: CGRect(x: 900, y: 600, width: 60, height: 75))
+        let picked = SelfieRetouchMath.retouchFaces(small + [passerby, main])
+        XCTAssertEqual(picked.count, SelfieRetouchMath.maxRetouchFaces)
+        XCTAssertEqual(picked.first, main, "largest face first, never cut by the limit")
+        XCTAssertFalse(picked.contains(passerby))
+        XCTAssertEqual(picked.map(\.faceWidth), picked.map(\.faceWidth).sorted(by: >))
+        XCTAssertEqual(SelfieRetouchMath.retouchFaces([]), [])
+    }
+
     // MARK: - Follow-ups: off-main bake
 
-    func testBake_runsOffTheMainThread() async {
+    func testBake_concurrentOffMainBakesShareTheEngineSafely() async {
+        // The shared engine (one CIContext, static kernels) is used from several threads at
+        // once. Every concurrent bake must succeed and match the serial result.
         let input = gradient(CGSize(width: 64, height: 48))
         let cg = context.createCGImage(input, from: input.extent)!
         let jpeg = try! XCTUnwrap(UIImage(cgImage: cg).jpegData(compressionQuality: 0.9))
         let look = CreativeLook(id: "selfieGlow", intensity: 1)
-        let result: (Data, Bool) = await Task.detached {
-            (CreativeLookEngine.shared.bakeJPEG(jpeg, look: look), Self.onMainThread())
-        }.value
-        XCTAssertFalse(result.1, "bake must be callable off the main thread")
-        XCTAssertNotEqual(result.0, jpeg, "Soft Glow warms even a no-face frame")
-        XCTAssertNotNil(UIImage(data: result.0))
+        let serial = CreativeLookEngine.shared.bakeJPEG(jpeg, look: look)
+        XCTAssertNotEqual(serial, jpeg, "Soft Glow warms even a no-face frame")
+        let results: [(Data, Bool)] = await withTaskGroup(of: (Data, Bool).self) { group in
+            for _ in 0..<6 {
+                group.addTask {
+                    (await CameraSession.bakeOffMain(jpeg, look: look), Self.onMainThread())
+                }
+            }
+            var out: [(Data, Bool)] = []
+            for await r in group { out.append(r) }
+            return out
+        }
+        XCTAssertEqual(results.count, 6)
+        for (data, onMain) in results {
+            XCTAssertFalse(onMain)
+            XCTAssertEqual(data, serial, "concurrent bake differs from the serial bake")
+        }
         let viaSession = await CameraSession.bakeOffMain(jpeg, look: CreativeLook(id: "selfieGlow", intensity: 0))
         XCTAssertEqual(viaSession, jpeg, "intensity 0 returns the original bytes")
     }

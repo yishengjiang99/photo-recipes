@@ -6,9 +6,10 @@ import UIKit
 /// Bakes into live preview AND still JPEG when intensity > 0 (not a beauty filter).
 ///
 /// Not main-actor bound: the still bake (selfie looks run Vision + a full-resolution render)
-/// runs off the main thread from `CameraSession`'s photo delegate. All state is immutable —
-/// a thread-safe `CIContext` and the selfie engine — and every call builds its own CIFilters.
-final class CreativeLookEngine: ObservableObject, @unchecked Sendable {
+/// runs off the main thread from `CameraSession`'s photo delegate. All state is immutable:
+/// a thread-safe `CIContext` and the selfie engine. Every call builds its own CIFilters. No
+/// `ObservableObject`: there is nothing to observe.
+final class CreativeLookEngine: @unchecked Sendable {
     static let shared = CreativeLookEngine()
 
     private let context: CIContext

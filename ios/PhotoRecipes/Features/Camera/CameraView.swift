@@ -1747,6 +1747,10 @@ struct CameraView: View {
         optimizer.isUserCaptureInFlight = true
         captureError = nil
         dismissSceneKeyboard()
+        // Shutter → bake → Photos save must finish even if the app backgrounds in between
+        // (the bake runs off main now, so the UI stays live and a home swipe can land mid-shot).
+        let backgroundTask = BackgroundTaskAssertion(name: "capture-save")
+        defer { backgroundTask.end() }
 
         // Immediate shutter press: scale + medium impact (don't wait for AVCapture).
         withAnimation(.easeOut(duration: 0.07)) { shutterPressScale = 0.86 }
@@ -1804,6 +1808,8 @@ struct CameraView: View {
                 captureError = error.localizedDescription
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
+            // Saved (or failed): release the background assertion before the optional optimize.
+            backgroundTask.end()
             await maybeAutoRunFirstOptimize(isFirstCapture: isFirstCapture)
         } catch {
             isCapturing = false

@@ -10,7 +10,16 @@ This is a review of the shipped selfie pack: #160 (presets and retouch engine) a
    - The lift is scaled uniformly so that no channel moves more than `underEyeMaxLift`. Uniform scaling keeps the result at or below the cheek and keeps the chroma direction.
    - The step is skipped when the cheek reference is more than 3× brighter than the region, or the region is near black. In practice that means glasses frames, sunglasses, hair, a hand or specular glare, where lifting would leave a visible patch.
 4. **Small background faces are skipped.** Faces narrower than 40 % of the largest face are dropped before retouching. They were being smoothed with a blur sigma sized for the main face.
-5. **On-device timing telemetry.** A `selfie_bake` event sends `look_id`, `bake_ms`, `long_edge_px` and `front`. This gives the real per-device number for the < 400 ms target, which CI can't measure. No pixels and no face data are sent.
+5. **On-device timing telemetry.** A `selfie_bake` event sends `look_id`, `bake_ms`, `long_edge_px`, `front` and `baked`. This gives the real per-device number for the < 400 ms target, which CI can't measure. No pixels and no face data are sent.
+
+### Review fixes (same PR)
+
+- **Tilted regions are sampled in the face frame.** The region and cheek means rotate the low-pass layer upright about the ellipse centre before `CIAreaAverage`. The axis-aligned box of a tilted ellipse reached past the lash line into the eye (about 5 % of the sample at 40°). Level faces are unchanged.
+- **The occluder guard checks both ways.** It also skips when the region is more than 3× brighter than the cheek: glare on the under-eye, or hair, a hand or a frame over the cheek patch.
+- **Faces are limited after the size filter.** The order is primary-face filter, then largest first, then the 4-face cap. Vision's result order isn't by size.
+- **Backgrounding mid-shot.** A `UIApplication` background task covers shutter → bake → Photos save, for single shots and the bracket burst. iOS doesn't allow GPU work in the background, so a photo that arrives while the app is backgrounded, or a bake that runs into `didEnterBackground`, keeps the un-baked JPEG. That is the same fallback as a bake failure.
+- **`selfie_bake` accuracy.** `front` is snapshotted before the bake, and a new `baked` (0/1) field marks fallbacks so they don't skew timing.
+- **Concurrency.** `CreativeLookEngine` drops its leftover `ObservableObject` conformance. The static color kernels are `nonisolated(unsafe)` (immutable, initialised once), so a later move to Swift 6 doesn't flag them.
 
 ## Open, not in this PR
 
