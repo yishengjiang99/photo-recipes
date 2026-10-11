@@ -207,7 +207,6 @@ ${extra}<meta name="twitter:card" content="summary_large_image" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="preload" as="style" href="${FONTS}" />
 <link rel="stylesheet" href="${FONTS}" media="print" onload="this.media='all'" />
 <noscript><link rel="stylesheet" href="${FONTS}" /></noscript>
 <style>${CSS}</style>
