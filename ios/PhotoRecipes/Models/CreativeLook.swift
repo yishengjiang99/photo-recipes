@@ -42,6 +42,13 @@ struct CreativeLook: Codable, Hashable, Identifiable {
     var craftSentence: String { CreativeLookCatalog.craftSentence(for: id) }
 }
 
+/// A labelled group of look ids in the Looks grid.
+struct LookSection: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let lookIds: [String]
+}
+
 enum CreativeLookCatalog {
     static let defaultIntensity: Double = 0.55
 
@@ -123,6 +130,16 @@ enum CreativeLookCatalog {
     /// Selfie pack ids route through `SelfieRetouchEngine` on stills.
     static func isSelfie(_ id: String) -> Bool {
         selfieIds.contains(id)
+    }
+
+    /// Looks-grid sections for the Controls drawer: the 14 capture grades, then the
+    /// 5-look selfie pack (or selfie first when the front camera is active). Every
+    /// catalog id appears exactly once, in catalog order, so sections stay stable
+    /// when a look is applied — the active look is highlighted in place, not moved.
+    static func lookSections(selfieFirst: Bool = false) -> [LookSection] {
+        let capture = LookSection(id: "capture", title: "Capture grades", lookIds: allIds.filter { !isSelfie($0) })
+        let selfie = LookSection(id: "selfie", title: "Selfie", lookIds: allIds.filter { isSelfie($0) })
+        return selfieFirst ? [selfie, capture] : [capture, selfie]
     }
 
     static var catalog: [CreativeLook] {

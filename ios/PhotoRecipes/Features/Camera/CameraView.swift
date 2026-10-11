@@ -33,6 +33,9 @@ struct CameraView: View {
     @State private var showControlsDrawer = false
     @State private var drawerTab: ControlsSheet.Tab = .core
     @State private var drawerLookIntensity: Double = CreativeLookCatalog.defaultIntensity
+    /// Measured height of the top chrome (flash row + status + look chip) from the
+    /// screen top, so the side drawer starts below the look chip.
+    @State private var measuredTopChromeH: CGFloat = 0
     // Last captured photo for the finder thumbnail.
     @State private var lastCaptureImage: UIImage?
     @State private var showLastPhoto = false
@@ -419,6 +422,11 @@ struct CameraView: View {
 
                 VStack(spacing: 0) {
                     topOverlay(compact: compact, topSafeInset: safeTop)
+                        .background(
+                            GeometryReader { g in
+                                Color.clear.preference(key: TopChromeHeightKey.self, value: g.size.height)
+                            }
+                        )
                         .zIndex(12)
                     Spacer(minLength: 0)
                         // Tap empty finder to dismiss Scene keyboard.
@@ -436,12 +444,20 @@ struct CameraView: View {
                 }
                 .zIndex(10)
                 .animation(.easeOut(duration: 0.22), value: keyboardHeight)
+                .onPreferenceChange(TopChromeHeightKey.self) { h in
+                    // Ignore sub-point jitter so the drawer doesn't relayout every frame.
+                    if abs(h - measuredTopChromeH) >= 1 { measuredTopChromeH = h }
+                }
 
                 // Side chrome: controls drawer (left) + filter rail (right),
                 // between the top/bottom chrome and the capture feedback.
                 sideChrome(
                     compact: compact,
-                    topInset: topChromeH,
+                    screenWidth: geo.size.width,
+                    topInset: SideChromeLayout.topInset(
+                        fixedTopChrome: topChromeH,
+                        measuredTopChrome: measuredTopChromeH
+                    ),
                     bottomInset: bottomScrim
                 )
                 .zIndex(11)
@@ -1065,32 +1081,42 @@ struct CameraView: View {
         }
     }
 
-    private func drawerWidth(compact: Bool) -> CGFloat { compact ? 264 : 288 }
 
     /// Side chrome: controls drawer (left, slides as one unit with its handle)
     /// and the filter rail (right edge). Vertically centered between the top
     /// and bottom chrome so the feed's center stays clear.
-    private func sideChrome(compact: Bool, topInset: CGFloat, bottomInset: CGFloat) -> some View {
-        ZStack(alignment: .leading) {
+    /// Top inset starts below the measured top chrome so the drawer never covers
+    /// the look chip; the rail steps aside while the drawer is open so the handle
+    /// never sits under it (see `SideChromeLayout`).
+    private func sideChrome(compact: Bool, screenWidth: CGFloat, topInset: CGFloat, bottomInset: CGFloat) -> some View {
+        let drawerW = SideChromeLayout.drawerWidth(compact: compact, screenWidth: screenWidth)
+        let showsRail = SideChromeLayout.showsRail(drawerOpen: showControlsDrawer)
+        return ZStack(alignment: .leading) {
             // Drawer panel + attached handle — one sliding unit. Closed, only
             // the handle peeks out at the left edge.
             HStack(spacing: 0) {
                 controlsDrawerPanel(compact: compact)
-                    .frame(width: drawerWidth(compact: compact))
+                    .frame(width: drawerW)
                     .frame(maxHeight: .infinity)
                 drawerHandleButton(compact: compact)
-                    .padding(.leading, 6)
+                    .padding(.leading, SideChromeLayout.handleGap)
             }
             .frame(maxHeight: .infinity)
-            .offset(x: showControlsDrawer ? 0 : -drawerWidth(compact: compact))
+            .offset(x: showControlsDrawer ? 0 : -drawerW)
             .animation(.spring(response: 0.32, dampingFraction: 0.82), value: showControlsDrawer)
 
             // Filter rail pinned to the right edge.
             filterRail(compact: compact)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .padding(.trailing, 8)
+                .padding(.trailing, SideChromeLayout.railTrailingPad)
+                .opacity(showsRail ? 1 : 0)
+                .offset(x: showsRail ? 0 : SideChromeLayout.railWidth + SideChromeLayout.railTrailingPad)
+                .allowsHitTesting(showsRail)
+                .accessibilityHidden(!showsRail)
+                .animation(.spring(response: 0.32, dampingFraction: 0.82), value: showsRail)
         }
-        .padding(.top, topInset + 12)
+        .animation(.easeOut(duration: 0.2), value: topInset)
+        .padding(.top, topInset)
         .padding(.bottom, bottomInset + 12)
     }
 
@@ -2421,5 +2447,13 @@ final class RecommendStreamStartFlag: @unchecked Sendable {
     }
     func mark() {
         lock.lock(); started = true; lock.unlock()
+    }
+}
+
+/// Height of the camera top chrome (incl. the safe-area top padding).
+private struct TopChromeHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
