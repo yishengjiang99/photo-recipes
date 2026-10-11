@@ -68,6 +68,17 @@ export type PushPrefs = {
   optedInAt: string | null
   /** Last come-shoot / D1 nudge ISO (daily dedupe) */
   lastNudgeAt: string | null
+  /**
+   * Lifecycle: the app's anonymous telemetry install id (Analytics.anonId), sent with
+   * /api/push/register so segments can read this install's first-party event counts.
+   */
+  telemetryAnonId?: string | null
+  /**
+   * Guideline 4.5.4: promotional pushes (re-engagement, offers, announcements) need an
+   * explicit in-app opt-in. Default false; toggled in Settings → Notifications.
+   */
+  marketingOptIn?: boolean
+  marketingOptInChangedAt?: string | null
   updatedAt: string
 }
 
@@ -117,6 +128,9 @@ function defaultPrefs(guestId: string): PushPrefs {
     lastBriefAt: null,
     optedInAt: null,
     lastNudgeAt: null,
+    telemetryAnonId: null,
+    marketingOptIn: false,
+    marketingOptInChangedAt: null,
     updatedAt: now,
   }
 }
@@ -146,6 +160,7 @@ export function updatePushPrefs(
     pushOptIn: boolean
     experimentHoldout: boolean
     timezone: string
+    marketingOptIn: boolean
   }>,
 ): PushPrefs {
   const store = readStore()
@@ -207,6 +222,10 @@ export function updatePushPrefs(
   if (typeof patch.experimentHoldout === 'boolean') {
     next.experimentHoldout = patch.experimentHoldout
   }
+  if (typeof patch.marketingOptIn === 'boolean' && patch.marketingOptIn !== Boolean(prev.marketingOptIn)) {
+    next.marketingOptIn = patch.marketingOptIn
+    next.marketingOptInChangedAt = new Date().toISOString()
+  }
   if (typeof patch.timezone === 'string' && patch.timezone.trim()) {
     // Basic validation — Intl will throw on bogus zones at format time
     const tz = patch.timezone.trim()
@@ -236,6 +255,8 @@ export function registerApnsToken(
     appVersion?: string
     /** IANA zone from the device (TimeZone.current) — avoids storing guests as UTC. */
     timezone?: string
+    /** Optional: anonymous telemetry install id (lifecycle segments). */
+    anonId?: string
   },
 ): PushPrefs {
   if (input.platform !== 'ios') throw new Error('platform must be "ios"')
@@ -266,9 +287,11 @@ export function registerApnsToken(
   }
   const others = prev.apnsDeviceTokens.filter((t) => t.token !== entry.token)
   const tz = normalizeTimezone(input.timezone)
+  const anon = normalizeAnonId(input.anonId)
   const next: PushPrefs = {
     ...prev,
     ...(tz ? { timezone: tz } : {}),
+    ...(anon ? { telemetryAnonId: anon } : {}),
     guestId,
     apnsDeviceTokens: [...others, entry],
     // Registering a real device token implies opt-in for Exp1 (iOS also PUTs prefs).
@@ -280,6 +303,13 @@ export function registerApnsToken(
   store.prefs[guestId] = next
   writeStore(store)
   return next
+}
+
+/** Anonymous telemetry install id: UUID-ish token only; anything else → null (keep prior). */
+export function normalizeAnonId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const v = raw.trim()
+  return /^[A-Za-z0-9-]{8,64}$/.test(v) ? v : null
 }
 
 /** Valid IANA zone → trimmed id; anything else → null (keep prior). */
@@ -400,6 +430,8 @@ export function publicPrefsView(p: PushPrefs) {
     lastBriefAt: p.lastBriefAt,
     optedInAt: p.optedInAt ?? null,
     lastNudgeAt: p.lastNudgeAt ?? null,
+    marketingOptIn: Boolean(p.marketingOptIn),
+    activityLinked: Boolean(p.telemetryAnonId),
     updatedAt: p.updatedAt,
   }
 }

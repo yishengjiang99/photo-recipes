@@ -1,0 +1,65 @@
+# Push lifecycle ops (dispatch-only). Reads the cron secret ON the host (never printed) and calls
+# the local API. Actions:
+#   report          — GET /api/push/lifecycle/report (+ 24h-return KPI + telemetry cohort sizing)
+#   dry_run_tick    — POST /api/push/lifecycle/tick, ONLY if the effective mode is dry_run
+#                     (refuses otherwise, so this workflow can never trigger real sends)
+#   kill_switch_on  — runtime kill switch: stops lifecycle AND legacy come-shoot pushes
+#   kill_switch_off — clears the runtime kill switch (env PUSH_KILL_SWITCH still wins)
+name: Push lifecycle report
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: report | dry_run_tick | kill_switch_on | kill_switch_off
+        required: true
+        default: report
+        type: choice
+        options: [report, dry_run_tick, kill_switch_on, kill_switch_off]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          if [[ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]]; then printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts; else ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Run
+        env:
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -uo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" "ACTION='$ACTION' bash -s" > out.json <<'REMOTE'
+          set -uo pipefail
+          ENV_FILE=/etc/photo-recipes.env
+          BASE=http://127.0.0.1:8787
+          S="$(grep -E '^PUSH_CRON_SECRET=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')"
+          H="X-Push-Cron-Secret: $S"
+          echo '{"health":'; curl -sS -m 20 "$BASE/api/health"; echo ','
+          case "$ACTION" in
+            report) ;;
+            dry_run_tick)
+              MODE="$(curl -sS -m 20 "$BASE/api/health" | sed -nE 's/.*"pushLifecycle":"([a-z_]+)".*/\1/p')"
+              if [[ "$MODE" != "dry_run" ]]; then echo "\"refused\":\"effective mode is '$MODE', not dry_run\","; else
+                echo '"tick":'; curl -sS -m 300 -X POST -H "$H" -H 'content-type: application/json' -d '{}' "$BASE/api/push/lifecycle/tick"; echo ','
+              fi ;;
+            kill_switch_on)  echo '"ops":'; curl -sS -m 20 -X POST -H "$H" -H 'content-type: application/json' -d '{"killSwitch":true}' "$BASE/api/push/lifecycle/ops"; echo ',' ;;
+            kill_switch_off) echo '"ops":'; curl -sS -m 20 -X POST -H "$H" -H 'content-type: application/json' -d '{"killSwitch":false}' "$BASE/api/push/lifecycle/ops"; echo ',' ;;
+          esac
+          echo '"report":'; curl -sS -m 120 -H "$H" "$BASE/api/push/lifecycle/report?kpi24h=1&cohort=1"; echo '}'
+          REMOTE
+          # Defensive redaction (the report never contains secrets or tokens; this is belt and braces).
+          sed -E -e 's/"(secret|token|authorization|api[_-]?key|PUSH_CRON_SECRET)" *: *"[^"]*"/"\1":"[REDACTED]"/Ig' out.json > report.json
+          rm -f out.json
+          (jq . report.json 2>/dev/null || cat report.json)
+      - uses: actions/upload-artifact@v4
+        with: { name: push-lifecycle-report, path: report.json }

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { LegalShell } from '../components/LegalShell'
 
 const SUPPORT_EMAIL = 'yisheng.jiang@gmail.com'
-const LAST_UPDATED = 'October 6, 2026'
+const LAST_UPDATED = 'October 10, 2026'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -77,6 +77,21 @@ export function Privacy() {
           your guest / anonymous id and related notification preferences so we can send product
           notifications you chose to receive. Push tokens and prefs are not sold. You can turn
           notifications off in iOS Settings at any time.
+        </p>
+        <p>
+          <strong className="text-ink">Personalized notifications.</strong> To decide whether a
+          notification is useful (for example a tip a day after install, or a reminder about a shot
+          you started but did not take), the app sends its anonymous telemetry install id together
+          with the push token, and our server reads counts and times of that install’s in-app events
+          (for example “captured 2 photos this week”, “viewed the Pro screen”, the name of a look you
+          used most). We never use your photos, frames, voice, or typed text for this. A short,
+          coarse summary — such as “used Auto Optimize: yes, photos last week: 1–3, favorite look:
+          Warm Film” — with no ids, device token, or timestamps, may be sent to{' '}
+          <strong className="text-ink">xAI</strong> so Grok can write the wording of the
+          notification. Promotional notifications (shooting ideas after a break, feature news, Pro
+          offers) are sent only if you turn on <em>Settings → Notifications → Tips &amp; offers</em>{' '}
+          (off by default). We send at most one notification a day and three a week, never during
+          quiet hours in your time zone.
         </p>
         <p>
           <strong className="text-ink">Motion (iOS, optional).</strong> Motion sensors may be used
@@ -187,6 +202,10 @@ export function Privacy() {
           <li>Authenticate Pro entitlements (Stripe web or Apple IAP)</li>
           <li>Enforce Free Peek quota and guest entitlements via guest / anon ids</li>
           <li>Deliver optional product push notifications when you opt in</li>
+          <li>
+            Choose and word those notifications from anonymous in-app event counts (see
+            “Personalized notifications”)
+          </li>
           <li>Improve the product via aggregated, privacy-preserving funnel metrics</li>
           <li>
             Measure which of our ads lead to installs, trials, and subscriptions (ad attribution)
@@ -202,7 +221,9 @@ export function Privacy() {
         <ul className="list-disc space-y-2 pl-5">
           <li>
             <strong className="text-ink">xAI</strong> — for Recommend / Apply look frames, Ask,
-            vision, cloud STT fallback, and related AI features when you use them
+            vision, cloud STT fallback, and related AI features when you use them; and, when you
+            have notifications on, a coarse anonymous activity summary (no ids, photos or text) so
+            Grok can write notification wording
           </li>
           <li>
             <strong className="text-ink">Apple</strong> — App Store / IAP billing and receipt
@@ -254,8 +275,9 @@ export function Privacy() {
           Subscriptions.
         </p>
         <p>
-          <strong className="text-ink">Push:</strong> disable notifications in iOS Settings, or
-          delete the app, to stop delivery. Email us if you want server-side token / preference
+          <strong className="text-ink">Push:</strong> turn off <em>Tips &amp; offers</em> in the
+          app’s Settings to stop promotional notifications, disable notifications in iOS Settings,
+          or delete the app, to stop delivery. Email us if you want server-side token / preference
           records removed.
         </p>
         <p>

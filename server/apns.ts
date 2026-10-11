@@ -11,20 +11,26 @@ export type ApnsPushType =
   | 'pre_alarm_shoot_brief'
   | 'come_shoot_nudge'
   | 'd1_return'
+  | 'lifecycle'
 
-export type ApnsExperiment = 'push_exp1' | 'come_shoot' | 'd1_return'
+export type ApnsExperiment = 'push_exp1' | 'come_shoot' | 'd1_return' | 'lifecycle'
 
 export type ApnsPayload = {
   aps: {
     alert: { title: string; body: string }
     sound?: string
     'mutable-content'?: number
+    'thread-id'?: string
   }
   type: ApnsPushType
   deepLink: string
   recipeChips: Array<{ id: string; title: string }>
   entitlementTier: 'free' | 'trial' | 'pro'
   experiment: ApnsExperiment
+  /** Lifecycle: per-send id echoed back by the app's tap telemetry (open tracking). */
+  sendId?: string
+  /** Lifecycle segment id (campaign). */
+  segment?: string
 }
 
 export type ApnsSendResult =

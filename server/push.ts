@@ -25,6 +25,17 @@ import {
 } from './pushScheduler.ts'
 import { sendApns, isApnsEnvPresent, type ApnsPayload } from './apns.ts'
 import { pickRecipeChips } from './pushCatalog.ts'
+import {
+  cohortPreview,
+  effectiveMode,
+  isKillSwitchOn,
+  lifecycleReport,
+  patchOps,
+  returnWithin24h,
+  runLifecycleTick,
+} from './lifecycleEngine.ts'
+import { generateCopy } from './lifecycleCopy.ts'
+import { SEGMENTS, type CopyFacts, type SegmentId } from './lifecycleSegments.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const EVENTS_LOG = path.resolve(__dirname, 'data/push-events.jsonl')
@@ -46,6 +57,9 @@ const EVENT_ALLOWLIST = new Set([
   // Build 23: APNs registration observability (iOS → nginx)
   'apns_token_received',
   'apns_register_failed',
+  // Lifecycle: Settings → "Tips & offers" toggle (Guideline 4.5.4 consent trail)
+  'push_marketing_opt_in',
+  'push_marketing_opt_out',
 ])
 
 /** Push Exp 1 shoot briefs retired 2026-10-06 (funnel proposal); explicit opt-in only. */
@@ -103,6 +117,7 @@ export function mountPushRoutes(app: Express) {
         environment,
         appVersion,
         timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+        anonId: typeof body.anonId === 'string' ? body.anonId : undefined,
       })
       // Dual-write MySQL devices + push_tokens when pool is configured (soft-fail).
       let mysql = false
@@ -186,6 +201,7 @@ export function mountPushRoutes(app: Express) {
         patch.experimentHoldout = body.experimentHoldout
       }
       if (typeof body.timezone === 'string') patch.timezone = body.timezone
+      if (typeof body.marketingOptIn === 'boolean') patch.marketingOptIn = body.marketingOptIn
 
       const prefs = updatePushPrefs(guestId, patch)
       res.json({ ok: true, prefs: publicPrefsView(prefs) })
@@ -261,6 +277,12 @@ export function mountPushRoutes(app: Express) {
     }
     try {
       const now = new Date()
+      // Global kill switch (env PUSH_KILL_SWITCH or POST /api/push/lifecycle/ops) halts every
+      // scheduled remote push, legacy nudges included.
+      if (isKillSwitchOn()) {
+        res.json({ ok: true, killSwitch: true })
+        return
+      }
       // Primary: come-shoot / D1 (no shootWindow). Exp1 shoot briefs are retired
       // (0 sends — needed a shootWindow iOS never set); opt back in with
       // PUSH_EXP1_BRIEFS_ENABLED=true.
@@ -268,11 +290,100 @@ export function mountPushRoutes(app: Express) {
       const tick = isPushExp1BriefsEnabled()
         ? await runPushExp1Tick(now)
         : { retired: true }
-      res.json({ ok: true, comeShoot, tick })
+      // Lifecycle engine (default dry_run): run in the background so Grok latency never
+      // stalls the cron curl. Results land in data/push-lifecycle-last-tick.json.
+      const lifecycleMode = effectiveMode()
+      if (lifecycleMode !== 'off') {
+        void runLifecycleTick(now).catch((err) =>
+          console.error('[push/lifecycle]', err instanceof Error ? err.message : err),
+        )
+      }
+      res.json({ ok: true, comeShoot, tick, lifecycle: { mode: lifecycleMode, started: lifecycleMode !== 'off' } })
     } catch (err) {
       console.error('[push/tick]', err instanceof Error ? err.message : err)
       res.status(500).json({ error: 'tick_failed' })
     }
+  })
+
+  // -------------------------------------------------------------------------
+  // Lifecycle engine (all secret-gated with X-Push-Cron-Secret). Default mode dry_run.
+  // -------------------------------------------------------------------------
+
+  /** POST /api/push/lifecycle/tick — run one evaluation now and return the decisions. */
+  app.post('/api/push/lifecycle/tick', async (req: Request, res: Response) => {
+    if (!cronAuthorized(req)) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>
+    try {
+      const sum = await runLifecycleTick(new Date(), { useGrok: body.useGrok !== false })
+      res.json({ ok: true, ...sum })
+    } catch (err) {
+      console.error('[push/lifecycle/tick]', err instanceof Error ? err.message : err)
+      res.status(500).json({ error: 'lifecycle_tick_failed' })
+    }
+  })
+
+  /** GET /api/push/lifecycle/report?days=14&kpi24h=1&cohort=1 — dry-run/live report + KPIs. */
+  app.get('/api/push/lifecycle/report', async (req: Request, res: Response) => {
+    if (!cronAuthorized(req)) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    const days = Math.min(Math.max(Number(req.query.days) || 14, 1), 90)
+    try {
+      const report: Record<string, unknown> = lifecycleReport(days)
+      if (req.query.kpi24h === '1') report.returnWithin24h = await returnWithin24h(days)
+      if (req.query.cohort === '1') report.cohortPreview = await cohortPreview()
+      res.json({ ok: true, ...report })
+    } catch (err) {
+      console.error('[push/lifecycle/report]', err instanceof Error ? err.message : err)
+      res.status(500).json({ error: 'lifecycle_report_failed' })
+    }
+  })
+
+  /** POST /api/push/lifecycle/ops { killSwitch?: boolean, mode?: string|null } — runtime safety. */
+  app.post('/api/push/lifecycle/ops', (req: Request, res: Response) => {
+    if (!cronAuthorized(req)) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>
+    try {
+      const ops = patchOps({
+        ...(typeof body.killSwitch === 'boolean' ? { killSwitch: body.killSwitch } : {}),
+        ...(body.mode === null || typeof body.mode === 'string' ? { mode: body.mode as string | null } : {}),
+      })
+      res.json({ ok: true, ops, effectiveMode: effectiveMode(), killSwitch: isKillSwitchOn() })
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'ops_failed' })
+    }
+  })
+
+  /** POST /api/push/lifecycle/preview { segment, facts } — generate copy only (never sends). */
+  app.post('/api/push/lifecycle/preview', async (req: Request, res: Response) => {
+    if (!cronAuthorized(req)) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const seg = String(body.segment ?? '') as SegmentId
+    if (!(seg in SEGMENTS)) {
+      res.status(400).json({ error: `segment must be one of ${Object.keys(SEGMENTS).join(', ')}` })
+      return
+    }
+    const f = (body.facts ?? {}) as Partial<CopyFacts>
+    const facts: CopyFacts = {
+      tier: f.tier === 'pro' || f.tier === 'trial' ? f.tier : 'free',
+      capturesLastWeek: f.capturesLastWeek === '1-3' || f.capturesLastWeek === '4+' ? f.capturesLastWeek : '0',
+      usedAutoOptimize: f.usedAutoOptimize === true,
+      favoriteLook: typeof f.favoriteLook === 'string' ? f.favoriteLook.slice(0, 24) : null,
+      awayFor: f.awayFor ?? null,
+      ...(typeof f.announcement === 'string' ? { announcement: f.announcement.slice(0, 160) } : {}),
+    }
+    const copy = await generateCopy(seg, SEGMENTS[seg].goal, facts, { bypassCache: body.bypassCache === true })
+    res.json({ ok: true, segment: seg, cls: SEGMENTS[seg].cls, deepLink: SEGMENTS[seg].deepLink, facts, copy })
   })
 
   /**
@@ -513,6 +624,7 @@ export function getPushFunnelSnapshot(days = 7) {
 export function pushHealthSnippet() {
   return {
     pushExp1: isPushExp1Enabled(),
+    pushLifecycle: effectiveMode(),
     apnsEnv: isApnsEnvPresent(),
     cronSecret: Boolean(process.env.PUSH_CRON_SECRET?.trim()),
   }
