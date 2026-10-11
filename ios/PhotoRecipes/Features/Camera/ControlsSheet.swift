@@ -566,9 +566,13 @@ struct ControlsPanelView: View {
                         if abs(v - 0) < 0.02 || abs(v - 0.5) < 0.02 || abs(v - 1) < 0.02 {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
-                        if var active = session.activeCreativeLook {
+                        // Programmatic syncs (drawer open → slider = active intensity) are
+                        // no-ops; only a real drag re-sets the look, and tuning it by hand
+                        // makes it the user's own (selfie-aware AO won't replace it).
+                        if var active = session.activeCreativeLook,
+                           abs(active.resolvedIntensity - v) > 0.001 {
                             active.intensity = v
-                            session.setActiveLook(active)
+                            session.setActiveLook(active, owner: .user)
                         }
                     }
             }
@@ -618,7 +622,7 @@ struct ControlsPanelView: View {
         return Button {
             guard canApplyDials else { entitlements.presentHardPaywall(trigger: "dials_locked"); return }
             let applied = CreativeLook(id: look.id, intensity: lookIntensity)
-            session.setActiveLook(applied)
+            session.setActiveLook(applied, owner: .user)
             optimizer.dismissSuggestedLook()
             onLookApplied?(applied)
             optimizer.markDirty(session: session)

@@ -104,6 +104,9 @@ final class CameraSession: NSObject, ObservableObject {
     @Published var previewLUTId: String?
     /// Active Creative Look (user-applied). Baked into preview + still when intensity > 0.
     @Published var activeCreativeLook: CreativeLook?
+    /// Who set `activeCreativeLook` (nil when none). Selfie-aware Auto Optimize
+    /// never replaces a `.user` / `.forced` look.
+    @Published private(set) var activeLookOwner: LookOwner?
     @Published var pendingBracket: BracketTarget?
     @Published var simulatedApertureCoach: String?
 
@@ -138,7 +141,10 @@ final class CameraSession: NSObject, ObservableObject {
     /// Back-compat alias used by older notes paths.
     var creativeLook: CreativeLook? {
         get { activeCreativeLook }
-        set { activeCreativeLook = newValue }
+        set {
+            activeCreativeLook = newValue
+            if newValue == nil { activeLookOwner = nil }
+        }
     }
 
     private var configured = false
@@ -665,6 +671,7 @@ final class CameraSession: NSObject, ObservableObject {
             let current = activeCreativeLook?.id == preset.lookId ? activeCreativeLook?.intensity : nil
             let look = CreativeLook(id: preset.lookId, intensity: current ?? CreativeLookCatalog.defaultIntensity)
             activeCreativeLook = look
+            activeLookOwner = .user // Library selfie preset = the user's pick
             applyNotes.append(
                 String(format: "Look “\(look.displayName)” @ %.0f%% — baking still.", look.resolvedIntensity * 100)
             )
@@ -925,6 +932,7 @@ final class CameraSession: NSObject, ObservableObject {
         optimizeReason = nil
         previewLUTId = nil
         activeCreativeLook = nil
+        activeLookOwner = nil
         pendingBracket = nil
         preferredFrameRate = nil
         simulatedApertureCoach = nil
@@ -1485,7 +1493,11 @@ final class CameraSession: NSObject, ObservableObject {
         }
     }
 
-    func setActiveLook(_ look: CreativeLook) {
+    /// - owner: who picked the look (`SelfieAutoPolicy` never replaces a `.user` / `.forced` look).
+    /// - applySelfieLight: a selfie look picked on the front camera also writes its capture
+    ///   light. Selfie-aware Auto Optimize passes false — it already merged the preset's
+    ///   light into AO's targets with AO's exposure/WB authoritative.
+    func setActiveLook(_ look: CreativeLook, owner: LookOwner = .auto, applySelfieLight: Bool = true) {
         guard CreativeLookCatalog.isKnown(look.id) else {
             clampMessages.append("Look couldn’t apply")
             return
@@ -1494,11 +1506,12 @@ final class CameraSession: NSObject, ObservableObject {
         if copy.intensity == nil { copy.intensity = CreativeLookCatalog.defaultIntensity }
         let changed = activeCreativeLook?.id != copy.id
         activeCreativeLook = copy
+        activeLookOwner = owner
         applyNotes.append(
             String(format: "Look “\(copy.displayName)” @ %.0f%% — baking preview & still.", copy.resolvedIntensity * 100)
         )
         // Selfie look picked on the front camera → also set its capture light (not on intensity drags).
-        if changed, isFront, let preset = SelfiePresets.preset(lookId: copy.id) {
+        if changed, applySelfieLight, isFront, let preset = SelfiePresets.preset(lookId: copy.id) {
             Task { @MainActor [weak self] in
                 await self?.applySelfiePreset(preset, switchToFront: false, setLook: false)
             }
@@ -1507,6 +1520,14 @@ final class CameraSession: NSObject, ObservableObject {
 
     func clearActiveLook() {
         activeCreativeLook = nil
+        activeLookOwner = nil
+    }
+
+    /// Re-labels who owns the active look (e.g. a Recommend apply whose look was
+    /// forced by the utterance). No-op when no look is active.
+    func markActiveLookOwner(_ owner: LookOwner) {
+        guard activeCreativeLook != nil else { return }
+        activeLookOwner = owner
     }
 
     func supportsLens(_ lens: LensChoice) -> Bool {

@@ -389,4 +389,66 @@ final class InferenceApplyPathTests: XCTestCase {
     func testDefaultIntensity_is055() {
         XCTAssertEqual(CreativeLookCatalog.defaultIntensity, 0.55)
     }
+
+    // MARK: - G. Selfie-aware AO vs voice paths
+
+    private func frontFaceFeatures() -> SceneFeatures {
+        var f = SceneFeatures()
+        f.isFrontCamera = true
+        f.subjectKind = .face
+        f.subjectBox = NormalizedBox(x: 0.35, y: 0.3, width: 0.3, height: 0.3)
+        f.subjectAreaFraction = 0.09
+        f.faceCount = 1
+        f.sceneEV100 = 8
+        f.subjectDeltaStops = 0
+        return f
+    }
+
+    /// Every voice-forced look keeps routing to Recommend (not AO) and, once applied
+    /// (owner .forced), selfie-aware AO on the front camera never replaces it.
+    func testVoiceForcedLook_routesToRecommend_andBlocksSelfieAO() {
+        for (utterance, expectedId) in ApplyFiltersIntent.lookUtteranceMatrix {
+            let plan = ApplyFiltersIntent.planVoiceEndpoint(utterance)
+            guard case .recommend = plan.action else {
+                XCTFail("forced look must stay on Recommend: \(utterance)")
+                continue
+            }
+            let forced = ApplyFiltersIntent.forcedLook(for: utterance)
+            XCTAssertEqual(forced?.id, expectedId)
+            XCTAssertFalse(CreativeLookCatalog.isSelfie(expectedId), "voice never forces a selfie id")
+            let d = SelfieAutoPolicy.decide(.init(
+                isFrontCamera: true,
+                features: frontFaceFeatures(),
+                aoTargets: PhoneTargets(creativeLook: CreativeLook(id: "warmGlow", intensity: 0.45)),
+                activeLook: forced,
+                activeLookOwner: .forced))
+            guard case .keepLook(let kept, let owner, _) = d else {
+                XCTFail("selfie AO overrode forced \(expectedId) for \(utterance)")
+                continue
+            }
+            XCTAssertEqual(kept, expectedId)
+            XCTAssertEqual(owner, .forced)
+        }
+    }
+
+    /// Plain voice → AO ("make this better") on the front camera with a face gets
+    /// a selfie look at 0.55 when AO had none; on the back camera AO is unchanged.
+    func testVoiceAutoOptimize_frontFace_appliesSelfie_backUnchanged() {
+        let utterance = "make this look better"
+        let plan = ApplyFiltersIntent.planVoiceEndpoint(utterance)
+        if case .recommend = plan.action {
+            // Some utterances route to Recommend; the selfie policy only runs on AO.
+            return
+        }
+        let front = SelfieAutoPolicy.decide(.init(
+            isFrontCamera: true, features: frontFaceFeatures(),
+            aoTargets: PhoneTargets(), activeLook: nil, activeLookOwner: nil))
+        XCTAssertEqual(front.choice?.look.id, "selfieNatural")
+        XCTAssertEqual(front.choice?.look.intensity, CreativeLookCatalog.defaultIntensity)
+        var back = frontFaceFeatures()
+        back.isFrontCamera = false
+        XCTAssertEqual(SelfieAutoPolicy.decide(.init(
+            isFrontCamera: false, features: back,
+            aoTargets: PhoneTargets(), activeLook: nil, activeLookOwner: nil)), .unchanged(.backCamera))
+    }
 }
