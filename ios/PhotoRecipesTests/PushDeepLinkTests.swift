@@ -2,6 +2,7 @@ import XCTest
 @testable import PhotoRecipes
 
 /// Lifecycle push tap routing: payload `deepLink` → destination (docs/push-lifecycle.md).
+@MainActor
 final class PushDeepLinkTests: XCTestCase {
     private func dest(_ s: String?) -> PushNotificationManager.Destination {
         PushNotificationManager.destination(for: s.flatMap(URL.init(string:)))
@@ -26,7 +27,7 @@ final class PushDeepLinkTests: XCTestCase {
         let key = PushNotificationManager.marketingOptInKey
         let prior = UserDefaults.standard.object(forKey: key)
         UserDefaults.standard.removeObject(forKey: key)
-        defer { UserDefaults.standard.set(prior, forKey: key) }
+        defer { if let prior { UserDefaults.standard.set(prior, forKey: key) } }
         XCTAssertFalse(PushNotificationManager.marketingOptIn)
     }
 }
