@@ -575,32 +575,41 @@ struct ControlsPanelView: View {
             .padding(AppTheme.space3)
             .background(RoundedRectangle(cornerRadius: AppTheme.radiusMd).fill(AppTheme.surface))
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(pinnedLooks, id: \.id) { look in
-                    lookCell(look)
+            // Two labelled sections (capture grades · selfie) with a stable order: the
+            // active / suggested look is highlighted in place instead of jumping to the
+            // top, so the selfie pack is never buried at the end of a 19-item grid.
+            ForEach(CreativeLookCatalog.lookSections(selfieFirst: session.isFront)) { section in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(section.title.uppercased())
+                            .font(AppTheme.overline())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                        Text("\(section.lookIds.count)")
+                            .font(AppTheme.monoSm())
+                            .foregroundStyle(AppTheme.inkTertiary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(section.lookIds, id: \.self) { id in
+                            lookCell(gridLook(id: id))
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// Suggested pin first, then catalog.
-    private var pinnedLooks: [CreativeLook] {
-        var ids = CreativeLookCatalog.allIds
-        if let sid = optimizer.suggestedLook?.id ?? session.activeCreativeLook?.id,
-           let idx = ids.firstIndex(of: sid) {
-            ids.remove(at: idx)
-            ids.insert(sid, at: 0)
-        }
-        return ids.map { id in
-            let intensity: Double = {
-                if session.activeCreativeLook?.id == id { return lookIntensity }
-                if optimizer.suggestedLook?.id == id {
-                    return optimizer.suggestedLook?.resolvedIntensity ?? lookIntensity
-                }
-                return lookIntensity
-            }()
-            return CreativeLook(id: id, intensity: intensity)
-        }
+    /// Grid cell look for an id — active uses the slider intensity, suggested its own.
+    private func gridLook(id: String) -> CreativeLook {
+        let intensity: Double = {
+            if session.activeCreativeLook?.id == id { return lookIntensity }
+            if optimizer.suggestedLook?.id == id {
+                return optimizer.suggestedLook?.resolvedIntensity ?? lookIntensity
+            }
+            return lookIntensity
+        }()
+        return CreativeLook(id: id, intensity: intensity)
     }
 
     private func lookCell(_ look: CreativeLook) -> some View {
@@ -621,7 +630,12 @@ struct ControlsPanelView: View {
                         .foregroundStyle(AppTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 0)
-                    if isSuggested {
+                    if isActive {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.accent)
+                            .accessibilityHidden(true)
+                    } else if isSuggested {
                         Text("Suggested")
                             .font(AppTheme.overline())
                             .foregroundStyle(AppTheme.tip)
@@ -647,6 +661,7 @@ struct ControlsPanelView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     // MARK: - Shared chrome
