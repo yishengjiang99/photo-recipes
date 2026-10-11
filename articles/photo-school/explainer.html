@@ -41,13 +41,20 @@
 .pse canvas:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
 .pse button{-webkit-tap-highlight-color:transparent}
 .pse .seg{min-width:24px}
+.pse .hint{position:absolute;left:50%;top:11%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;padding:9px 16px 9px 13px;border-radius:999px;background:rgba(14,15,17,.86);border:1.5px solid var(--amber);color:var(--fg);font:600 15px/1 var(--body);cursor:pointer;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,.5);animation:pse-pulse 2.2s ease-in-out infinite}
+.pse .hint svg{width:18px;height:18px;fill:var(--amber)}
+.pse .hint[hidden]{display:none}
+.pse .hint:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+@keyframes pse-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,182,39,.45)}50%{box-shadow:0 0 0 8px rgba(255,182,39,0)}}
+@media (prefers-reduced-motion:reduce){.pse .hint{animation:none}}
+@media (max-width:520px){.pse .hint{font-size:14px;padding:8px 14px 8px 11px}}
 .pse .btn.snd[aria-pressed="false"]{color:var(--amber);border-color:var(--amber)}
 @media (max-width:520px){.pse .bar{flex-wrap:wrap}.pse .segs{order:3;flex-basis:100%;gap:3px}.pse .time{display:block;margin-left:auto}}
 
 </style>
 <section class="pse" id="pse" data-audio="/articles/photo-school/narration.mp3" aria-label="Animated explainer with narration: 11 chapters, about 1.5 minutes">
 <div class="pse-wrap">
-  <div class="stage"><canvas id="pse-cv" width="960" height="540" tabindex="0" role="img" aria-label="Animated explainer. Click or press Space to play or pause; arrow keys change chapter."></canvas></div>
+  <div class="stage"><canvas id="pse-cv" width="960" height="540" tabindex="0" role="img" aria-label="Animated explainer. Click or press Space to play or pause; arrow keys change chapter."></canvas><button class="hint" id="pse-hint" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>Tap for sound</button></div>
 
   <div class="bar">
     <button class="btn step" id="pse-prev" aria-label="Previous chapter"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
@@ -397,6 +404,11 @@ const pbtn=document.getElementById('pse-play'),pico=document.getElementById('pse
    Starts muted; the first user play tap (or the sound button) turns it on. The file loads only then. */
 const AU_SRC=root.dataset.audio,sbtn=document.getElementById('pse-snd'),sico=document.getElementById('pse-sico');
 let au=null,snd=false,tapped=false,buf=false;
+const hint=document.getElementById('pse-hint');
+function showHint(v){hint.hidden=!v}
+/* First interaction during the muted autoplay: restart the current chapter with narration on (same gesture, so iOS allows play()). */
+function unmuteRestart(){tapped=true;auto=false;showHint(false);el=ST[idx()];if(au&&au.readyState>0)au.currentTime=el;soundOn();if(!playing){playing=true;setBtn()}dirty=true;syncAu();kick()}
+const mutedAuto=()=>!tapped&&playing&&!snd;
 function setSnd(){sbtn.setAttribute('aria-pressed',snd?'true':'false');sbtn.setAttribute('aria-label',snd?'Mute narration':'Turn narration on');
   sico.innerHTML=snd?'<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/>':'<path d="M3 9v6h4l5 5V4L7 9H3zm13.6 3l2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z"/>'}
 function ensureAu(){if(au||!AU_SRC)return;au=new Audio();au.preload='auto';au.src=AU_SRC;
@@ -407,12 +419,12 @@ function syncAu(){if(!au)return;const want=snd&&playing&&vis;
   if(want){if(au.readyState>0&&!au.seeking&&Math.abs(au.currentTime-el)>.25)au.currentTime=el;if(au.paused){const q=au.play();if(q)q.catch(()=>{})}}
   else if(!au.paused)au.pause()}
 function soundOn(){snd=true;ensureAu();setSnd()}
-sbtn.addEventListener('click',()=>{tapped=true;if(snd)snd=false,setSnd();else soundOn();syncAu();kick()});
+sbtn.addEventListener('click',()=>{tapped=true;showHint(false);if(snd)snd=false,setSnd();else soundOn();syncAu();kick()});
 function setBtn(){pbtn.setAttribute('aria-label',playing?'Pause':'Play');pico.innerHTML=playing?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4l13 8-13 8z"/>'}
-function toggle(){auto=false;if(!playing&&el>=total-0.01)el=0;playing=!playing;dirty=true;setBtn();if(playing&&!tapped){tapped=true;soundOn()}syncAu();kick()}
-function jump(i){el=ST[(i+SC.length)%SC.length];dirty=true;if(au&&au.readyState>0)au.currentTime=el;syncAu();kick()}
+function toggle(){if(mutedAuto()){unmuteRestart();return}auto=false;if(!playing&&el>=total-0.01)el=0;playing=!playing;dirty=true;setBtn();if(playing&&!tapped){tapped=true;soundOn()}syncAu();kick()}
+function jump(i){el=ST[(i+SC.length)%SC.length];dirty=true;if(mutedAuto()){tapped=true;auto=false;showHint(false);soundOn()}if(au&&au.readyState>0)au.currentTime=el;syncAu();kick()}
 function idx(){let i=0;while(i<SC.length-1&&el>=ST[i+1])i++;return i}
-pbtn.addEventListener('click',toggle);cv.addEventListener('click',toggle);
+pbtn.addEventListener('click',toggle);hint.addEventListener('click',e=>{e.stopPropagation();toggle()});cv.addEventListener('click',toggle);
 document.getElementById('pse-prev').addEventListener('click',()=>{const i=idx();jump(el-ST[i]>1.5?i:Math.max(0,i-1))});
 document.getElementById('pse-next').addEventListener('click',()=>jump(Math.min(SC.length-1,idx()+1)));
 root.addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('button'))return;
@@ -435,7 +447,7 @@ function frame(ts){
     if(snd&&au&&vis&&(buf||au.readyState<2)){/* hold the animation while the narration buffers */}
     else if(snd&&au&&vis&&!au.paused&&!au.seeking&&Math.abs(au.currentTime-el)<.5)el=au.currentTime;
     else el+=dt;
-    if(el>=total){el=total-0.001;playing=false;setBtn()}dirty=true}
+    if(el>=total){el=total-0.001;playing=false;setBtn();showHint(false)}dirty=true}
   if(dirty){render();dirty=false}
   syncAu();
   if(vis)raf=requestAnimationFrame(frame);
@@ -444,7 +456,7 @@ function kick(){if(!raf){last=null;raf=requestAnimationFrame(frame)}}
 /* Page embed: autoplay (unless reduced motion) once the canvas is in view; the frame loop stops while the
    whole player is off screen (playback holds its place) and resumes when it scrolls back. */
 new IntersectionObserver(es=>{vis=es[es.length-1].isIntersecting;syncAu();if(vis)kick()}).observe(root);
-const aio=new IntersectionObserver(es=>{if(auto&&es[es.length-1].isIntersecting){auto=false;aio.disconnect();if(!playing){playing=true;setBtn();kick()}}},{threshold:.35});
+const aio=new IntersectionObserver(es=>{if(auto&&es[es.length-1].isIntersecting){auto=false;aio.disconnect();if(!playing){playing=true;setBtn();showHint(!snd);kick()}}},{threshold:.35});
 if(auto)aio.observe(cv);
 /* The player's own fonts load after the page has loaded (off the critical path); the canvas redraws once they arrive. */
 function loadFonts(){const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap';

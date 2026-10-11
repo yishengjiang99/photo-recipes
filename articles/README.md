@@ -60,5 +60,6 @@ the accessible transcript). Run it on the grepawk.com server, where the API key 
 the key is never committed or printed. Unchanged chapters reuse their previous take. Usage is in the script header;
 the last run's numbers are in `voiceover/report.json`.
 
-The player starts muted, turns narration on at the first play tap (or the sound button), loads the mp3 only then,
+The player autoplays muted with a "Tap for sound" hint; the first tap on the player (play/pause, canvas, hint, Space or a
+chapter) restarts that chapter with narration on (or turns it on when nothing is playing). The mp3 loads only then,
 and uses the audio as its clock so seeking, pause and mute stay in sync.
