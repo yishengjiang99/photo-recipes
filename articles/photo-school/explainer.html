@@ -53,25 +53,38 @@
     <button class="btn step" id="pse-prev" aria-label="Previous chapter"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
     <button class="btn play" id="pse-play" aria-label="Play"><svg viewBox="0 0 24 24" id="pse-pico"><path d="M7 4l13 8-13 8z"/></svg></button>
     <button class="btn step" id="pse-next" aria-label="Next chapter"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg></button>
-    <div class="segs" id="pse-segs"></div>
+    <div class="segs" id="pse-segs"><button class="seg" style="flex-grow:6" aria-label="Chapter 1: Think like a photographer"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 2: Shutter vs. ISO"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 3: Meter for the subject"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 4: Protect the highlights"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 5: Tone curves make the look"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 6: White balance has two axes"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 7: Protect skin tones"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 8: Read the light"><span><i></i></span></button><button class="seg" style="flex-grow:8" aria-label="Chapter 9: Composition basics"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 10: Know the pipeline"><span><i></i></span></button><button class="seg" style="flex-grow:9" aria-label="Chapter 11: Build a hard-scene test set"><span><i></i></span></button></div>
     <div class="time" id="pse-time">0:00</div>
     <button class="btn snd" id="pse-snd" aria-label="Turn narration on" aria-pressed="false" title="Narration"><svg viewBox="0 0 24 24" id="pse-sico"></svg></button>
   </div>
 
   <div class="caption" aria-live="polite">
-    <div class="n" id="pse-cn"></div>
-    <div class="pse-ct" id="pse-ct"></div>
-    <p id="pse-cb"></p>
+    <div class="n" id="pse-cn">01 / 11</div>
+    <div class="pse-ct" id="pse-ct">Think like a photographer</div>
+    <p id="pse-cb">Every Auto Optimize decision is a photographer’s decision made in code. These are the ideas that matter most for ProTune.</p>
   </div>
 
   <nav class="chaps" aria-label="Explainer chapters">
     <div class="pse-ch">Chapters</div>
-    <ol class="chap" id="pse-chap"></ol>
+    <ol class="chap" id="pse-chap">
+<li><button aria-current="true"><span class="k">01</span><span class="t">Think like a photographer</span><span class="d">0:00</span></button></li>
+<li><button aria-current="false"><span class="k">02</span><span class="t">Shutter vs. ISO</span><span class="d">0:06</span></button></li>
+<li><button aria-current="false"><span class="k">03</span><span class="t">Meter for the subject</span><span class="d">0:15</span></button></li>
+<li><button aria-current="false"><span class="k">04</span><span class="t">Protect the highlights</span><span class="d">0:24</span></button></li>
+<li><button aria-current="false"><span class="k">05</span><span class="t">Tone curves make the look</span><span class="d">0:33</span></button></li>
+<li><button aria-current="false"><span class="k">06</span><span class="t">White balance has two axes</span><span class="d">0:42</span></button></li>
+<li><button aria-current="false"><span class="k">07</span><span class="t">Protect skin tones</span><span class="d">0:51</span></button></li>
+<li><button aria-current="false"><span class="k">08</span><span class="t">Read the light</span><span class="d">1:00</span></button></li>
+<li><button aria-current="false"><span class="k">09</span><span class="t">Composition basics</span><span class="d">1:09</span></button></li>
+<li><button aria-current="false"><span class="k">10</span><span class="t">Know the pipeline</span><span class="d">1:17</span></button></li>
+<li><button aria-current="false"><span class="k">11</span><span class="t">Build a hard-scene test set</span><span class="d">1:26</span></button></li>
+</ol>
   </nav>
 </div>
 </section>
 <script>
-(()=>{
+/* Runs after first paint so the page text paints first; the player markup above is already final. */
+requestAnimationFrame(()=>setTimeout(()=>{
 const cv=document.getElementById('pse-cv'), c=cv.getContext('2d');
 const W=960,H=540;
 const dpr=Math.min(2,window.devicePixelRatio||1);
@@ -367,13 +380,11 @@ function hud(i,el){
 
 /* ---------- player ---------- */
 const segs=document.getElementById('pse-segs'),chap=document.getElementById('pse-chap'),fills=[],cbtn=[];
+/* segments + chapter list are pre-rendered in the markup; wire them up */
+const segBtns=[...segs.children],chapBtns=[...chap.querySelectorAll('button')];
 SC.forEach((x,i)=>{
-  const b=document.createElement('button');b.className='seg';b.style.flexGrow=x.d;b.setAttribute('aria-label','Chapter '+(i+1)+': '+x.t);
-  const sp=document.createElement('span'),f=document.createElement('i');sp.appendChild(f);b.appendChild(sp);segs.appendChild(b);fills.push(f);
-  b.addEventListener('click',()=>jump(i));
-  const li=document.createElement('li'),cb=document.createElement('button');
-  cb.innerHTML=`<span class="k">${String(i+1).padStart(2,'0')}</span><span class="t"></span><span class="d">${fmt(ST[i])}</span>`;
-  cb.querySelector('.t').textContent=x.t;cb.addEventListener('click',()=>{jump(i);if(!playing)toggle()});li.appendChild(cb);chap.appendChild(li);cbtn.push(cb);
+  const b=segBtns[i];fills.push(b.querySelector('i'));b.addEventListener('click',()=>jump(i));
+  const cb=chapBtns[i];cb.addEventListener('click',()=>{jump(i);if(!playing)toggle()});cbtn.push(cb);
 });
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let el=0,playing=false,last=null,cur=-1,dirty=true,vis=false,auto=!reduce,raf=0;
@@ -439,5 +450,5 @@ if(document.readyState==='complete')setTimeout(loadFonts,0);else addEventListene
 setBtn();setSnd();render();
 root.pse={get t(){return el},get playing(){return playing},get audio(){return au},get sound(){return snd}}; /* read-only hook for tests */
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{dirty=true;kick()});
-})();
+},0));
 </script>

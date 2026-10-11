@@ -90,8 +90,8 @@ export function loadArticles() {
 
 // ---------- shared pieces ----------
 const CSS = `
-@font-face{font-family:"DM Sans Fallback";src:local("Arial");size-adjust:104.7%;ascent-override:94.3%;descent-override:29.5%;line-gap-override:0%}
-:root{color-scheme:dark;--bg:#0c0c0f;--bg2:#121216;--surface:#16161c;--surface2:#1e1e26;--border:#2a2a33;--ink:#f5f5f7;--ink2:#c4c4cc;--ink3:#8b8b96;--accent:#f43f5e;--accent-soft:#fb7185;--btn:#e11d48;--btn-hover:#be123c;--accent-muted:rgba(244,63,94,.14);--sans:"DM Sans","DM Sans Fallback",ui-sans-serif,system-ui,-apple-system,sans-serif;--display:"Instrument Serif",Georgia,serif}
+@font-face{font-family:"DM Sans Fallback";src:local("Arial"),local("Liberation Sans"),local("Helvetica");size-adjust:101.4%}@font-face{font-family:"Instrument Serif Fallback";src:local("Times New Roman"),local("Liberation Serif"),local("Times");size-adjust:84.2%}
+:root{color-scheme:dark;--bg:#0c0c0f;--bg2:#121216;--surface:#16161c;--surface2:#1e1e26;--border:#2a2a33;--ink:#f5f5f7;--ink2:#c4c4cc;--ink3:#8b8b96;--accent:#f43f5e;--accent-soft:#fb7185;--btn:#e11d48;--btn-hover:#be123c;--accent-muted:rgba(244,63,94,.14);--sans:"DM Sans","DM Sans Fallback",ui-sans-serif,system-ui,-apple-system,sans-serif;--display:"Instrument Serif","Instrument Serif Fallback",Georgia,serif}
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;min-height:100dvh;font-family:var(--sans);background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(244,63,94,.06),transparent),var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased}
