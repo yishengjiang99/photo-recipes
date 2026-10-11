@@ -97,6 +97,9 @@ final class AutoOptimizeController: ObservableObject {
     @Published var applyFeedbackToken: Int = 0
     /// Look id auto-applied by the last run (for look_undone telemetry).
     @Published var autoAppliedLookId: String?
+    /// Set when selfie-aware AO applied a selfie look this run (front camera + face) —
+    /// CameraView plays the transient selfie feedback once per run id.
+    @Published var selfieAutoApplied: SelfieAutoApplied?
     /// Runner-up chip: one-tap switch when the top recipe is uncertain.
     @Published var alsoTryRecipeId: String?
     @Published var alsoTryRecipeTitle: String?
@@ -420,7 +423,8 @@ final class AutoOptimizeController: ObservableObject {
             "auto_applied": "0",
             "run_id": lastRunId ?? "",
         ])
-        session.setActiveLook(look)
+        // Tapping Apply on the chip makes it the user's pick (selfie AO won't replace it).
+        session.setActiveLook(look, owner: .user)
         suggestedLook = nil
         phase = .ready
     }
@@ -468,6 +472,7 @@ final class AutoOptimizeController: ObservableObject {
         teachWhy = nil; coachOnly = nil; panCue = nil; senseSummary = nil
         suggestedLook = nil
         autoAppliedLookId = nil
+        selfieAutoApplied = nil
         alsoTryRecipeId = nil; alsoTryRecipeTitle = nil; alsoTryProbability = nil
         sceneChangedSuggestion = nil
         applyFeedbackToken = 0
@@ -710,13 +715,30 @@ final class AutoOptimizeController: ObservableObject {
             forceSystemAutoExposure: thermalCritical
         )
 
+        // --- 3b. Selfie-aware AO (front camera + face) -------------------------
+        // AO's targets (+ AO's own look) pass through SelfieAutoPolicy: on the
+        // front camera with a real face it picks a selfie look from the scene and
+        // merges the preset's capture light (AO exposure / WB stay authoritative).
+        // Back camera / no face → unchanged. A forced or user-picked look wins.
+        let selfieDecision = Self.selfieDecision(
+            features: features, solution: solution, session: session)
+        let selfieTargets = Self.selfieApplyTargets(selfieDecision, aoTargets: solution.phoneTargets)
+
         // --- 4. Apply ----------------------------------------------------------
         if wasCancelled(stage: "apply") { return }
-        phase = .applying("Applying \(decision.recipeTitle)…")
+        phase = .applying(selfieDecision.choice.map { "Applying \($0.look.displayName)…" }
+            ?? "Applying \(decision.recipeTitle)…")
         beforeSnapshot = snap(session)
         var wroteTargets = false
         if entitlements.canApplyDials {
-            wroteTargets = await session.applyPhoneTargets(solution.phoneTargets)
+            wroteTargets = await session.applyPhoneTargets(selfieTargets.targets)
+            if let coach = selfieTargets.apertureCoach {
+                session.simulatedApertureCoach = coach
+            }
+            if let choice = selfieDecision.choice {
+                if choice.meterOnFace { _ = await session.meterOnDetectedFace() }
+                if choice.lockWhiteBalanceAfterAE { await session.lockWhiteBalanceAfterExposureSettles() }
+            }
         }
         session.clampMessages.append(contentsOf: solution.clampMessages)
 
@@ -725,7 +747,7 @@ final class AutoOptimizeController: ObservableObject {
             afterSnapshot = recommendedSnapshot(from: solution, session: session)
             agentBaseline = afterSnapshot
             diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
-            publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId)
+            publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId, selfie: selfieDecision, trigger: trigger)
             phase = .ready
             applyFeedbackToken &+= 1
             captureAppliedDials(session: session, recipeId: recipe.id)
@@ -833,7 +855,7 @@ final class AutoOptimizeController: ObservableObject {
         diffs = buildDiffs(beforeSnapshot, afterSnapshot, session.clampMessages)
         advancedDiffs = buildAdvancedDiffs(session: session)
 
-        publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId)
+        publishDecision(decision, recipe: recipe, features: features, solution: solution, session: session, runId: runId, selfie: selfieDecision, trigger: trigger)
 
         // A look suggestion may replace a minor note, never a real miss: the
         // device showed "Ready · Warm Pop" over a frame ~2 stops over.
@@ -935,7 +957,9 @@ final class AutoOptimizeController: ObservableObject {
         features: SceneFeatures,
         solution: SettingsSolver.Solution,
         session: CameraSession,
-        runId: String
+        runId: String,
+        selfie: SelfieAutoPolicy.Decision = .unchanged(.backCamera),
+        trigger: String = "manual"
     ) {
         chosenRecipeId = decision.recipeId
         chosenRecipeTitle = decision.recipeTitle
@@ -956,8 +980,37 @@ final class AutoOptimizeController: ObservableObject {
             alsoTryRecipeId = nil; alsoTryRecipeTitle = nil; alsoTryProbability = nil
         }
 
-        // Look: ported heuristic — auto-apply ≥ 0.6 confidence, else a chip.
         autoAppliedLookId = nil
+        selfieAutoApplied = nil
+        if let props = SelfieAutoPolicy.telemetryProps(selfie, trigger: trigger, runId: runId) {
+            Analytics.shared.track("selfie_auto", props: props)
+        }
+        switch selfie {
+        case .apply(let choice):
+            // Selfie wins on front (replaces AO's / LookSuggester's look). The preset's
+            // light was merged into AO's targets above — don't re-apply it here.
+            session.setActiveLook(choice.look, owner: .auto, applySelfieLight: false)
+            autoAppliedLookId = choice.look.id
+            suggestedLook = nil
+            selfieAutoApplied = SelfieAutoApplied(
+                lookId: choice.look.id, reason: choice.pick.reason,
+                faceBox: choice.faceBox, runId: runId)
+            Analytics.shared.track("look_applied", props: [
+                "look_id": choice.look.id,
+                "source": "selfie_auto",
+                "rank": "1",
+                "auto_applied": "1",
+                "run_id": runId,
+            ])
+            return
+        case .keepLook:
+            // A forced / user-picked look owns the finder — never clobber it.
+            return
+        case .unchanged:
+            break
+        }
+
+        // Look: ported heuristic — auto-apply ≥ 0.6 confidence, else a chip.
         if let suggested = LookSuggester.suggest(features: features) {
             if suggested.confidence >= LookSuggester.autoApplyThreshold {
                 session.setActiveLook(suggested.look)
@@ -974,6 +1027,43 @@ final class AutoOptimizeController: ObservableObject {
                 suggestedLook = suggested.look
             }
         }
+    }
+
+    // MARK: - Selfie-aware AO
+
+    /// Runs `SelfieAutoPolicy` over this run's solve. AO's own look (LookSuggester)
+    /// rides in `aoTargets.creativeLook` so the selfie pick inherits its intensity.
+    static func selfieDecision(
+        features: SceneFeatures,
+        solution: SettingsSolver.Solution,
+        session: CameraSession
+    ) -> SelfieAutoPolicy.Decision {
+        var ao = solution.phoneTargets
+        if ao.creativeLook == nil { ao.creativeLook = LookSuggester.suggest(features: features)?.look }
+        return SelfieAutoPolicy.decide(.init(
+            isFrontCamera: session.isFront,
+            features: features,
+            aoTargets: ao,
+            activeLook: session.activeCreativeLook,
+            activeLookOwner: session.activeLookOwner))
+    }
+
+    /// What `applyPhoneTargets` receives for this run: AO's targets, or the selfie
+    /// merge with the look stripped (set once in `publishDecision`, light not re-applied)
+    /// and the preset's coach-only f-stop moved to the dials coach (no dead-end clamp).
+    nonisolated static func selfieApplyTargets(
+        _ decision: SelfieAutoPolicy.Decision,
+        aoTargets: PhoneTargets
+    ) -> (targets: PhoneTargets, apertureCoach: String?) {
+        guard let choice = decision.choice else { return (aoTargets, nil) }
+        var t = choice.targets
+        t.creativeLook = nil
+        var coach: String?
+        if aoTargets.simulatedAperture == nil, let sa = t.simulatedAperture {
+            t.simulatedAperture = nil
+            coach = String(format: "f/%.1f guidance only — phone lens is fixed.", sa)
+        }
+        return (t, coach)
     }
 
     // MARK: - Outcome telemetry (same run id)
@@ -1307,8 +1397,10 @@ final class AutoOptimizeController: ObservableObject {
                     }
                 }
                 // Look: auto-apply when Pass 1 left none; otherwise keep Pass 1 look.
-                if session.activeCreativeLook == nil,
-                   let look = targets.creativeLook, !look.id.isEmpty, CreativeLookCatalog.isKnown(look.id) {
+                // A non-selfie server look never replaces this run's selfie choice.
+                let selfieLookId = self.selfieAutoApplied.flatMap { $0.runId == self.lastRunId ? $0.lookId : nil }
+                if let look = SelfieAutoPolicy.resolveServerLook(
+                    targets.creativeLook, selfieLookId: selfieLookId, activeLook: session.activeCreativeLook) {
                     var applied = look
                     if applied.intensity == nil {
                         applied.intensity = CreativeLookCatalog.defaultIntensity

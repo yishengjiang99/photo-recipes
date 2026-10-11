@@ -51,6 +51,13 @@ struct CameraView: View {
     /// On-finder AO apply burst (dial deltas) — collapses into BeforeAfterChip.
     @State private var showApplyBurst = false
     @State private var applyBurstTask: Task<Void, Never>?
+    /// Transient applied moment (edge glow / face bracket / selfie pill) — see AppliedFeedback.swift.
+    @State private var appliedFeedback: AppliedFeedbackState?
+    @State private var appliedFeedbackPillVisible = false
+    @State private var appliedFeedbackTask: Task<Void, Never>?
+    /// Selfie moment plays once per AO run (Pass 2 re-bumps applyFeedbackToken).
+    @State private var lastSelfieFeedbackRunId: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Viewfinder-native still-capture feedback (flash / freeze / Saved chip).
     @State private var showCaptureFlash = false
@@ -184,6 +191,9 @@ struct CameraView: View {
             isCameraOnScreen = false
             chromeToastTask?.cancel()
             applyBurstTask?.cancel()
+            appliedFeedbackTask?.cancel()
+            appliedFeedback = nil
+            appliedFeedbackPillVisible = false
             captureFeedbackTask?.cancel()
             savedChipTask?.cancel()
             pauseCameraPipeline()
@@ -408,6 +418,27 @@ struct CameraView: View {
                     .allowsHitTesting(false)
                 }
 
+                // Transient applied moment: warm edge glow (+ face bracket on a selfie
+                // AO). Under the chrome, never hit-testable, gone in ≤ 2 s.
+                if let feedback = appliedFeedback {
+                    AppliedFeedbackOverlay(
+                        state: feedback,
+                        bracketRect: AppliedFeedbackState.bracketRect(
+                            faceBox: feedback.showsBracket ? feedback.faceBox : nil,
+                            in: geo.size,
+                            // Below the measured top chrome (status + look chip), like the drawer.
+                            topInset: SideChromeLayout.topInset(
+                                fixedTopChrome: topChromeH,
+                                measuredTopChrome: measuredTopChromeH
+                            ),
+                            bottomInset: bottomScrim,
+                            drawerOpen: showControlsDrawer
+                        )
+                    )
+                    .transition(.opacity)
+                    .zIndex(9)
+                }
+
                 // Mid-finder AO apply burst — impossible to miss dial writes.
                 if showApplyBurst, !optimizer.coreDiffs.isEmpty {
                     ApplyBurstBanner(diffs: optimizer.coreDiffs)
@@ -547,8 +578,21 @@ struct CameraView: View {
             }
             .onChange(of: optimizer.applyFeedbackToken) { _, token in
                 guard token > 0 else { return }
+                // Selfie-aware AO: the selfie moment *replaces* the dial burst for this
+                // run (one primary status, Build 28) — once per run id.
+                if let applied = optimizer.selfieAutoApplied,
+                   applied.runId != lastSelfieFeedbackRunId {
+                    lastSelfieFeedbackRunId = applied.runId
+                    presentAppliedFeedback(AppliedFeedbackState(
+                        kind: .selfie(lookId: applied.lookId, reason: applied.reason),
+                        faceBox: applied.faceBox,
+                        reduceMotion: reduceMotion
+                    ))
+                    return
+                }
                 if !optimizer.coreDiffs.isEmpty {
                     presentApplyBurst()
+                    presentAppliedFeedback(AppliedFeedbackState(kind: .optimize, reduceMotion: reduceMotion))
                 } else if let title = Recipe.chromeTitle(
                     forStoredTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
                     id: optimizer.chosenRecipeId ?? session.appliedRecipeId
@@ -728,8 +772,13 @@ struct CameraView: View {
     private func statusSection(compact: Bool) -> some View {
         let hPad: CGFloat = compact ? 10 : 14
         return VStack(spacing: compact ? 6 : 8) {
-            // Single primary status: busy Recommend/AO, or ready warnings.
-            if isStatusBusy || primaryStatusCopy != nil {
+            // Single primary status: the transient selfie pill *replaces* the status
+            // for ~2 s (never stacks), then busy Recommend/AO, or ready warnings.
+            if appliedFeedbackPillVisible, !isStatusBusy,
+               let title = appliedFeedback?.pillTitle {
+                AppliedFeedbackPill(title: title, detail: appliedFeedback?.pillDetail)
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            } else if isStatusBusy || primaryStatusCopy != nil {
                 AgentStatusPill(
                     phase: optimizer.phase,
                     verifyWarning: nil,
@@ -1272,7 +1321,7 @@ struct CameraView: View {
             return
         }
         let look = CreativeLook(id: id, intensity: CreativeLookCatalog.defaultIntensity)
-        session.setActiveLook(look)
+        session.setActiveLook(look, owner: .user)
         optimizer.dismissSuggestedLook()
         Analytics.shared.track("look_applied", props: ["look_id": id, "source": "filter_rail"])
         optimizer.markDirty(session: session)
@@ -1648,10 +1697,14 @@ struct CameraView: View {
     private func applyRecommendLookOnly(response: RecommendResponse, message: String? = nil) {
         guard let targets = mergeCreativeLook(response: response, message: message),
               targets.creativeLook != nil || response.creativeLook != nil || ApplyFiltersIntent.forcedLook(for: message ?? "") != nil else { return }
+        let forced = ApplyFiltersIntent.forcedLook(for: message ?? "") != nil
         if entitlements.canApplyDials {
-            Task { @MainActor in _ = await session.applyPhoneTargets(targets, autoApplyLook: true) }
+            Task { @MainActor in
+                _ = await session.applyPhoneTargets(targets, autoApplyLook: true)
+                if forced { session.markActiveLookOwner(.forced) }
+            }
         } else if let look = targets.creativeLook ?? response.creativeLook {
-            session.setActiveLook(look)
+            session.setActiveLook(look, owner: forced ? .forced : .auto)
         }
         session.suppressDeadEndClampMessages()
         if session.activeCreativeLook != nil {
@@ -1693,17 +1746,20 @@ struct CameraView: View {
     private func applyRecommendToCamera(recipe: Recipe, response: RecommendResponse?, message: String? = nil) {
         let targets = mergeCreativeLook(response: response, message: message)
         let canApplyDials = entitlements.canApplyDials
+        // Forced look (APPLY-FILTERS / named look) wins over selfie-aware AO later this session.
+        let forced = ApplyFiltersIntent.forcedLook(for: message ?? "") != nil
         // Applies are async now (awaitable exposure writes); the dial-write
         // branch runs on the main actor right after.
         Task { @MainActor in
             _ = await session.apply(recipe: recipe)
             if canApplyDials, let targets {
                 _ = await session.applyPhoneTargets(targets, autoApplyLook: true)
+                if forced { session.markActiveLookOwner(.forced) }
             }
         }
         if !(canApplyDials && targets != nil), let look = targets?.creativeLook ?? response?.creativeLook {
             // Free Peek may lock dials — still bake the look onto preview/still so the finder changes.
-            session.setActiveLook(look)
+            session.setActiveLook(look, owner: forced ? .forced : .auto)
             if let lut = targets?.previewLUT, !lut.isEmpty {
                 session.previewLUTId = lut
             }
@@ -1907,7 +1963,7 @@ struct CameraView: View {
               var look = ApplyFiltersIntent.forcedLook(for: utterance) else { return false }
         // Asked-for B&W means no colour left — the default 0.55 blend still reads as colour.
         if look.id == "monoInk" { look.intensity = 1 }
-        session.setActiveLook(look)
+        session.setActiveLook(look, owner: .forced)
         optimizer.dismissSuggestedLook()
         optimizer.markDirty(session: session)
         Analytics.shared.track("look_applied", props: ["look_id": look.id, "source": source])
@@ -2096,6 +2152,32 @@ struct CameraView: View {
             try? await Task.sleep(nanoseconds: 1_400_000_000)
             guard !Task.isCancelled else { return }
             withAnimation(.easeIn(duration: 0.2)) { chromeToast = nil }
+        }
+    }
+
+    /// Starts the transient applied moment; a newer one replaces (never stacks) it.
+    private func presentAppliedFeedback(_ state: AppliedFeedbackState) {
+        appliedFeedbackTask?.cancel()
+        withAnimation(.easeOut(duration: 0.15)) {
+            appliedFeedback = state
+            appliedFeedbackPillVisible = state.pillTitle != nil
+        }
+        AppliedFeedbackHaptics.play(state.haptic)
+        if let announcement = state.accessibilityAnnouncement {
+            UIAccessibility.post(notification: .announcement, argument: announcement)
+        }
+        appliedFeedbackTask = Task { @MainActor in
+            if state.pillTitle != nil {
+                try? await Task.sleep(nanoseconds: UInt64(AppliedFeedbackState.pillDuration * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeIn(duration: 0.25)) { appliedFeedbackPillVisible = false }
+            }
+            let remaining = state.totalDuration - (state.pillTitle != nil ? AppliedFeedbackState.pillDuration : 0)
+            if remaining > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.2)) { appliedFeedback = nil }
         }
     }
 
