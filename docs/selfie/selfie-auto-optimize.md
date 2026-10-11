@@ -44,3 +44,21 @@ the edge glow only.
 `selfie_auto`: `look_id`, `reason`, `forced_override` (1 when a forced/user look kept the
 finder), `kept_owner`, `replaced_look` (1 when an AO/server non-selfie look was replaced),
 `trigger`, `run_id`. No PII, no face geometry.
+
+## P0 fix (TestFlight build 78): front-camera AO went black
+
+Safety rails (code: `ios/PhotoRecipes/Services/ExposureSafety.swift`):
+
+- **Front camera, low light → no custom shutter/ISO.** `SettingsSolver.applySelfieAdjustments` drops the
+  custom write (`FrontExposurePolicy`) when EV100 < 7, the plan is already under auto, or the planned shutter
+  is shorter than what auto metered; exposure stays on continuous AE with a non-negative EV face lift.
+- **Every custom write is clamped to the live `device.activeFormat`** (`ExposureClamp`), not the published capabilities.
+- **Darkening guard** (`ExposureSafetyGuard`): after apply, exposure product / `exposureTargetOffset` / measured
+  preview luma vs the pre-AO auto state. > ~1 stop darker than intended or near-black → continuous AE/AF, unlocked,
+  status "kept auto exposure". The verify copy reports the measured correction, never `|initialError|`.
+- **Session (re)start** resets to continuous AE/AF, zero bias, unlocked (`SessionRestartPolicy`).
+- **Selfie decision is final on front**: Pass 2 never applies a server look, flash, focus lock, zoom or exposure on
+  the front camera (`LookPrecedence`, `pass2IntentTargets(isFrontCamera:)`).
+- **Front flash** only ON for the selfie Low Light look with a Retina Flash (`FrontFlashPolicy`).
+- Face gate also accepts a front `.human` close-up ≥ 0.15 of the frame, plus a padded/brightened face-detection
+  retry for faces that overflow the frame; metered ISO ≥ 1250 always means Low Light.

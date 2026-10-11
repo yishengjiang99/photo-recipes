@@ -191,6 +191,8 @@ final class CameraSession: NSObject, ObservableObject {
     /// serial session queue, only for the latest intent, and only when the
     /// session isn't already running.
     func start() async {
+        // Published flag (main actor): false after stop() / before first start.
+        let wasRunning = isRunning
         let token = runIntent.begin()
         await checkAuth()
         guard auth == .authorized, runIntent.isCurrent(token) else { return }
@@ -221,6 +223,11 @@ final class CameraSession: NSObject, ObservableObject {
             }
             guard runIntent.isCurrent(token) else { return }
             isRunning = started
+            // (c) A (re)start — foreground return, tab switch — never restores a
+            // locked / custom exposure: the device keeps its exposure mode across
+            // stopRunning/startRunning, so a custom write from before the app
+            // backgrounded would come back as a black, AE-locked finder.
+            if started, !wasRunning { resetToContinuousAuto(reason: "session_start") }
             refreshReadouts()
         } catch {
             errorMessage = error.localizedDescription
@@ -502,13 +509,15 @@ final class CameraSession: NSObject, ObservableObject {
             return .invalid
         }
         guard CameraValues.finitePositive(seconds) != nil else { return .invalid }
-        let clamped = min(max(seconds, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
+        let clamped = ExposureClamp.clamp(
+            durationSeconds: seconds, iso: device.iso, limits: liveExposureLimits(device)).durationSeconds
         if clamped != seconds {
             clampMessages.append("Shutter clamped to \(RecipeCameraMapper.formatShutter(clamped)).")
         }
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: clamped, preferredTimescale: 1_000_000),
-            iso: device.iso)
+            iso: ExposureClamp.clamp(durationSeconds: clamped, iso: device.iso,
+                                     limits: liveExposureLimits(device)).iso)
         exposureLocked = true
         exposureSeconds = CameraValues.exposure(clamped, fallback: exposureSeconds)
         if captureMode == .auto || captureMode == .program { captureMode = .shutter }
@@ -524,9 +533,12 @@ final class CameraSession: NSObject, ObservableObject {
             return .invalid
         }
         guard CameraValues.finitePositive(value) != nil else { return .invalid }
-        let clamped = min(max(value, capabilities.minISO), capabilities.maxISO)
+        let live = ExposureClamp.clamp(
+            durationSeconds: CMTimeGetSeconds(device.exposureDuration), iso: value,
+            limits: liveExposureLimits(device))
+        let clamped = live.iso
         let sync = await issueExposureWrite(
-            duration: device.exposureDuration,
+            duration: CMTime(seconds: live.durationSeconds, preferredTimescale: 1_000_000),
             iso: clamped)
         exposureLocked = true
         iso = CameraValues.iso(clamped, fallback: iso)
@@ -948,8 +960,11 @@ final class CameraSession: NSObject, ObservableObject {
     private func setCustom(duration: Double, iso isoVal: Float) async -> CMTime {
         guard let device = input?.device, device.isExposureModeSupported(.custom),
               CameraValues.finitePositive(duration) != nil, CameraValues.finitePositive(isoVal) != nil else { return .invalid }
-        let d = min(max(duration, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
-        let i = min(max(isoVal, capabilities.minISO), capabilities.maxISO)
+        // (a) Clamp to the CURRENT device's active format — not the published
+        // capabilities, which lag a flip / format change.
+        let c = ExposureClamp.clamp(durationSeconds: duration, iso: isoVal, limits: liveExposureLimits(device))
+        let d = c.durationSeconds
+        let i = c.iso
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: d, preferredTimescale: 1_000_000),
             iso: i)
@@ -1841,8 +1856,10 @@ final class CameraSession: NSObject, ObservableObject {
     /// tests substitute a fake device.
     func issueWrite(durationSeconds: Double, iso: Float) async -> CMTime {
         guard CameraValues.finitePositive(durationSeconds) != nil, CameraValues.finitePositive(iso) != nil else { return .invalid }
-        let d = min(max(durationSeconds, capabilities.minExposureSeconds), capabilities.maxExposureSeconds)
-        let i = min(max(iso, capabilities.minISO), capabilities.maxISO)
+        let limits = input.map { liveExposureLimits($0.device) } ?? capabilityLimits
+        let c = ExposureClamp.clamp(durationSeconds: durationSeconds, iso: iso, limits: limits)
+        let d = c.durationSeconds
+        let i = c.iso
         // No clamp banners here: corrections are internal; the loop reports
         // `clamped` and the controller turns it into a single verify note.
         let sync = await issueExposureWrite(
@@ -1875,8 +1892,98 @@ final class CameraSession: NSObject, ObservableObject {
         return (exposureSeconds, iso)
     }
 
-    var isoRange: ClosedRange<Float> { capabilities.minISO...capabilities.maxISO }
-    var shutterRange: ClosedRange<Double> { capabilities.minExposureSeconds...capabilities.maxExposureSeconds }
+    var isoRange: ClosedRange<Float> {
+        let l = input.map { liveExposureLimits($0.device) } ?? capabilityLimits
+        return l.minISO...max(l.maxISO, l.minISO)
+    }
+    var shutterRange: ClosedRange<Double> {
+        let l = input.map { liveExposureLimits($0.device) } ?? capabilityLimits
+        return l.minShutterSeconds...max(l.maxShutterSeconds, l.minShutterSeconds)
+    }
+
+    /// Published-capability limits (fallback when no device is attached).
+    private var capabilityLimits: ExposurePlanner.DeviceLimits {
+        ExposurePlanner.DeviceLimits(
+            minShutterSeconds: capabilities.minExposureSeconds,
+            maxShutterSeconds: capabilities.maxExposureSeconds,
+            minISO: capabilities.minISO,
+            maxISO: capabilities.maxISO)
+    }
+
+    /// Limits of the device's CURRENT active format (front and back differ, and
+    /// a frame-rate / format change moves them).
+    private func liveExposureLimits(_ device: AVCaptureDevice) -> ExposurePlanner.DeviceLimits {
+        let f = device.activeFormat
+        let minS = CMTimeGetSeconds(f.minExposureDuration)
+        let maxS = CMTimeGetSeconds(f.maxExposureDuration)
+        let fallback = capabilityLimits
+        return ExposurePlanner.DeviceLimits(
+            minShutterSeconds: minS.isFinite && minS > 0 ? minS : fallback.minShutterSeconds,
+            maxShutterSeconds: maxS.isFinite && maxS > 0 ? maxS : fallback.maxShutterSeconds,
+            minISO: f.minISO.isFinite && f.minISO > 0 ? f.minISO : fallback.minISO,
+            maxISO: f.maxISO.isFinite && f.maxISO > 0 ? f.maxISO : fallback.maxISO)
+    }
+
+    /// Live exposure limits for the planner (current device, current format).
+    func currentExposureLimits() -> ExposurePlanner.DeviceLimits {
+        input.map { liveExposureLimits($0.device) } ?? capabilityLimits
+    }
+
+    // MARK: - P0 safety rails (front-cam AO black)
+
+    /// True when the photo output can fire a front (Retina / screen) flash.
+    var supportsFrontFlash: Bool {
+        isFront && photoOutput.supportedFlashModes.contains(.on)
+    }
+
+    /// (b)/(c) Back to continuous auto exposure + continuous auto focus, zero
+    /// bias, nothing locked. Used on every session (re)start and when the AO
+    /// darkening guard reverts a run.
+    func resetToContinuousAuto(reason: String) {
+        guard let device = input?.device else { return }
+        let prevExposure: SessionRestartPolicy.ExposureMode
+        switch device.exposureMode {
+        case .custom: prevExposure = .custom
+        case .locked: prevExposure = .locked
+        case .autoExpose: prevExposure = .autoExpose
+        default: prevExposure = .continuousAuto
+        }
+        let prevFocus: SessionRestartPolicy.FocusMode = device.focusMode == .locked ? .locked : .continuousAuto
+        let target = SessionRestartPolicy.stateAfterRestart(previous: SessionRestartPolicy.State(
+            exposureMode: prevExposure,
+            focusMode: prevFocus,
+            exposureBias: device.exposureTargetBias,
+            exposureLocked: exposureLocked, focusLocked: focusLocked))
+        configure(device) {
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                if device.isExposurePointOfInterestSupported {
+                    device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
+                }
+                device.exposureMode = .continuousAutoExposure
+            }
+            let bias = min(max(target.exposureBias, device.minExposureTargetBias), device.maxExposureTargetBias)
+            device.setExposureTargetBias(bias, completionHandler: nil)
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+        }
+        exposureLocked = target.exposureLocked
+        focusLocked = target.focusLocked
+        focusPoint = nil
+        evBias = target.exposureBias
+        if captureMode != .auto { captureMode = .auto }
+        Analytics.shared.track("camera_exposure_reset", props: ["reason": reason, "front": isFront ? "1" : "0"])
+    }
+
+    /// Mean luma (0…1, gamma-encoded) of the latest preview frame, or nil when
+    /// no frame has arrived. Cheap: a 64 px downsample + histogram.
+    func measuredPreviewLuma() -> Double? {
+        guard let pb = latestFrame()?.buffer,
+              let small = FrameDownsampler.downsample(pb, maxLongSide: 64),
+              let (bins, _) = LuminanceHistogram.compute(small),
+              bins.count == 256 else { return nil }
+        return Double(LuminanceStats.fromHistogram(bins: bins).mean)
+    }
 
     /// Active video max frame duration in seconds; 1/30 s when unavailable.
     private func activeVideoMaxFrameDurationSeconds() -> Double {

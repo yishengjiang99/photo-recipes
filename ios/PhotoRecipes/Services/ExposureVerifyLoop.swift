@@ -103,6 +103,14 @@ enum ExposureVerifyLoop {
             verified: error != nil)
     }
 
+    /// Underexposed (`error < 0`) → the shutter may only lengthen; overexposed
+    /// → it may only shorten. Pure — unit-tested.
+    nonisolated static func neverAgainstError(_ shutter: Double, current: Double, error: Double) -> Double {
+        if error < 0 { return max(shutter, current) }
+        if error > 0 { return min(shutter, current) }
+        return shutter
+    }
+
     /// Meter read with a stability gate: two consecutive readings must agree
     /// within 0.1 EV before the read is accepted; on disagreement the latest
     /// reading wins (the meter is still converging — the loop re-checks after
@@ -177,7 +185,11 @@ enum ExposureVerifyLoop {
             }
             let cap = min(shutterCapSeconds ?? .infinity, shutterRange.upperBound)
             let wantShutter = currentShutterSeconds * factor
-            let finalShutter = min(max(min(wantShutter, cap), shutterRange.lowerBound), shutterRange.upperBound)
+            var finalShutter = min(max(min(wantShutter, cap), shutterRange.lowerBound), shutterRange.upperBound)
+            // P0: a correction never moves exposure the wrong way. Underexposed
+            // with the motion cap below the current shutter used to SHORTEN the
+            // shutter (min(want, cap)) — each "brighten" step made the frame darker.
+            finalShutter = Self.neverAgainstError(finalShutter, current: currentShutterSeconds, error: error)
             return Correction(
                 shutterSeconds: finalShutter, iso: clampedISO,
                 clamped: finalShutter != wantShutter)
@@ -188,7 +200,9 @@ enum ExposureVerifyLoop {
                     clamped: false)
             }
             let wantShutter = currentShutterSeconds * factor
-            let finalShutter = min(max(wantShutter, shutterRange.lowerBound), shutterRange.upperBound)
+            let finalShutter = Self.neverAgainstError(
+                min(max(wantShutter, shutterRange.lowerBound), shutterRange.upperBound),
+                current: currentShutterSeconds, error: error)
             return Correction(
                 shutterSeconds: finalShutter, iso: clampedISO,
                 clamped: finalShutter != wantShutter)

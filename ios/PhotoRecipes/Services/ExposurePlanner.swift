@@ -133,6 +133,19 @@ enum ExposurePlanner {
         return mag > 0 ? mag : 0.03
     }
 
+    // MARK: - Metered anchor
+
+    /// The exposure product the scene actually needs, from a metered product and
+    /// the meter's residual `exposureTargetOffset` (− = the frame is darker than
+    /// the AE target). Converged reads (|offset| < 0.15) pass through; a
+    /// not-yet-converged read is compensated by `2^(−offset)`, clamped to ±4 stops.
+    static func compensatedEAuto(product: Double, exposureTargetOffset: Float?) -> Double {
+        guard product.isFinite, product > 0 else { return product }
+        guard let o = exposureTargetOffset, o.isFinite, abs(o) >= 0.15 else { return product }
+        let stops = Double(min(max(o, -4), 4))
+        return product * pow(2, -stops)
+    }
+
     // MARK: - Plan
 
     /// Splits `E_target = E_auto × 2^targetEV` into shutter × ISO per `priority`.
