@@ -101,4 +101,26 @@ final class CameraLifecyclePolicyTests: XCTestCase {
         let t = intent.begin()
         XCTAssertTrue(intent.isCurrent(t))
     }
+
+    // MARK: still look bake vs. backgrounding
+
+    func testStillBake_startsUnlessBackgrounded() {
+        XCTAssertTrue(Policy.shouldStartStillBake(appPhase: .active))
+        XCTAssertTrue(Policy.shouldStartStillBake(appPhase: .inactive), "Control Center pull keeps the bake")
+        XCTAssertFalse(Policy.shouldStartStillBake(appPhase: .background), "no GPU work from the background")
+    }
+
+    func testStillBake_droppedIfItRanIntoTheBackground() {
+        XCTAssertTrue(Policy.keepsStillBake(enteredBackgroundDuringBake: false, appPhaseAfter: .active))
+        XCTAssertTrue(Policy.keepsStillBake(enteredBackgroundDuringBake: false, appPhaseAfter: .inactive))
+        XCTAssertFalse(Policy.keepsStillBake(enteredBackgroundDuringBake: true, appPhaseAfter: .active),
+                       "backgrounded and back mid-bake → original JPEG")
+        XCTAssertFalse(Policy.keepsStillBake(enteredBackgroundDuringBake: false, appPhaseAfter: .background))
+    }
+
+    func testPhase_fromApplicationState() {
+        XCTAssertEqual(Policy.Phase(UIApplication.State.active), .active)
+        XCTAssertEqual(Policy.Phase(UIApplication.State.inactive), .inactive)
+        XCTAssertEqual(Policy.Phase(UIApplication.State.background), .background)
+    }
 }

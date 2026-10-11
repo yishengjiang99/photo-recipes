@@ -3,6 +3,7 @@ import UIKit
 import Combine
 import CoreImage
 import CoreVideo
+import ImageIO
 
 @MainActor
 final class CameraSession: NSObject, ObservableObject {
@@ -1380,6 +1381,9 @@ final class CameraSession: NSObject, ObservableObject {
         let evStops = stops ?? pendingBracket?.stops ?? []
         guard !evStops.isEmpty else { throw CamError.captureFailed }
         let limited = Array(evStops.prefix(9))
+        // Finish the burst's bakes and saves even if the user leaves the app mid-burst.
+        let backgroundTask = BackgroundTaskAssertion(name: "bracket-burst")
+        defer { backgroundTask.end() }
         var results: [Data] = []
         let previousEV = evBias
         defer { setEV(previousEV) }
@@ -1926,6 +1930,35 @@ struct DeviceReadback: Equatable {
     )
 }
 
+extension CameraSession {
+    /// Still look bake on a background task (never the main thread).
+    nonisolated static func bakeOffMain(_ data: Data, look: CreativeLook) async -> Data {
+        await Task.detached(priority: .userInitiated) {
+            CreativeLookEngine.shared.bakeJPEG(data, look: look)
+        }.value
+    }
+
+    /// `selfie_bake` timing event: look id, wall time, output size, camera, and whether the bake
+    /// was kept (`baked` 0 means it failed or was dropped and the original JPEG was used).
+    /// No pixels, no face data.
+    static func trackSelfieBake(look: CreativeLook, data: Data, seconds: Double, front: Bool, baked: Bool) {
+        let longEdge: Int = {
+            guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return 0 }
+            let w = props[kCGImagePropertyPixelWidth] as? Int ?? 0
+            let h = props[kCGImagePropertyPixelHeight] as? Int ?? 0
+            return max(w, h)
+        }()
+        Analytics.shared.track("selfie_bake", props: [
+            "look_id": look.id,
+            "bake_ms": "\(Int((seconds * 1000).rounded()))",
+            "long_edge_px": "\(longEdge)",
+            "front": front ? "1" : "0",
+            "baked": baked ? "1" : "0",
+        ])
+    }
+}
+
 extension CameraSession: AVCapturePhotoCaptureDelegate {
     nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         Task { @MainActor in
@@ -1935,13 +1968,33 @@ extension CameraSession: AVCapturePhotoCaptureDelegate {
             guard let data = photo.fileDataRepresentation() else {
                 cont?.resume(throwing: CamError.captureFailed); return
             }
+            // Snapshot the look and camera before any await, so a look change or camera flip
+            // mid-bake can't leak in.
+            let look = self.bakeLookOnNextCapture ? self.activeCreativeLook : nil
+            let front = self.isFront
+            self.bakeLookOnNextCapture = true
             let out: Data
-            if self.bakeLookOnNextCapture {
-                out = CreativeLookEngine.shared.bakeJPEG(data, look: self.activeCreativeLook)
+            if let look, look.resolvedIntensity > 0,
+               CameraLifecyclePolicy.shouldStartStillBake(
+                   appPhase: CameraLifecyclePolicy.Phase(UIApplication.shared.applicationState)) {
+                // Bake off the main thread: selfie looks run Vision + a full-resolution render
+                // and a JPEG re-encode, which used to freeze the camera UI on every shot.
+                let watch = BackgroundEntryWatch()
+                let started = CFAbsoluteTimeGetCurrent()
+                let baked = await Self.bakeOffMain(data, look: look)
+                let seconds = CFAbsoluteTimeGetCurrent() - started
+                // GPU work isn't allowed in the background: drop a bake that ran into it.
+                let keep = CameraLifecyclePolicy.keepsStillBake(
+                    enteredBackgroundDuringBake: watch.finish(),
+                    appPhaseAfter: CameraLifecyclePolicy.Phase(UIApplication.shared.applicationState))
+                out = keep ? baked : data
+                if CreativeLookCatalog.isSelfie(look.id) {
+                    Self.trackSelfieBake(look: look, data: out, seconds: seconds,
+                                         front: front, baked: out != data)
+                }
             } else {
                 out = data
             }
-            self.bakeLookOnNextCapture = true
             lastThumb = UIImage(data: out)
             cont?.resume(returning: out)
         }
