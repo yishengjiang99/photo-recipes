@@ -45,6 +45,13 @@ final class VoiceCaptureController: ObservableObject {
     private var recorder: AVAudioRecorder?
     private var recordURL: URL?
 
+    /// Bumped by every start and by `cancel()`; an in-flight `start()` that
+    /// was awaiting mic / Speech permission when the app backgrounded (or the
+    /// Camera tab went away) sees a stale generation and never opens the mic.
+    private var startGeneration: UInt64 = 0
+    /// True between our `setActive(true)` and the matching deactivation.
+    private var audioSessionActive = false
+
     private var onPartial: ((String) -> Void)?
     private var onTranscript: ((String) -> Void)?
 
@@ -81,6 +88,29 @@ final class VoiceCaptureController: ObservableObject {
         onPartial = nil
         onTranscript = nil
         phase = .idle
+        startGeneration &+= 1
+        // Only release the session if this controller activated it — the
+        // Camera and Coach tabs each own a controller; one tab's teardown
+        // must not yank the shared AVAudioSession from the other.
+        deactivateAudioSession()
+    }
+
+    /// Scene went to the background: stop the engine / recorder and release
+    /// the audio session so the mic indicator goes away. Same as `cancel()`.
+    func suspendForBackground() {
+        cancel()
+    }
+
+    private func activateAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        audioSessionActive = true
+    }
+
+    private func deactivateAudioSession() {
+        guard audioSessionActive else { return }
+        audioSessionActive = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -93,6 +123,8 @@ final class VoiceCaptureController: ObservableObject {
     // MARK: - Start
 
     private func start() async {
+        startGeneration &+= 1
+        let generation = startGeneration
         phase = .requestingPermission
         latestTranscript = ""
         committedTranscript = ""
@@ -102,6 +134,8 @@ final class VoiceCaptureController: ObservableObject {
 
         let micOK = await requestMic()
         permission = AVAudioSession.sharedInstance().recordPermission
+        // Cancelled (backgrounded / left Camera) while the prompt was up.
+        guard generation == startGeneration else { return }
         guard micOK else {
             log.error("mic denied")
             phase = .error("Microphone is off")
@@ -109,6 +143,7 @@ final class VoiceCaptureController: ObservableObject {
         }
 
         let speechOK = await requestSpeechAuth()
+        guard generation == startGeneration else { return }
         if speechOK {
             // 1) On-device when supported (privacy + offline).
             if await startSpeech(requiresOnDevice: true) {
@@ -140,9 +175,7 @@ final class VoiceCaptureController: ObservableObject {
         }
 
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try activateAudioSession()
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
@@ -216,9 +249,7 @@ final class VoiceCaptureController: ObservableObject {
         usingSpeechFramework = false
         streamsPartials = false
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try activateAudioSession()
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("pr-voice-\(UUID().uuidString).m4a")
             let settings: [String: Any] = [
@@ -321,7 +352,7 @@ final class VoiceCaptureController: ObservableObject {
         } else {
             phase = .idle
         }
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        deactivateAudioSession()
     }
 
     private func stopGrokAndTranscribe() async {
@@ -335,7 +366,7 @@ final class VoiceCaptureController: ObservableObject {
         defer {
             try? FileManager.default.removeItem(at: url)
             recordURL = nil
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            deactivateAudioSession()
         }
         do {
             let data = try Data(contentsOf: url)

@@ -161,33 +161,78 @@ final class CameraSession: NSObject, ObservableObject {
         }
     }
 
+    /// Re-reads camera permission **without** prompting (scene-phase resume:
+    /// a foreground return must never pop the system dialog).
+    func refreshAuthWithoutPrompt() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: auth = .authorized
+        case .notDetermined: auth = .notDetermined
+        case .denied: auth = .denied
+        case .restricted: auth = .restricted
+        @unknown default: auth = .denied
+        }
+    }
+
+    /// Start/stop intent shared with the session queue. `start()` takes a
+    /// token; `stop()` invalidates it, so an in-flight start (awaiting
+    /// permission / configuration, or already queued) that lands after a
+    /// stop — e.g. the app backgrounded or the tab switched mid-start —
+    /// never leaves the session running.
+    private let runIntent = CaptureRunIntent()
+
+    /// Idempotent: a second call while running (or while another start is in
+    /// flight) never double-starts — `startRunning()` only runs on the
+    /// serial session queue, only for the latest intent, and only when the
+    /// session isn't already running.
     func start() async {
+        let token = runIntent.begin()
         await checkAuth()
-        guard auth == .authorized else { return }
+        guard auth == .authorized, runIntent.isCurrent(token) else { return }
         do {
             try await configureIfNeeded()
+            guard runIntent.isCurrent(token) else { return }
             // Re-start safe: drop any prior observers before attaching new ones.
             unregisterInterruptionObservers()
             registerInterruptionObservers()
-            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                queue.async { [weak self] in
-                    self?.session.startRunning()
-                    c.resume()
+            let session = self.session
+            let intent = runIntent
+            let started: Bool = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+                queue.async {
+                    guard intent.isCurrent(token) else {
+                        c.resume(returning: false)
+                        return
+                    }
+                    if !session.isRunning { session.startRunning() }
+                    // stop() raced in while startRunning() was blocking — undo
+                    // here too (its own stopRunning block is queued behind us).
+                    if !intent.isCurrent(token) {
+                        if session.isRunning { session.stopRunning() }
+                        c.resume(returning: false)
+                        return
+                    }
+                    c.resume(returning: session.isRunning)
                 }
             }
-            isRunning = session.isRunning
+            guard runIntent.isCurrent(token) else { return }
+            isRunning = started
             refreshReadouts()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
+    /// Stops capture on the session queue. Safe to call repeatedly and while a
+    /// `start()` is still in flight (that start is cancelled, see `runIntent`).
     func stop() {
+        runIntent.cancel()
         unregisterInterruptionObservers()
-        queue.async { [weak self] in
-            self?.session.stopRunning()
-            Task { @MainActor in self?.isRunning = false }
+        let session = self.session
+        queue.async {
+            if session.isRunning { session.stopRunning() }
         }
+        isRunning = false
+        // stopRunning() drops the torch; keep the published state honest.
+        torchOn = false
     }
 
     private func registerInterruptionObservers() {
@@ -208,11 +253,14 @@ final class CameraSession: NSObject, ObservableObject {
                     return "Camera paused due to system pressure."
                 case .videoDeviceNotAvailableWithMultipleForegroundApps:
                     return "Camera unavailable while multitasking."
+                case .videoDeviceNotAvailableInBackground:
+                    // Expected on backgrounding — scene-phase handling stops/restarts.
+                    return ""
                 default:
                     return "Camera interrupted — tap to resume."
                 }
             }()
-            Task { @MainActor in self.errorMessage = message }
+            Task { @MainActor in self.errorMessage = message.isEmpty ? nil : message }
         }
         interruptionEndedObserver = center.addObserver(
             forName: AVCaptureSession.interruptionEndedNotification,
@@ -246,8 +294,31 @@ final class CameraSession: NSObject, ObservableObject {
         subjectAreaDebounceTask = nil
     }
 
+    /// Coalesces concurrent first starts (e.g. `.task` + scene `.active` at
+    /// launch): both await the same configuration instead of adding the
+    /// input/outputs twice.
+    private var configureTask: Task<Void, Error>?
+
     private func configureIfNeeded() async throws {
         guard !configured else { return }
+        if let pending = configureTask {
+            try await pending.value
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { throw CamError.noDevice }
+            try await self.performConfigure()
+        }
+        configureTask = task
+        do {
+            try await task.value
+        } catch {
+            configureTask = nil
+            throw error
+        }
+    }
+
+    private func performConfigure() async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             queue.async { [self] in
                 do {
