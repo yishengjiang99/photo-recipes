@@ -1,0 +1,7 @@
+Selfie camera, upgraded
+• Auto Optimize now recognizes when you're on the front camera and picks a selfie look for the light you're in — Low Light, Soft Glow, Studio Crisp, Portrait Blur or Natural Light.
+• Five new selfie looks with natural, texture-preserving skin smoothing, softer under-eye shadows and crisp eyes and hair. Still you, just better light.
+• A quick glow and face frame show you when a selfie look is applied.
+• New Reset camera button returns everything to defaults in one tap.
+• Smoother capture, and the camera and mic now turn off as soon as you leave the app.
+• Fixes for dark previews in low light.

@@ -1,0 +1,54 @@
+name: ASC queue next version (gated submit)
+
+# One-shot, idempotent. MODE=check is read-only. MODE=submit only acts when PREV_VERSION is
+# PENDING_DEVELOPER_RELEASE / READY_FOR_SALE; otherwise prints "RESULT waiting: <state>" and exits 0.
+# Never touches PREV_VERSION, its review submission, or other existing submissions.
+# Result line: "RESULT ..." in the log and in the run's job summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: check (read-only) | prepare (create/update, never submit) | submit (gated)
+        required: true
+        type: choice
+        options: [check, prepare, submit]
+        default: check
+      prev_version:
+        description: Version that must be approved/released first
+        type: string
+        default: "1.4"
+      version_string:
+        description: Version to queue
+        type: string
+        default: "1.5"
+      build_number:
+        description: Build (CFBundleVersion) to attach
+        type: string
+        default: "81"
+
+concurrency:
+  group: asc-photo-recipes-upload
+  cancel-in-progress: false
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Queue ${{ inputs.version_string }} (${{ inputs.mode }})
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          BUNDLE_ID: com.ragnus.mvp
+          MODE: ${{ inputs.mode }}
+          PREV_VERSION: ${{ inputs.prev_version }}
+          VERSION_STRING: ${{ inputs.version_string }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          pip install -q PyJWT cryptography requests
+          python3 scripts/asc/queue_next_version.py
