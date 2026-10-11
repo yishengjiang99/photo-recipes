@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test'
 import { featuresFromEvents, matchSegments, SEGMENTS, type CopyFacts, type SegmentId, type TelemetryEventRow } from './lifecycleSegments.ts'
 import { generateCopy, setCopyFetchForTests, templateCopy, validateCopy } from './lifecycleCopy.ts'
 import { clearPushPrefsStoreForTests, getPushPrefs, registerApnsToken, updatePushPrefs } from './pushPrefs.ts'
-import { effectiveMode, patchOps, runLifecycleTick, setLifecycleEventLoaderForTests, lifecycleReport } from './lifecycleEngine.ts'
+import { autoGuard, effectiveMode, isKillSwitchOn, patchOps, readOps, runLifecycleTick, setLifecycleEventLoaderForTests, lifecycleReport } from './lifecycleEngine.ts'
 import { clearApnsJwtCacheForTests, setApnsHttpPostForTests } from './apns.ts'
 
 const H = 3600_000
@@ -195,6 +195,41 @@ describe('lifecycle engine safety', () => {
     const s2 = await runLifecycleTick(new Date(NOW.getTime() + 25 * H))
     assert.equal(s2.wouldSend, 0)
     assert.equal(lifecycleReport().kpis.wouldSend, 1)
+  })
+
+  it('auto guard: opt-outs above 2% (distinct installs, since go-live) flip the kill switch', () => {
+    const start = new Date(NOW.getTime() - 2 * D)
+    fs.writeFileSync(process.env.PUSH_LIFECYCLE_OPS_PATH!, JSON.stringify({ liveSince: start.toISOString() }))
+    const line = (guestId: string, agoMs: number, event = 'push_opt_out') => JSON.stringify({ at: new Date(NOW.getTime() - agoMs).toISOString(), guestId, event }) + '\n'
+    // before go-live: ignored; same install twice: counted once
+    fs.writeFileSync(process.env.PUSH_EVENTS_LOG_PATH!, line('old', 3 * D) + line('a', H) + line('a', H, 'push_marketing_opt_out'))
+    let g = autoGuard(NOW)
+    assert.equal(g.optOuts, 1)
+    assert.equal(g.tripped, false) // below the 2-install minimum
+    fs.appendFileSync(process.env.PUSH_EVENTS_LOG_PATH!, line('b', H))
+    g = autoGuard(NOW)
+    assert.equal(g.optOuts, 2)
+    assert.equal(g.tripped, true)
+    assert.ok(isKillSwitchOn())
+    assert.match(String(readOps().autoKill?.reason), /opt_out_rate/)
+    assert.equal(effectiveMode(), 'off')
+  })
+
+  it('auto guard: APNs error rate above 20% over 10+ attempts flips the kill switch; uninstalls do not count', () => {
+    const rows: string[] = []
+    for (let i = 0; i < 12; i++) {
+      const results = i < 6 ? [{ ok: false, status: 410, error: 'Unregistered' }] : i < 9 ? [{ ok: true }] : [{ ok: false, status: 403, error: 'InvalidProviderToken' }]
+      rows.push(JSON.stringify({ at: new Date(NOW.getTime() - H).toISOString(), event: i < 6 || i >= 9 ? 'lifecycle_send_failed' : 'lifecycle_sent', results }))
+    }
+    fs.writeFileSync(process.env.PUSH_LIFECYCLE_LOG_PATH!, rows.join('\n') + '\n')
+    const dry = autoGuard(NOW, { dryRun: true })
+    assert.equal(dry.apnsAttempts24h, 12)
+    assert.equal(dry.apnsErrors24h, 3)
+    assert.equal(dry.tripped, false)
+    assert.ok(!isKillSwitchOn())
+    const g = autoGuard(NOW)
+    assert.equal(g.tripped, true) // 3/12 = 25% > 20%
+    assert.ok(isKillSwitchOn())
   })
 
   it('kill switch (runtime) stops everything; ops can only downgrade the env mode', async () => {

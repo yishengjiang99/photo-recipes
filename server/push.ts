@@ -33,6 +33,7 @@ import {
   patchOps,
   returnWithin24h,
   runLifecycleTick,
+  autoGuard,
 } from './lifecycleEngine.ts'
 import { generateCopy } from './lifecycleCopy.ts'
 import { SEGMENTS, type CopyFacts, type SegmentId } from './lifecycleSegments.ts'
@@ -340,6 +341,20 @@ export function mountPushRoutes(app: Express) {
     } catch (err) {
       console.error('[push/lifecycle/report]', err instanceof Error ? err.message : err)
       res.status(500).json({ error: 'lifecycle_report_failed' })
+    }
+  })
+
+  /** POST /api/push/lifecycle/guard — evaluate the auto kill-switch guardrails now (daily monitor). */
+  app.post('/api/push/lifecycle/guard', (req: Request, res: Response) => {
+    if (!cronAuthorized(req)) {
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+    try {
+      res.json({ ok: true, ...autoGuard(new Date()) })
+    } catch (err) {
+      console.error('[push/lifecycle/guard]', err instanceof Error ? err.message : err)
+      res.status(500).json({ error: 'guard_failed' })
     }
   })
 

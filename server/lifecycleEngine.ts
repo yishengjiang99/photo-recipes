@@ -60,7 +60,7 @@ const pushEventsPath = () => p('push-events.jsonl', 'PUSH_EVENTS_LOG_PATH')
 // Mode + kill switch
 // ---------------------------------------------------------------------------
 
-type Ops = { killSwitch?: boolean; mode?: LifecycleMode; updatedAt?: string }
+type Ops = { killSwitch?: boolean; mode?: LifecycleMode; updatedAt?: string; liveSince?: string; autoKill?: { at: string; reason: string } }
 
 function readJson<T>(file: string, fallback: T): T {
   try {
@@ -292,7 +292,7 @@ function record(state: State, guestId: string, rec: SendRec) {
   gs.keys[rec.key] = rec.at
 }
 
-function isDeadToken(r: { ok: boolean; status?: number; error?: string }): boolean {
+export function isDeadToken(r: { ok: boolean; status?: number; error?: string }): boolean {
   if (r.ok) return false
   return r.status === 410 || /Unregistered|BadDeviceToken/.test(r.error ?? '')
 }
@@ -402,6 +402,12 @@ export async function runLifecycleTick(now = new Date(), opts: { useGrok?: boole
     writeJson(statePath(true), ctx.dry)
     writeJson(statePath(false), ctx.real)
     writeJson(p('push-lifecycle-last-tick.json', 'PUSH_LIFECYCLE_LAST_TICK_PATH'), { ...sum, decisions: sum.decisions.slice(0, 100) })
+    if (mode !== 'dry_run') {
+      const ops = readOps()
+      if (!ops.liveSince) writeJson(opsPath(), { ...ops, liveSince: now.toISOString() })
+      const g = autoGuard(now)
+      if (g.tripped) sum.skipped.auto_kill_switch = 1
+    }
     return sum
   } finally {
     ticking = false
@@ -501,6 +507,7 @@ export function lifecycleReport(days = 14) {
     sentBySegment: bySeg(sent),
     wouldSendBySegment: bySeg(would),
     lastTick: readJson(p('push-lifecycle-last-tick.json', 'PUSH_LIFECYCLE_LAST_TICK_PATH'), null),
+    guard: { ...GUARD, ...autoGuard(new Date(), { dryRun: true }) },
     recent: log.slice(-30),
   }
 }
@@ -554,4 +561,63 @@ export async function cohortPreview(now = new Date(), limit = 3000): Promise<{ i
     else bySegment[m[0]!.segment.id] = (bySegment[m[0]!.segment.id] ?? 0) + 1
   }
   return { installs: per.size, bySegment, none }
+}
+
+// ---------------------------------------------------------------------------
+// Automatic guardrail: flips the kill switch when opt-outs or APNs errors spike.
+// ---------------------------------------------------------------------------
+
+export const GUARD = {
+  optOutRateMax: 0.02, // > 2% of push-enabled installs opting out within 7 days
+  minOptOuts: Math.max(1, Number(process.env.PUSH_GUARD_MIN_OPTOUTS) || 2),
+  apnsErrorRateMax: 0.2, // > 20% of real APNs attempts failing (excluding uninstalled tokens) in 24 h
+  minApnsAttempts: 10,
+}
+
+export type GuardResult = {
+  tripped: boolean
+  reason: string | null
+  windowStart: string
+  optOuts: number
+  optOutBase: number
+  optOutRate: number | null
+  apnsAttempts24h: number
+  apnsErrors24h: number
+  apnsErrorRate24h: number | null
+}
+
+/** Evaluates the guardrails; when one is exceeded, turns the kill switch on and logs it. */
+export function autoGuard(now = new Date(), opts: { dryRun?: boolean } = {}): GuardResult {
+  const ops = readOps()
+  const since = Math.max(now.getTime() - 7 * DAY, ops.liveSince ? Date.parse(ops.liveSince) : now.getTime())
+  const optedOut = new Set<string>() // distinct installs, so toggling twice counts once
+  for (const e of readJsonl(pushEventsPath(), since)) {
+    if (e.event === 'push_opt_out' || e.event === 'push_marketing_opt_out') optedOut.add(String(e.guestId ?? e.at))
+  }
+  const optOuts = optedOut.size
+  const base = listAllPushPrefs().filter((x) => x.pushOptIn).length + optOuts
+  const optOutRate = base ? optOuts / base : null
+  let attempts = 0
+  let errors = 0
+  for (const r of readJsonl(logPath(), now.getTime() - DAY)) {
+    if (r.event !== 'lifecycle_sent' && r.event !== 'lifecycle_send_failed') continue
+    for (const x of (r.results as Array<{ ok: boolean; status?: number; error?: string }> | undefined) ?? []) {
+      attempts++
+      if (!x.ok && !isDeadToken(x)) errors++
+    }
+  }
+  const apnsErrorRate = attempts ? errors / attempts : null
+  let reason: string | null = null
+  if (optOutRate !== null && optOuts >= GUARD.minOptOuts && optOutRate > GUARD.optOutRateMax) reason = `opt_out_rate ${(optOutRate * 100).toFixed(1)}% (${optOuts}/${base})`
+  else if (apnsErrorRate !== null && attempts >= GUARD.minApnsAttempts && apnsErrorRate > GUARD.apnsErrorRateMax) reason = `apns_error_rate ${(apnsErrorRate * 100).toFixed(1)}% (${errors}/${attempts})`
+  const tripped = Boolean(reason) && !opts.dryRun && !isKillSwitchOn()
+  if (tripped) {
+    writeJson(opsPath(), { ...readOps(), killSwitch: true, updatedAt: now.toISOString(), autoKill: { at: now.toISOString(), reason: reason! } })
+    appendLog({ at: now.toISOString(), event: 'lifecycle_auto_kill_switch', reason })
+    console.warn('[lifecycle] AUTO KILL SWITCH ON:', reason)
+  }
+  return {
+    tripped, reason, windowStart: new Date(since).toISOString(), optOuts, optOutBase: base, optOutRate,
+    apnsAttempts24h: attempts, apnsErrors24h: errors, apnsErrorRate24h: apnsErrorRate,
+  }
 }
