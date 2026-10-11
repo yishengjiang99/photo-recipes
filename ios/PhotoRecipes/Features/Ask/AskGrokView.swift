@@ -58,6 +58,7 @@ struct FieldCoachPanel: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
     @EnvironmentObject private var api: APIClient
     @EnvironmentObject private var router: CameraRouter
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var mode: FieldCoachMode = .describe
     @State private var message = ""
@@ -142,6 +143,12 @@ struct FieldCoachPanel: View {
                 }
             }
             .onDisappear { voice.cancel() }
+            // Mic must not stay live in the background (same rule as Camera).
+            .onChange(of: scenePhase) { _, phase in
+                if CameraLifecyclePolicy.Phase(phase) == .background {
+                    voice.suspendForBackground()
+                }
+            }
             .navigationDestination(item: $navigateRecipe) { recipe in
             RecipeDetailView(recipe: recipe)
         }
