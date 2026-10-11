@@ -1,6 +1,4 @@
-<!-- Interactive explainer: self-contained. Styles are scoped to .pse, ids are prefixed pse-, the script is one IIFE. -->
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+<!-- Interactive explainer: self-contained (its web fonts are loaded by the script after page load). Styles are scoped to .pse, ids are prefixed pse-, the script is one IIFE. -->
 <style>
 /* Layout: a camera viewfinder "player" (canvas scenes + HUD), story-style segment bar, caption, chapter list. Single committed dark look. */
 .pse{
@@ -433,6 +431,11 @@ function kick(){if(!raf){last=null;raf=requestAnimationFrame(frame)}}
 new IntersectionObserver(es=>{vis=es[es.length-1].isIntersecting;syncAu();if(vis)kick()}).observe(root);
 const aio=new IntersectionObserver(es=>{if(auto&&es[es.length-1].isIntersecting){auto=false;aio.disconnect();if(!playing){playing=true;setBtn();kick()}}},{threshold:.35});
 if(auto)aio.observe(cv);
+/* The player's own fonts load after the page has loaded (off the critical path); the canvas redraws once they arrive. */
+function loadFonts(){const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap';
+  l.onload=()=>{Promise.all(['500 17px "IBM Plex Mono"','600 26px "IBM Plex Mono"','700 30px Archivo','400 16px "IBM Plex Sans"'].map(f=>document.fonts.load(f))).then(()=>{dirty=true;kick()},()=>{})};
+  document.head.appendChild(l)}
+if(document.readyState==='complete')setTimeout(loadFonts,0);else addEventListener('load',()=>setTimeout(loadFonts,0));
 setBtn();setSnd();render();
 root.pse={get t(){return el},get playing(){return playing},get audio(){return au},get sound(){return snd}}; /* read-only hook for tests */
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{dirty=true;kick()});
