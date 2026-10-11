@@ -34,6 +34,7 @@ on:
       - 'tsconfig*.json'
       - 'scripts/prerender*'
       - 'scripts/api-snapshot*'
+      - 'scripts/indexnow-submit.sh'
       - '.github/workflows/deploy-photo-grepawk.yml'
   workflow_dispatch:
 
@@ -152,6 +153,11 @@ jobs:
           curl -s -o /dev/null -D - "$BASE$JS" | tr -d '\r' | grep -qi '^cache-control: public, max-age=31536000, immutable' && echo "ok   immutable cache" || { echo "FAIL cache"; fails=$((fails+1)); }
           curl -s "$BASE/robots.txt" | grep -q '^Disallow: /api/' && echo "ok   robots disallows /api/" || { echo "FAIL robots"; fails=$((fails+1)); }
           echo "site checks: $fails failure(s)"; [[ $fails -eq 0 ]]
+
+      - name: IndexNow (non-fatal)
+        # Runs only when every step above succeeded (deploy + gates). Never fails the job.
+        continue-on-error: true
+        run: bash scripts/indexnow-submit.sh photo.grepawk.com 590954a7d5dad4ef7ebf49da91f6ab5d public/sitemap.xml
 
       - name: Upload gate artifacts
         if: always()
