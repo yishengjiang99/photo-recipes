@@ -6,6 +6,7 @@ struct CameraView: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
     @EnvironmentObject private var router: CameraRouter
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     @StateObject private var session = CameraSession()
     @StateObject private var optimizer = AutoOptimizeController()
@@ -77,6 +78,9 @@ struct CameraView: View {
     @State private var comparingOriginal = false
     /// Post-save celebration ("Try another photo" + reminder offer).
     @State private var postSaveCard: PostSaveCard.Model?
+    /// onAppear/onDisappear-tracked: the TabView keeps this view alive (and
+    /// its scenePhase observer firing) while other tabs are on screen.
+    @State private var isCameraOnScreen = false
 
     var body: some View {
         ZStack {
@@ -93,8 +97,7 @@ struct CameraView: View {
                         Task {
                             await session.checkAuth()
                             if session.auth == .authorized {
-                                await session.start()
-                                horizon.start()
+                                await startCameraPipeline()
                             }
                         }
                     },
@@ -117,22 +120,11 @@ struct CameraView: View {
             }
         }
         .task {
+            isCameraOnScreen = true
             await session.checkAuth()
-            if session.auth == .authorized {
-                await session.start()
-                horizon.start()
-                // Pass 1 ML: feed video frames to the scene sensor.
-                session.frameConsumer = { buffer, timestamp in
-                    Task { await SceneSensor.shared.ingestFrame(buffer, at: timestamp) }
-                }
-                await SceneSensor.shared.start()
-                await SceneSensor.shared.setVisible(true)
-                // Phase 2: probe-JPEG fallback for refreshNow when no video
-                // frames have arrived (session interruption / lens switch).
-                await SceneSensor.shared.setProbeProvider { [weak session] in
-                    guard let session else { throw CameraSession.CamError.noFrame }
-                    return try await session.captureProbeFrame()
-                }
+            if session.auth == .authorized,
+               CameraLifecyclePolicy.Phase(scenePhase) != .background {
+                await startCameraPipeline()
             }
             applyStagingIfNeeded()
             if CameraCoachMarksStore.shouldShow {
@@ -145,6 +137,7 @@ struct CameraView: View {
             if pending { Task { await consumePendingAutoOptimizeIfNeeded() } }
         }
         .onAppear {
+            isCameraOnScreen = true
             Analytics.shared.track("camera_open", props: ["source": "camera_tab"])
             describeTask?.cancel()
             describeTask = Task { await refreshSceneFromViewfinder() }
@@ -188,16 +181,20 @@ struct CameraView: View {
             }
         }
         .onDisappear {
-            voice.cancel()
-            describeTask?.cancel()
-            voiceIntentTask?.cancel()
+            isCameraOnScreen = false
             chromeToastTask?.cancel()
             applyBurstTask?.cancel()
             captureFeedbackTask?.cancel()
             savedChipTask?.cancel()
-            Task { await SceneSensor.shared.setVisible(false) }
-            session.stop()
-            horizon.stop()
+            pauseCameraPipeline()
+        }
+        // Camera + mic must not outlive the foreground (TF 74: camera stayed on
+        // in the background). Background → stop capture on its queue, stop the
+        // mic and release the audio session; `.inactive` (Control Center pull,
+        // app-switcher first frame) keeps the preview; back to `.active` on the
+        // Camera tab → restart (idempotent, no prompt). See CameraLifecyclePolicy.
+        .onChange(of: scenePhase) { _, newPhase in
+            handleScenePhase(CameraLifecyclePolicy.Phase(newPhase))
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
             guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
@@ -1927,11 +1924,87 @@ struct CameraView: View {
             router.pendingAutoOptimize = true
             return
         }
-        if !session.isRunning {
-            await session.start()
-            horizon.start()
+        // Never start the camera from a deep link while backgrounded or off-tab;
+        // re-stage so the next appear / foreground picks it up.
+        guard CameraLifecyclePolicy.Phase(scenePhase) != .background, isCameraTabVisible else {
+            router.pendingAutoOptimize = true
+            return
         }
+        if !session.isRunning {
+            await startCameraPipeline()
+        }
+        guard session.isRunning else { return }
         await runOptimize(trigger: "deep_link")
+    }
+
+    // MARK: - Capture lifecycle (scene phase / tab visibility)
+
+    private var isCameraTabVisible: Bool {
+        isCameraOnScreen && router.selectedTab == .camera
+    }
+
+    /// Starts capture + motion + scene sensing. Safe to call repeatedly
+    /// (`CameraSession.start()` is idempotent). If the app backgrounds or the
+    /// tab goes away while the start is in flight, `pauseCameraPipeline()`
+    /// has already invalidated it — we don't arm the sensors afterwards.
+    private func startCameraPipeline() async {
+        await session.start()
+        guard CameraLifecyclePolicy.shouldRun(
+            scenePhase: CameraLifecyclePolicy.Phase(scenePhase),
+            isCameraTabVisible: isCameraTabVisible,
+            permission: session.auth,
+            isCurrentlyRunning: session.isRunning
+        ) else { return }
+        horizon.start()
+        // Pass 1 ML: feed video frames to the scene sensor.
+        session.frameConsumer = { buffer, timestamp in
+            Task { await SceneSensor.shared.ingestFrame(buffer, at: timestamp) }
+        }
+        await SceneSensor.shared.start()
+        await SceneSensor.shared.setVisible(true)
+        // Phase 2: probe-JPEG fallback for refreshNow when no video
+        // frames have arrived (session interruption / lens switch).
+        await SceneSensor.shared.setProbeProvider { [weak session] in
+            guard let session else { throw CameraSession.CamError.noFrame }
+            return try await session.captureProbeFrame()
+        }
+    }
+
+    /// Stops capture (on the session queue), mic + audio session, motion and
+    /// scene sensing, and cancels camera-bound tasks. Idempotent.
+    private func pauseCameraPipeline() {
+        voice.suspendForBackground()
+        describeTask?.cancel()
+        voiceIntentTask?.cancel()
+        Task { await SceneSensor.shared.setVisible(false) }
+        session.stop()
+        horizon.stop()
+    }
+
+    private func handleScenePhase(_ phase: CameraLifecyclePolicy.Phase) {
+        if phase == .active {
+            // Permission may have changed in Settings; never prompt here.
+            session.refreshAuthWithoutPrompt()
+        }
+        if !CameraLifecyclePolicy.shouldKeepMic(scenePhase: phase, isCameraTabVisible: isCameraTabVisible) {
+            voice.suspendForBackground()
+            voiceIntentTask?.cancel()
+        }
+        switch CameraLifecyclePolicy.decision(
+            phase: phase,
+            isCameraTabVisible: isCameraTabVisible,
+            permission: session.auth
+        ) {
+        case .run:
+            Task {
+                await startCameraPipeline()
+                await consumePendingAutoOptimizeIfNeeded()
+            }
+        case .stop:
+            pauseCameraPipeline()
+        case .keep:
+            break
+        }
     }
 
     private func applyStagingIfNeeded() {
