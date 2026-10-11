@@ -105,6 +105,33 @@ enum SettingsSolver {
         if (features.sceneEV100 ?? 99) < 7, solution.phoneTargets.lowLightBoost == nil {
             solution.phoneTargets.lowLightBoost = true
         }
+        // P0 (build 78): a custom shutter/ISO on the front camera in low light —
+        // 1/60 s selfie cap × the format's max ISO — landed ~5 stops under the
+        // system AE (which uses long frame durations + ISP gain) and the finder
+        // went black. Front camera + dim (or any plan that is already darker than
+        // auto): stay on continuous auto exposure and lift the face with EV bias.
+        if solution.phoneTargets.exposureDurationSec != nil || solution.phoneTargets.iso != nil,
+           FrontExposurePolicy.useSystemAuto(
+               isFront: true,
+               sceneEV100: features.sceneEV100,
+               planResidualEV: solution.residualEV,
+               plannedShutterSeconds: solution.phoneTargets.exposureDurationSec,
+               meteredShutterSeconds: features.meteredExposureSeconds) {
+            let dark = (features.sceneEV100 ?? 99) < FrontExposurePolicy.dimEV100
+            solution.phoneTargets.ev = FrontExposurePolicy.biasString(
+                targetEV: solution.targetEV, dark: dark)
+            solution.phoneTargets.exposureDurationSec = nil
+            solution.phoneTargets.shutter = nil
+            solution.phoneTargets.iso = nil
+            solution.targetEV = nil
+            solution.priority = .systemAuto
+            solution.shutterCapSeconds = nil
+            solution.residualEV = nil
+            // The planner's "underexposed at max ISO" banner described a custom
+            // write that no longer happens.
+            solution.clampMessages.removeAll { $0.contains("Underexposed") || $0.contains("stops short") }
+            solution.extraTips.append("Front camera in low light — kept auto exposure and brightened your face with EV.")
+        }
         if recipeId == "portrait-pop" {
             solution.coachOnly?.notes = "Hold the phone slightly above eye level and turn your face toward the light."
         }
@@ -196,7 +223,13 @@ enum SettingsSolver {
             if let meteredSeconds = features.meteredExposureSeconds,
                let meteredISO = features.meteredISO {
                 // targetEV already includes learnedEVOffset (folded in per branch).
-                let eAuto = meteredSeconds * Double(meteredISO)
+                // A meter that hadn't converged (AE ramping up from a
+                // previous dark custom write, 600 ms timeout) under-reads the
+                // light: fold the residual offset back in so a re-run never
+                // stacks darkness on darkness.
+                let eAuto = ExposurePlanner.compensatedEAuto(
+                    product: meteredSeconds * Double(meteredISO),
+                    exposureTargetOffset: features.exposureTargetOffset)
                 plan = ExposurePlanner.plan(
                     eAuto: eAuto, targetEV: targetEV, priority: priority,
                     motion: motion, limits: limits)

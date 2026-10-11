@@ -612,6 +612,7 @@ enum SceneChipText {
 import Vision
 import Accelerate
 import CoreVideo
+import CoreImage
 import os.log
 
 // MARK: - Label mapping (data-driven)
@@ -1086,6 +1087,13 @@ enum SceneFeatureExtractor {
            let best = faces.max(by: { $0.boundingBox.area < $1.boundingBox.area }) {
             return DetectedSubject(kind: .face, box: best.boundingBox, faceCount: faces.count)
         }
+        // P0 (build 78): a dim selfie whose face fills — and overflows — the
+        // frame is missed by the face-rectangle detector (it needs the whole
+        // face in view). Retry once on a padded (shrunk-into-canvas), slightly
+        // brightened copy; boxes map back to the original frame.
+        if let retry = PaddedFaceRetry.detect(pixelBuffer: pixelBuffer) {
+            return DetectedSubject(kind: .face, box: retry.box, faceCount: retry.count)
+        }
         if let humans = humanReq.results, !humans.isEmpty,
            let best = humans.max(by: { $0.boundingBox.area < $1.boundingBox.area }) {
             return DetectedSubject(kind: .human, box: best.boundingBox, faceCount: faceReq.results?.count ?? 0)
@@ -1233,4 +1241,57 @@ private extension CGRect {
 
 private extension CMTime {
     var seconds: Double { CMTimeGetSeconds(self) }
+}
+
+// MARK: - Close-up face retry (P0 build 78)
+
+/// Second face-detection pass for close-up selfies: the frame is shrunk into a
+/// larger black canvas (so a face that overflows the frame becomes a whole face)
+/// and lifted +1 EV (dim rooms), then the detected box is mapped back.
+enum PaddedFaceRetry {
+    /// Fraction of the canvas the original frame occupies.
+    static let scale: CGFloat = 0.6
+    /// Exposure lift for the retry pass (stops).
+    static let liftEV: Float = 1.0
+
+    static func detect(pixelBuffer: CVPixelBuffer) -> (box: CGRect, count: Int)? {
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        let e = image.extent
+        guard e.width > 1, e.height > 1 else { return nil }
+        let dx = e.width * (1 - scale) / 2
+        let dy = e.height * (1 - scale) / 2
+        let shrunk = image
+            .transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY))
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .transformed(by: CGAffineTransform(translationX: dx, y: dy))
+            .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: liftEV])
+        let canvas = CGRect(x: 0, y: 0, width: e.width, height: e.height)
+        let padded = shrunk.composited(over: CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: canvas))
+            .cropped(to: canvas)
+        let req = VNDetectFaceRectanglesRequest()
+        do {
+            try VNImageRequestHandler(ciImage: padded, orientation: .up, options: [:]).perform([req])
+        } catch {
+            return nil
+        }
+        guard let faces = req.results, !faces.isEmpty,
+              let best = faces.max(by: { $0.boundingBox.width * $0.boundingBox.height
+                  < $1.boundingBox.width * $1.boundingBox.height }),
+              let box = unpad(best.boundingBox) else { return nil }
+        return (box, faces.count)
+    }
+
+    /// Maps a normalized box in the padded canvas back to the original frame's
+    /// normalized space (same origin convention), clipped to 0…1. Nil when the
+    /// box falls entirely in the padding. Pure — unit-tested.
+    static func unpad(_ r: CGRect, scale: CGFloat = PaddedFaceRetry.scale) -> CGRect? {
+        guard scale > 0, r.width > 0, r.height > 0 else { return nil }
+        let off = (1 - scale) / 2
+        let mapped = CGRect(
+            x: (r.minX - off) / scale, y: (r.minY - off) / scale,
+            width: r.width / scale, height: r.height / scale)
+        let clipped = mapped.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard !clipped.isNull, clipped.width > 0, clipped.height > 0 else { return nil }
+        return clipped
+    }
 }

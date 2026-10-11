@@ -45,14 +45,14 @@ enum SelfieAutoReason: String, Equatable, CaseIterable {
 /// ## Selection (first match wins; all fields from `SceneFeatures`)
 /// | # | Rule | Look | Reason |
 /// |---|------|------|--------|
-/// | 1 | `sceneEV100 < 5.0`, or EV unknown and `meteredISO ≥ 1250`, or `nightOrLights ≥ 0.5` and `sceneEV100 < 7` | selfieLowLight | low light |
+/// | 1 | `meteredISO ≥ 1250`, or `sceneEV100 < 5.0`, or `nightOrLights ≥ 0.5` and `sceneEV100 < 7` | selfieLowLight | low light |
 /// | 2 | face ≥ 1 stop under the frame median (`subjectDeltaStops ≤ −1.0`), or ≥ 0.5 stop under with `highlightClipFraction ≥ 0.10` | selfieGlow | backlit |
 /// | 3 | face ≥ 0.8 stop over the median (`subjectDeltaStops ≥ +0.8`), or `highlightClipFraction ≥ 0.05` with `percentileSpreadStops ≥ 7` | selfieStudio | harsh light |
 /// | 4 | single/duo face (`faceCount ≤ 2`) and face area `< 0.035` of frame | selfiePortrait | small in frame |
 /// | 5 | single/duo face, outdoor busy groups (landscape / architecture / vehicle / plantOrFlower / sky ≥ 0.5) and `indoor < 0.5` | selfiePortrait | busy background |
 /// | 6 | otherwise | selfieNatural | even light |
 ///
-/// Face gate: `subjectKind == .face`, a finite `subjectBox`, and face area
+/// Face gate: `subjectKind == .face` (or a front `.human` close-up ≥ 0.15 of the frame), a finite `subjectBox`, and face area
 /// (`subjectAreaFraction`, else box area) `≥ 0.008` (~12 % of frame width) —
 /// a distant face in the background is not a selfie. Portrait blur is skipped
 /// for 3+ faces (group selfie: the blur would soften the other faces).
@@ -148,7 +148,7 @@ enum SelfieAutoPolicy {
     static func decide(_ input: Input) -> Decision {
         guard input.isFrontCamera else { return .unchanged(.backCamera) }
         let f = input.features
-        guard f.subjectKind == .face, let box = f.subjectBox,
+        guard isSelfieSubject(f), let box = f.subjectBox,
               box.width.isFinite, box.height.isFinite, box.width > 0, box.height > 0 else {
             return .unchanged(.noFace)
         }
@@ -182,6 +182,19 @@ enum SelfieAutoPolicy {
         ))
     }
 
+    /// Minimum frame area for a front-camera `.human` subject to count as a
+    /// close-up selfie. P0 (build 78): a dim face filling (and overflowing) the
+    /// frame is routinely missed by the face-rectangle detector; Vision then
+    /// reports the upper body as `.human` and selfie AO silently skipped.
+    static let closeUpHumanMinArea: Float = 0.15
+
+    /// Face, or (front camera) a large human subject — an arm's-length close-up.
+    static func isSelfieSubject(_ f: SceneFeatures) -> Bool {
+        if f.subjectKind == .face { return true }
+        if f.subjectKind == .human, faceArea(f) >= closeUpHumanMinArea { return true }
+        return false
+    }
+
     static func faceArea(_ f: SceneFeatures) -> Float {
         if f.subjectAreaFraction > 0, f.subjectAreaFraction.isFinite { return f.subjectAreaFraction }
         return f.subjectBox.map { $0.area } ?? 0
@@ -192,10 +205,12 @@ enum SelfieAutoPolicy {
         let ev = f.sceneEV100.flatMap { $0.isFinite ? $0 : nil }
         let night = (f.semanticGroups[.nightOrLights] ?? 0) >= nightGroupMin
         let lowLight: Bool = {
+            // High metered ISO means low light whatever the EV estimate says
+            // (front cameras in a dim room sit at ISO 1250+).
+            if let iso = f.meteredISO, iso.isFinite, iso >= lowLightISOFallback { return true }
             if let ev {
                 return ev < lowLightEV100 || (night && ev < nightEV100Ceiling)
             }
-            if let iso = f.meteredISO, iso.isFinite, iso >= lowLightISOFallback { return true }
             return night
         }()
         if lowLight { return Pick(lookId: "selfieLowLight", reason: .lowLight) }
@@ -251,8 +266,19 @@ enum SelfieAutoPolicy {
     /// Server look from Pass 2: on a run where the selfie policy applied, a
     /// non-selfie server look never replaces the selfie choice (selfie wins on
     /// front). Returns the look to apply, or nil to keep the current one.
-    static func resolveServerLook(_ server: CreativeLook?, selfieLookId: String?, activeLook: CreativeLook?) -> CreativeLook? {
+    static func resolveServerLook(
+        _ server: CreativeLook?,
+        selfieLookId: String?,
+        activeLook: CreativeLook?,
+        isFrontCamera: Bool = false
+    ) -> CreativeLook? {
         guard let server, !server.id.isEmpty, CreativeLookCatalog.isKnown(server.id) else { return nil }
+        // P0 (build 78): on the front camera the selfie policy's decision is
+        // final — a late Pass 2 look ("Cool Blue") must not fill in after it,
+        // whether or not the policy found a face this run.
+        guard LookPrecedence.serverLookMayApply(
+            isFront: isFrontCamera, forced: false, runIsCurrent: true,
+            activeLookPresent: activeLook != nil) else { return nil }
         if selfieLookId != nil, !CreativeLookCatalog.isSelfie(server.id) { return nil }
         // Existing rule: only fill an empty finder (never stack on Pass 1's look).
         guard activeLook == nil else { return nil }

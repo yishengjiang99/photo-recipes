@@ -2010,7 +2010,11 @@ struct CameraView: View {
     /// tab goes away while the start is in flight, `pauseCameraPipeline()`
     /// has already invalidated it — we don't arm the sensors afterwards.
     private func startCameraPipeline() async {
+        let wasRunning = session.isRunning
         await session.start()
+        // A fresh start reset the device to continuous AE/AF (P0 build 78):
+        // the last run's exposure status no longer describes the finder.
+        if session.isRunning, !wasRunning { optimizer.handleSessionRestarted() }
         guard CameraLifecyclePolicy.shouldRun(
             scenePhase: CameraLifecyclePolicy.Phase(scenePhase),
             isCameraTabVisible: isCameraTabVisible,
@@ -2039,6 +2043,9 @@ struct CameraView: View {
         describeTask?.cancel()
         voiceIntentTask?.cancel()
         Task { await SceneSensor.shared.setVisible(false) }
+        // An in-flight AO run / Pass 2 refine must not keep writing custom
+        // exposure across the stop → restart (P0 build 78).
+        optimizer.handleSessionPaused()
         session.stop()
         horizon.stop()
     }

@@ -136,6 +136,26 @@ final class AutoOptimizeController: ObservableObject {
     /// window closes without a capture.
     private var captureWindowTask: Task<Void, Never>?
 
+    /// True when an AO run turned the (front) flash ON — a later run whose look
+    /// doesn't want it turns it back off (never touches a user-set flash).
+    private var aoTurnedFlashOn = false
+
+    /// (c) The capture session stopped (background / tab switch): an in-flight
+    /// run or Pass 2 refine must not keep writing to the device across the
+    /// restart.
+    func handleSessionPaused() {
+        cloudRefineTask?.cancel()
+        cloudRefineTask = nil
+        isCloudRefining = false
+        if phase.isRunning { clear() }
+    }
+
+    /// (c) The capture session restarted: the device was reset to continuous
+    /// AE/AF, so the last run's exposure status no longer describes the finder.
+    func handleSessionRestarted() {
+        verifyWarning = nil
+    }
+
     /// Set when the user undoes an Auto Optimize — never auto-run again for this install.
     static let userUndidKey = "autoOptimize.userUndid"
 
@@ -500,20 +520,32 @@ final class AutoOptimizeController: ObservableObject {
     /// Pure verify-note copy: the yield note (if any) first, then what the
     /// closed loop did. Multi-stop misses are stated plainly — "A bit bright"
     /// hid ~2–7 stop misses.
+    ///
+    /// P0 (build 78): the old copy reported `|initialError|` as the correction
+    /// ("Brightened 5 stops, still a bit dark") while the frame was still ~5
+    /// stops under — it never measured what the loop actually achieved. The
+    /// claim is now the measured change, `residual − initialError` (+ =
+    /// brighter), and a remaining multi-stop miss is stated in stops.
     nonisolated static func verifyNotes(residual: Double, iterations: Int, initialError: Double, yieldNote: String?) -> [String] {
         var notes: [String] = []
         if let yieldNote { notes.append(yieldNote) }
-        if iterations > 0 {
-            // Human-readable, not technical. "Brightened 2 stops, still a bit dark"
-            // beats "Exposure was -2.1 EV off target — corrected in 2 iteration(s)".
-            let stops = abs(initialError)
-            let stopsText = String(format: "%.0f", stops) + (stops == 1 ? " stop" : " stops")
-            let direction = initialError < 0 ? "Brightened" : "Darkened"
-            if abs(residual) > 0.3 {
+        func stopsText(_ v: Double) -> String {
+            let n = Int(abs(v).rounded())
+            return "\(n) " + (n == 1 ? "stop" : "stops")
+        }
+        let achieved = residual - initialError // + = the loop made the frame brighter
+        if iterations > 0, abs(achieved) >= 0.5,
+           // Only claim a correction that moved toward the target.
+           (initialError < 0) == (achieved > 0) {
+            let direction = achieved > 0 ? "Brightened" : "Darkened"
+            if abs(residual) >= 1 {
+                let still = residual < 0 ? "still ~\(stopsText(residual)) too dark" : "still ~\(stopsText(residual)) too bright"
+                notes.append("\(direction) \(stopsText(achieved)), \(still)")
+            } else if abs(residual) > 0.3 {
                 let still = residual < 0 ? "still a bit dark" : "still a bit bright"
-                notes.append("\(direction) \(stopsText), \(still)")
+                notes.append("\(direction) \(stopsText(achieved)), \(still)")
             } else {
-                notes.append("\(direction) \(stopsText)")
+                notes.append("\(direction) \(stopsText(achieved))")
             }
         } else if abs(residual) >= 1 {
             // Say how far off: "A bit bright" hid a ~2–7 stop miss.
@@ -631,9 +663,16 @@ final class AutoOptimizeController: ObservableObject {
             return
         }
 
+        // P0 safety rail (b): what auto exposure looked like before AO touched
+        // anything — the darkening guard compares against this.
+        let lumaBefore = session.measuredPreviewLuma()
+
         // --- 1. Features -----------------------------------------------------
         phase = .sensing("Reading scene…")
         let metering = session.meteringSample()
+        // A not-yet-converged meter (timeout) under-reads the light.
+        convergedEAuto = ExposurePlanner.compensatedEAuto(
+            product: convergedEAuto, exposureTargetOffset: metering.exposureTargetOffset)
         await SceneSensor.shared.updateMetering(metering)
         if let elevationDegrees, let handShake {
             await SceneSensor.shared.updatePose(elevationDegrees: elevationDegrees, handShakeRadPerSec: handShake)
@@ -722,7 +761,20 @@ final class AutoOptimizeController: ObservableObject {
         // Back camera / no face → unchanged. A forced or user-picked look wins.
         let selfieDecision = Self.selfieDecision(
             features: features, solution: solution, session: session)
-        let selfieTargets = Self.selfieApplyTargets(selfieDecision, aoTargets: solution.phoneTargets)
+        var selfieTargets = Self.selfieApplyTargets(selfieDecision, aoTargets: solution.phoneTargets)
+        // (e) Front flash: ON only for the selfie Low Light look on a camera with
+        // a Retina Flash — never for a non-selfie look (build 78 showed the flash
+        // ON under "Cool Blue").
+        selfieTargets.targets.flash = FrontFlashPolicy.resolve(
+            requested: selfieTargets.targets.flash,
+            isFront: session.isFront,
+            finalLookId: selfieDecision.choice?.look.id,
+            retinaFlashSupported: session.supportsFrontFlash)
+        if session.isFront, aoTurnedFlashOn, selfieTargets.targets.flash == nil, session.flash == .on {
+            // A previous AO run turned the front flash on; this run's look doesn't want it.
+            session.flash = .off
+            aoTurnedFlashOn = false
+        }
 
         // --- 4. Apply ----------------------------------------------------------
         if wasCancelled(stage: "apply") { return }
@@ -732,6 +784,11 @@ final class AutoOptimizeController: ObservableObject {
         var wroteTargets = false
         if entitlements.canApplyDials {
             wroteTargets = await session.applyPhoneTargets(selfieTargets.targets)
+            if selfieTargets.targets.flash?.lowercased() == "on", session.flash == .on {
+                aoTurnedFlashOn = true
+            } else if selfieTargets.targets.flash?.lowercased() == "off" {
+                aoTurnedFlashOn = false
+            }
             if let coach = selfieTargets.apertureCoach {
                 session.simulatedApertureCoach = coach
             }
@@ -845,6 +902,40 @@ final class AutoOptimizeController: ObservableObject {
             }
         }
 
+        // --- 5b. P0 darkening guard (b) ---------------------------------------
+        // Whatever the loop claims, measure: if the frame came out > ~1 stop
+        // darker than auto gave before (beyond the plan's own intent), or near
+        // black, revert to continuous AE/AF, unlock, and say so honestly.
+        let wroteCustom = selfieTargets.targets.exposureDurationSec != nil || selfieTargets.targets.iso != nil
+        var exposureReverted = false
+        if entitlements.canApplyDials {
+            let inCustom = readback.exposureMode == "custom"
+            let eAfter = readback.exposureDuration * Double(readback.iso)
+            let measurement = ExposureSafetyGuard.Measurement(
+                eAutoBefore: wroteCustom && convergedEAuto > 0 ? convergedEAuto : nil,
+                eAfter: wroteCustom && inCustom && eAfter.isFinite && eAfter > 0 ? eAfter : nil,
+                offsetAfter: inCustom ? Double(readback.exposureTargetOffset) : nil,
+                lumaBefore: lumaBefore,
+                lumaAfter: session.measuredPreviewLuma(),
+                targetEV: solution.targetEV ?? 0)
+            let verdict = ExposureSafetyGuard.evaluate(measurement)
+            if case .revert(let stops, let nearBlack) = verdict {
+                exposureReverted = true
+                session.resetToContinuousAuto(reason: "ao_darkening_guard")
+                session.refreshReadouts()
+                verifyNotes = [ExposureSafetyGuard.revertMessage(verdict) ?? "Kept auto exposure"]
+                verifyResidualEV = nil
+                Analytics.shared.track("ao_exposure_reverted", props: [
+                    "run_id": runId,
+                    "recipe_id": recipe.id,
+                    "darkened_stops": String(format: "%.2f", stops),
+                    "near_black": nearBlack ? "1" : "0",
+                    "front": session.isFront ? "1" : "0",
+                    "custom": wroteCustom ? "1" : "0",
+                ])
+            }
+        }
+
         // Single status surface: verify notes go only to verifyWarning (AgentStatusPill).
         // Do NOT also append to session.clampMessages — that draws a duplicate banner.
         verifyWarning = verifyNotes.isEmpty ? nil : verifyNotes.joined(separator: " ")
@@ -860,7 +951,7 @@ final class AutoOptimizeController: ObservableObject {
         // A look suggestion may replace a minor note, never a real miss: the
         // device showed "Ready · Warm Pop" over a frame ~2 stops over.
         let majorMiss = (verifyResidualEV.map { abs($0) >= 1 } ?? false) || shutterYieldNote != nil
-        if suggestedLook != nil, !majorMiss { verifyWarning = nil }
+        if suggestedLook != nil, !majorMiss, !exposureReverted { verifyWarning = nil }
         phase = .ready
         applyFeedbackToken &+= 1
         captureAppliedDials(session: session, recipeId: recipe.id)
@@ -918,7 +1009,9 @@ final class AutoOptimizeController: ObservableObject {
         // wrote no custom exposure (HDR / system-auto / metering-missing /
         // thermal fallback) — Pass 2 then refines intent only, never exposure.
         let pass2Anchor: Pass2ExposureAnchor? = {
-            guard convergedEAuto > 0, solution.phoneTargets.exposureDurationSec != nil else { return nil }
+            // No Pass 2 exposure after a darkening revert, nor on the front camera.
+            guard !exposureReverted, !session.isFront,
+                  convergedEAuto > 0, solution.phoneTargets.exposureDurationSec != nil else { return nil }
             let motion = ExposurePlanner.MotionContext(
                 handShakeRadPerSec: Double(features.handShakeRadPerSec),
                 frameWidthPx: solveContext.frameWidthPx,
@@ -1291,6 +1384,7 @@ final class AutoOptimizeController: ObservableObject {
         let probe = probeJPEG
         let anchor = pass2Anchor
         let favorites = Array(entitlements.favoriteIds)
+        let wasFront = session.isFront
 
         cloudRefineTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1337,6 +1431,9 @@ final class AutoOptimizeController: ObservableObject {
             guard self.runGeneration == generation else { return }
             guard self.chosenRecipeId == recipeId else { return }
             guard case .ready = self.phase else { return }
+            // The camera flipped while the request was in flight: this refine
+            // belongs to the other camera.
+            guard session.isFront == wasFront else { return }
 
             // Prefer staying on Pass 1 recipe; ignore cloud preset switches.
             let cloudPresetId = response.presetId ?? response.preset?.id
@@ -1373,12 +1470,12 @@ final class AutoOptimizeController: ObservableObject {
                     // Pass 2 intent: white balance, focus, look intensity and
                     // other non-exposure targets. The server's absolute
                     // shutter/ISO are stripped here — never applied directly.
-                    _ = await session.applyPhoneTargets(Self.pass2IntentTargets(from: targets))
+                    _ = await session.applyPhoneTargets(Self.pass2IntentTargets(from: targets, isFrontCamera: wasFront))
                     // Pass 2 exposure: the server's exposure re-anchored to the
                     // run's metered E_auto (±1 stop), re-planned with the
                     // recipe's priority/cap, applied via the normal apply
                     // path, then verified with the plan's priority and cap.
-                    if let plan = Self.pass2ExposurePlan(targets: targets, anchor: anchor),
+                    if !wasFront, let plan = Self.pass2ExposurePlan(targets: targets, anchor: anchor),
                        !Task.isCancelled {
                         _ = await Self.applyPass2Exposure(
                             plan: plan,
@@ -1400,7 +1497,8 @@ final class AutoOptimizeController: ObservableObject {
                 // A non-selfie server look never replaces this run's selfie choice.
                 let selfieLookId = self.selfieAutoApplied.flatMap { $0.runId == self.lastRunId ? $0.lookId : nil }
                 if let look = SelfieAutoPolicy.resolveServerLook(
-                    targets.creativeLook, selfieLookId: selfieLookId, activeLook: session.activeCreativeLook) {
+                    targets.creativeLook, selfieLookId: selfieLookId, activeLook: session.activeCreativeLook,
+                    isFrontCamera: wasFront) {
                     var applied = look
                     if applied.intensity == nil {
                         applied.intensity = CreativeLookCatalog.defaultIntensity
@@ -1516,12 +1614,29 @@ final class AutoOptimizeController: ObservableObject {
     /// Intent-only targets: everything the server sent except absolute
     /// exposure. Pass 2 may change white balance, focus, look intensity and
     /// other non-exposure levers — never shutter/ISO. Pure — unit-tested.
-    nonisolated static func pass2IntentTargets(from targets: PhoneTargets) -> PhoneTargets {
+    nonisolated static func pass2IntentTargets(from targets: PhoneTargets, isFrontCamera: Bool = false) -> PhoneTargets {
         var t = targets
         t.shutter = nil
         t.exposureDurationSec = nil
         t.iso = nil
         t.ev = nil
+        if isFrontCamera {
+            // P0 (build 78): on the front camera Pass 1 (selfie policy) is final.
+            // A late server refine must not lock focus, zoom, switch lenses, fire
+            // the flash/torch or re-grade the look — only WB / boost-type intent.
+            t.flash = nil
+            t.torch = nil
+            t.zoom = nil
+            t.cameraDevice = nil
+            t.focusMode = nil
+            t.focusPoint = nil
+            t.lensPosition = nil
+            t.creativeLook = nil
+            t.bracket = nil
+            t.monitorSubjectAreaChange = nil
+            t.frameRate = nil
+            t.preferFormatHint = nil
+        }
         return t
     }
 

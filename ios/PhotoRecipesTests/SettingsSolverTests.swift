@@ -272,9 +272,52 @@ final class SettingsSolverTests: XCTestCase {
         XCTAssertNil(t.focusPoint)
         XCTAssertEqual(t.focusMode, "continuous")
         XCTAssertEqual(t.lowLightBoost, true)
-        // Shutter never slower than the selfie cap, even in the dark.
-        XCTAssertLessThanOrEqual(
-            t.exposureDurationSec ?? 1, SettingsSolver.selfieShutterCapSeconds + 1e-9)
+        // P0 (build 78): front camera in low light never writes custom
+        // shutter/ISO (1/60 s cap × max ISO went ~5 stops under auto) — it stays
+        // on system auto exposure and lifts the face with EV bias instead.
+        XCTAssertNil(t.exposureDurationSec)
+        XCTAssertNil(t.shutter)
+        XCTAssertNil(t.iso)
+        XCTAssertEqual(t.ev, "+0.3")
+        XCTAssertNil(sol.targetEV, "no custom exposure → nothing for the verify loop")
+        if case .systemAuto? = sol.priority {} else {
+            XCTFail("front low light must be system auto, got \(String(describing: sol.priority))")
+        }
+        XCTAssertFalse(sol.clampMessages.contains { $0.contains("Underexposed") })
+    }
+
+    func testPortraitPop_frontCameraBrightLightStillCustomAndCapped() {
+        // Bright front scene with a reachable plan: custom exposure is allowed,
+        // and the shutter never exceeds the selfie cap.
+        var f = baseFeatures()
+        f.subjectKind = .face
+        f.subjectBox = NormalizedBox(x: 0.3, y: 0.2, width: 0.4, height: 0.45)
+        f.sceneEV100 = 11
+        f.meteredExposureSeconds = 1.0 / 250
+        f.meteredISO = 50
+        f.isFrontCamera = true
+        let sol = SettingsSolver.solve(
+            recipeId: "portrait-pop", features: f,
+            capabilities: caps, context: ctx1150)
+        if let d = sol.phoneTargets.exposureDurationSec {
+            XCTAssertLessThanOrEqual(d, SettingsSolver.selfieShutterCapSeconds + 1e-9)
+        }
+    }
+
+    func testFrontCamera_dimSceneNoCustomExposureForEveryRecipe() {
+        var f = baseFeatures()
+        f.subjectKind = .face
+        f.subjectBox = NormalizedBox(x: 0.3, y: 0.2, width: 0.4, height: 0.45)
+        f.sceneEV100 = 3.4
+        f.meteredExposureSeconds = 1.0 / 8
+        f.meteredISO = 1600
+        f.isFrontCamera = true
+        for id in ["portrait-pop", "sharp-and-in-focus", "sharp-front-to-back", "leading-lines", "minimalist-photos"] {
+            let sol = SettingsSolver.solve(recipeId: id, features: f, capabilities: caps, context: ctx1150)
+            XCTAssertNil(sol.phoneTargets.exposureDurationSec, id)
+            XCTAssertNil(sol.phoneTargets.iso, id)
+            XCTAssertFalse((sol.phoneTargets.ev ?? "+0.0").hasPrefix("-"), "never darker than auto in the dark: \(id)")
+        }
     }
 
     func testFaceEVBias_backlitFace() {
