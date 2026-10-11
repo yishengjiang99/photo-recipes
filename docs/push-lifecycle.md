@@ -1,6 +1,9 @@
 # ProTune push engagement lifecycle
 
-Status: **shipped in dry-run** (server) · iOS client changes land in the next TestFlight build.
+Status (2026-10-10 18:30 PT): **LIVE** for all eligible installs (`PUSH_LIFECYCLE_MODE=live`), legacy
+come-shoot nudges **off** (`PUSH_EXP1_ENABLED=false`). Installs are only eligible once they run the 1.5
+client (it links the push registration to the telemetry `anonId`); older builds receive no remote pushes.
+Auto kill switch + daily monitor enabled (§7).
 Supersedes the experiment memo in [`docs/biz/push-lifecycle.md`](biz/push-lifecycle.md) (Experiment 1 shoot briefs, retired 2026-10-06).
 
 Code: `server/lifecycleSegments.ts` (rules), `server/lifecycleCopy.ts` (Grok copy + guardrails),
@@ -123,8 +126,22 @@ All endpoints need `X-Push-Cron-Secret`:
 - `POST /api/push/lifecycle/ops` `{killSwitch, mode}` — runtime kill switch / downgrade.
 - `POST /api/push/lifecycle/preview` `{segment, facts}` — generate copy without sending.
 
-From GitHub (no SSH needed locally): **Actions → Push lifecycle report** (`report`, `dry_run_tick` —
-refuses unless mode is dry_run, `kill_switch_on`, `kill_switch_off`).
+- `POST /api/push/lifecycle/guard` — evaluate the auto kill-switch guardrails now.
+
+From GitHub (no SSH needed locally): **Actions → Push lifecycle report**: `report`, `monitor`,
+`dry_run_tick` (only in dry_run), `live_tick` (only in live), `set_env` (PUSH_LIFECYCLE_MODE /
+PUSH_EXP1_ENABLED in `/etc/photo-recipes.env`, backup kept, restart), `kill_switch_on`, `kill_switch_off`.
+
+**Auto kill switch** (`autoGuard`, runs after every non-dry tick and from the daily monitor): turns
+the runtime kill switch on and logs `lifecycle_auto_kill_switch` when, since go-live and within 7 days,
+distinct installs sending `push_opt_out` / `push_marketing_opt_out` exceed **2%** of push-enabled
+installs (minimum 2 installs, `PUSH_GUARD_MIN_OPTOUTS`), or when more than **20%** of real APNs
+attempts in 24 h fail (minimum 10 attempts; 410/Unregistered/BadDeviceToken uninstalls excluded).
+Clear it with `kill_switch_off` after review.
+
+**Daily monitor**: the same workflow runs on a schedule at 10:00 PT (`monitor`): guard + report
+(open rate, return within 24 h, opt-out rate, sends per segment) in the job summary and artifact.
+The job fails (GitHub emails the owner) whenever the kill switch is on.
 
 ## 8. Going live (owner checklist)
 
