@@ -426,7 +426,11 @@ struct CameraView: View {
                         bracketRect: AppliedFeedbackState.bracketRect(
                             faceBox: feedback.showsBracket ? feedback.faceBox : nil,
                             in: geo.size,
-                            topInset: topChromeH,
+                            // Below the measured top chrome (status + look chip), like the drawer.
+                            topInset: SideChromeLayout.topInset(
+                                fixedTopChrome: topChromeH,
+                                measuredTopChrome: measuredTopChromeH
+                            ),
                             bottomInset: bottomScrim,
                             drawerOpen: showControlsDrawer
                         )
