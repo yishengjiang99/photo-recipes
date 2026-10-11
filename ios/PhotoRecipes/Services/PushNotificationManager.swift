@@ -266,7 +266,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
                 token: hex,
                 environment: Self.apnsEnvironment,
                 appVersion: Self.appVersion,
-                timezone: TimeZone.current.identifier
+                timezone: TimeZone.current.identifier,
+                anonId: Analytics.shared.anonId
             )
             defaults.set(hex, forKey: lastRegisteredTokenKey)
             defaults.set(true, forKey: lastServerRegisterOkKey)
@@ -298,7 +299,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
                         token: hex,
                         environment: Self.apnsEnvironment,
                         appVersion: Self.appVersion,
-                        timezone: TimeZone.current.identifier
+                        timezone: TimeZone.current.identifier,
+                        anonId: Analytics.shared.anonId
                     )
                     UserDefaults.standard.set(hex, forKey: lastRegisteredTokenKey)
                     UserDefaults.standard.set(true, forKey: lastServerRegisterOkKey)
@@ -322,6 +324,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
                 var prefs = APIClient.PushPrefs()
                 prefs.pushOptIn = optedIn
                 prefs.timezone = TimeZone.current.identifier
+                // Device is the source of truth for promotional consent (Settings toggle).
+                prefs.marketingOptIn = Self.marketingOptIn
                 _ = try await api.updatePushPrefs(prefs)
                 print("[Push] prefs pushOptIn=\(optedIn) ok")
             } catch {
@@ -350,6 +354,30 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "\(short) (\(build))"
+    }
+
+    // MARK: - Promotional consent (Guideline 4.5.4)
+
+    static let marketingOptInKey = "push.marketingOptIn"
+
+    /// Explicit in-app opt-in for promotional pushes (re-engagement, offers, feature news).
+    /// Off by default. Feature pushes (tips about something you started) only need permission.
+    static var marketingOptIn: Bool {
+        UserDefaults.standard.bool(forKey: marketingOptInKey)
+    }
+
+    /// Settings → Notifications → "Tips & offers". Mirrors to the server (soft-fail; re-synced
+    /// on every token registration so the server can never hold a stale "yes").
+    func setMarketingOptIn(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Self.marketingOptInKey)
+        analytics.track(on ? .marketingOptIn : .marketingOptOut, properties: ["source": "settings"])
+        Analytics.shared.track(on ? "push_marketing_opt_in" : "push_marketing_opt_out", props: ["source": "settings"])
+        Task {
+            var prefs = APIClient.PushPrefs()
+            prefs.marketingOptIn = on
+            prefs.timezone = TimeZone.current.identifier
+            _ = try? await api.updatePushPrefs(prefs)
+        }
     }
 
     // MARK: - Local engagement (D1 / come-shoot)
@@ -418,8 +446,10 @@ final class PushNotificationManager: NSObject, ObservableObject {
             }
         }
 
-        // Daily golden-hour soft nudge at 17:30 (user can clear in Settings).
+        // Weekly (Saturday) golden-hour soft nudge at 17:30. Was daily; the lifecycle caps
+        // (≤1/day, ≤3/week across all pushes — docs/push-lifecycle.md) rule out a daily repeat.
         var gh = DateComponents()
+        gh.weekday = 7
         gh.hour = 17
         gh.minute = 30
         let ghContent = UNMutableNotificationContent()
@@ -438,8 +468,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
         print("[Push] scheduled local engagement d1=\(scheduledD1) golden=1")
         if firstGolden {
             Analytics.shared.track("notification_scheduled", props: [
-                "campaign_id": "golden_hour_daily",
-                "delay_bucket": "daily_1730",
+                "campaign_id": "golden_hour_weekly",
+                "delay_bucket": "sat_1730",
             ])
         }
         Analytics.shared.track("push_local_scheduled", props: [
@@ -473,11 +503,50 @@ final class PushNotificationManager: NSObject, ObservableObject {
 
     func handleOpenURL(_ url: URL) {
         guard url.scheme == "photo-recipes" else { return }
+        route(Self.destination(for: url))
+    }
+
+    /// Deep-link destinations a push (or URL) may open. Unknown → camera.
+    enum Destination: String, Equatable {
+        case autoOptimize = "auto-optimize"
+        case camera
+        case recipes
+        case paywall
+    }
+
+    /// `photo-recipes://<host>` or `photo-recipes:///<path>` → destination (pure, unit-tested).
+    nonisolated static func destination(for url: URL?) -> Destination {
+        guard let url, url.scheme == "photo-recipes" else { return .autoOptimize }
         let host = (url.host ?? "").lowercased()
-        let path = url.path.lowercased()
-        if host == "auto-optimize" || path == "/auto-optimize" || host.isEmpty && path.contains("auto-optimize") {
-            openAutoOptimize(fromPush: false)
+        let path = url.path.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let key = host.isEmpty ? path : host
+        if key.contains("auto-optimize") { return .autoOptimize }
+        return Destination(rawValue: key) ?? .camera
+    }
+
+    private func route(_ dest: Destination) {
+        switch dest {
+        case .autoOptimize: router?.openAutoOptimize()
+        case .camera: router?.openCamera()
+        case .recipes: router?.openLibrary()
+        case .paywall: router?.openPaywall()
         }
+    }
+
+    /// Tap on a remote/local notification: open tracking (send id + campaign) then deep link.
+    func handleNotificationTap(userInfo: [AnyHashable: Any]) {
+        let campaign = (userInfo["segment"] as? String) ?? (userInfo["type"] as? String) ?? "unknown"
+        let sendId = userInfo["sendId"] as? String
+        let link = (userInfo["deepLink"] as? String).flatMap(URL.init(string:))
+        let dest = Self.destination(for: link)
+        var props: [String: String] = ["campaign_id": campaign, "deepLink": dest.rawValue]
+        if let sendId, sendId.count <= 64 { props["send_id"] = sendId }
+        Analytics.shared.track("notification_opened", props: props)
+        Analytics.shared.track("push_opened", props: props)
+        var pushProps: [String: String] = ["deepLink": dest.rawValue, "campaign": campaign]
+        if let sendId, sendId.count <= 64 { pushProps["sendId"] = sendId }
+        analytics.track(.pushOpened, properties: pushProps)
+        route(dest)
     }
 
     func openAutoOptimize(fromPush: Bool, campaign: String? = nil) {
@@ -506,9 +575,14 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let campaign = response.notification.request.content.userInfo["type"] as? String
+        let userInfo = response.notification.request.content.userInfo
+        // Only plain property-list values cross the actor hop.
+        var info: [String: String] = [:]
+        for key in ["type", "segment", "sendId", "deepLink"] {
+            if let v = userInfo[key] as? String { info[key] = v }
+        }
         Task { @MainActor in
-            Self.shared.openAutoOptimize(fromPush: true, campaign: campaign)
+            Self.shared.handleNotificationTap(userInfo: info)
             completionHandler()
         }
     }

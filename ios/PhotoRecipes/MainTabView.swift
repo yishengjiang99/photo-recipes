@@ -31,6 +31,12 @@ struct MainTabView: View {
         }
         .tint(AppTheme.accent)
         .toolbarBackground(AppTheme.bg, for: .tabBar)
+        // Lifecycle push "paywall_not_converted" → soft Pro sheet (dismissable, no auto-purchase).
+        .onChange(of: router.pendingPaywall) { _, pending in
+            guard pending else { return }
+            router.pendingPaywall = false
+            entitlements.presentPaywallFromPush()
+        }
         // Observe EntitlementsStore directly — App-level Binding on appModel did not refresh.
         .sheet(isPresented: $entitlements.showPaywall) {
             PaywallView()

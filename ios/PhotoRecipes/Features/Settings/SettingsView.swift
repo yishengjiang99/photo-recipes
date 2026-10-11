@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var showBracketUploadConfirm = false
     @State private var bracketUploadNote: String? = nil
     @State private var gradientOverlayEnabled = GradientOverlaySettings.enabled
+    @State private var marketingOptIn = PushNotificationManager.marketingOptIn
+    @ObservedObject private var push = PushNotificationManager.shared
 
     private func refreshBracketInfo() {
         let sets = AOBracketStore.shared.pendingSets()
@@ -28,6 +30,15 @@ struct SettingsView: View {
             return String(format: "%.1f KB", Double(bytes) / 1024)
         }
         return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
+    }
+
+    private var notificationStatusText: String {
+        switch push.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: return "Allowed"
+        case .denied: return "Off"
+        case .notDetermined: return "Not asked yet"
+        @unknown default: return "Unknown"
+        }
     }
 
     var body: some View {
@@ -71,6 +82,23 @@ struct SettingsView: View {
                         }
                     } header: {
                         Text("API")
+                    }
+
+                    Section {
+                        LabeledContent("Notifications", value: notificationStatusText)
+                        Toggle("Tips & offers", isOn: $marketingOptIn)
+                            .onChange(of: marketingOptIn) { _, on in
+                                PushNotificationManager.shared.setMarketingOptIn(on)
+                            }
+                        Button("Open iOS notification settings") {
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    } header: {
+                        Text("Notifications")
+                    } footer: {
+                        Text("Tips & offers is off unless you turn it on: occasional shooting ideas, feature news and Pro offers, at most 3 notifications a week and never at night. Reminders about a shot you started only need notifications allowed. Turn either off any time here or in iOS Settings.")
                     }
 
                     Section("Billing") {

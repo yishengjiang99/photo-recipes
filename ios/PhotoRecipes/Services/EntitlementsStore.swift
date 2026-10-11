@@ -73,6 +73,16 @@ final class EntitlementsStore: ObservableObject {
         }
     }
 
+    /// Opened from a lifecycle push the user tapped: soft (dismissable) sheet, Pro users skip.
+    func presentPaywallFromPush() {
+        guard !isPro else { return }
+        paywallMode = .soft
+        paywallTrigger = "push"
+        showPaywall = true
+        Analytics.shared.track("paywall_trigger", props: ["reason": "push", "mode": "soft"])
+        PushAnalytics.shared.track(.paywallFromPush)
+    }
+
     /// Hard paywall — Free Peek quota exhausted. Skip hard gate until they've felt AO value
     /// unless `force` (explicit Settings / Upgrade taps). Returns true if sheet presented.
     @discardableResult

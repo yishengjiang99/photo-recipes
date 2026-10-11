@@ -17,6 +17,11 @@ final class PushAnalytics {
         case apnsTokenReceived = "apns_token_received"
         /// Build 23: didFailToRegisterForRemoteNotifications — surfaces on nginx.
         case apnsRegisterFailed = "apns_register_failed"
+        /// Lifecycle: tapped a push that opened the Pro sheet.
+        case paywallFromPush = "paywall_from_push"
+        /// Settings → Tips & offers (Guideline 4.5.4 consent trail).
+        case marketingOptIn = "push_marketing_opt_in"
+        case marketingOptOut = "push_marketing_opt_out"
     }
 
     private let logKey = "push.analytics.events"

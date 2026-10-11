@@ -13,6 +13,8 @@ final class CameraRouter: ObservableObject {
     @Published var stagedPhoneTargets: PhoneTargets?
     /// When true, Camera tab should kick off Auto Optimize (deep link / push).
     @Published var pendingAutoOptimize = false
+    /// Push / deep link asked for the Pro sheet (MainTabView presents it via EntitlementsStore).
+    @Published var pendingPaywall = false
 
     func openCamera(staging recipe: Recipe, apply: Bool = true, phoneTargets: PhoneTargets? = nil) {
         stagedRecipeId = recipe.id
@@ -26,6 +28,21 @@ final class CameraRouter: ObservableObject {
     func openAutoOptimize() {
         pendingAutoOptimize = true
         selectedTab = .camera
+    }
+
+    /// Deep link / push: camera without auto-starting Optimize (looks, selfie features).
+    func openCamera() {
+        selectedTab = .camera
+    }
+
+    /// Deep link / push: Library (photo recipes).
+    func openLibrary() {
+        selectedTab = .library
+    }
+
+    /// Deep link / push: Pro sheet. Never auto-purchases; user decides on the sheet.
+    func openPaywall() {
+        pendingPaywall = true
     }
 
     func clearStaging() {

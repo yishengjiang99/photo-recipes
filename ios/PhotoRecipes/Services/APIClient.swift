@@ -465,6 +465,9 @@ final class APIClient: ObservableObject {
         var appVersion: String
         /// IANA zone so the server schedules evening nudges in local time (not UTC).
         var timezone: String
+        /// Anonymous telemetry install id (Analytics.anonId) so lifecycle pushes can use this
+        /// install's first-party event counts. Random UUID; not linked to a person.
+        var anonId: String?
     }
 
     struct PushRegisterResponse: Decodable {
@@ -478,7 +481,8 @@ final class APIClient: ObservableObject {
         token: String,
         environment: String,
         appVersion: String,
-        timezone: String = TimeZone.current.identifier
+        timezone: String = TimeZone.current.identifier,
+        anonId: String? = nil
     ) async throws {
         var req = URLRequest(url: try url("/api/push/register"))
         req.httpMethod = "POST"
@@ -489,7 +493,8 @@ final class APIClient: ObservableObject {
             bundleId: "com.ragnus.mvp",
             environment: environment,
             appVersion: appVersion,
-            timezone: timezone
+            timezone: timezone,
+            anonId: anonId
         )
         req.httpBody = try encoder.encode(body)
         let (data, response) = try await perform(req)
@@ -513,6 +518,8 @@ final class APIClient: ObservableObject {
         var weeklyCap: Int?
         var pushOptIn: Bool?
         var timezone: String?
+        /// Guideline 4.5.4: explicit in-app consent for promotional pushes (Settings toggle).
+        var marketingOptIn: Bool?
     }
 
     struct PushPrefsResponse: Decodable {
