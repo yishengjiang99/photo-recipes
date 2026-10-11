@@ -83,10 +83,10 @@
 </div>
 </section>
 <script>
-/* The player starts when it comes near the viewport (after the page has painted); its markup above is already final,
+/* The player starts when it scrolls into view (after the page has painted); its markup above is already final,
    so nothing shifts. On phones it sits below the fold, so the page's first paint never waits for it. */
 (()=>{let go=false;const el0=document.getElementById('pse');
-const io0=new IntersectionObserver(es=>{if(!go&&es.some(e=>e.isIntersecting)){go=true;io0.disconnect();setTimeout(run,0)}},{rootMargin:'300px 0px'});
+const io0=new IntersectionObserver(es=>{if(!go&&es.some(e=>e.isIntersecting)){go=true;io0.disconnect();setTimeout(run,0)}},{threshold:.01});
 io0.observe(el0);
 function run(){
 const cv=document.getElementById('pse-cv'), c=cv.getContext('2d');
@@ -450,7 +450,8 @@ if(auto)aio.observe(cv);
 function loadFonts(){const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap';
   l.onload=()=>{Promise.all(['500 17px "IBM Plex Mono"','600 26px "IBM Plex Mono"','700 30px Archivo','400 16px "IBM Plex Sans"'].map(f=>document.fonts.load(f))).then(()=>{dirty=true;kick()},()=>{})};
   document.head.appendChild(l)}
-if(document.readyState==='complete')setTimeout(loadFonts,0);else addEventListener('load',()=>setTimeout(loadFonts,0));
+const idle=f=>(window.requestIdleCallback?requestIdleCallback(f,{timeout:2500}):setTimeout(f,300));
+if(document.readyState==='complete')idle(loadFonts);else addEventListener('load',()=>idle(loadFonts));
 setBtn();setSnd();render();
 root.pse={get t(){return el},get playing(){return playing},get audio(){return au},get sound(){return snd}}; /* read-only hook for tests */
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{dirty=true;kick()});
