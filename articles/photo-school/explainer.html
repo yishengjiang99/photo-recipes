@@ -83,8 +83,12 @@
 </div>
 </section>
 <script>
-/* Runs after first paint so the page text paints first; the player markup above is already final. */
-requestAnimationFrame(()=>setTimeout(()=>{
+/* The player starts when it comes near the viewport (after the page has painted); its markup above is already final,
+   so nothing shifts. On phones it sits below the fold, so the page's first paint never waits for it. */
+(()=>{let go=false;const el0=document.getElementById('pse');
+const io0=new IntersectionObserver(es=>{if(!go&&es.some(e=>e.isIntersecting)){go=true;io0.disconnect();setTimeout(run,0)}},{rootMargin:'300px 0px'});
+io0.observe(el0);
+function run(){
 const cv=document.getElementById('pse-cv'), c=cv.getContext('2d');
 const W=960,H=540;
 const dpr=Math.min(2,window.devicePixelRatio||1);
@@ -450,5 +454,6 @@ if(document.readyState==='complete')setTimeout(loadFonts,0);else addEventListene
 setBtn();setSnd();render();
 root.pse={get t(){return el},get playing(){return playing},get audio(){return au},get sound(){return snd}}; /* read-only hook for tests */
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{dirty=true;kick()});
-},0));
+}
+})();
 </script>
