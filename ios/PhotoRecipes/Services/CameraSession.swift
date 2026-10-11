@@ -148,6 +148,16 @@ final class CameraSession: NSObject, ObservableObject {
     }
 
     private var configured = false
+
+    /// Bumped by `resetToDefaults`. Async work that writes to the device
+    /// (custom exposure writes, the verify loop, the WB-lock-after-AE wait, a
+    /// selfie look's capture light) snapshots it and drops its writes once a
+    /// reset has happened — nothing in flight lands after "Reset camera".
+    private(set) var resetEpoch: UInt64 = 0
+    /// Selfie look → capture-light apply started by `setActiveLook`.
+    private var selfieLightTask: Task<Void, Never>?
+    /// Reset epoch the running verify loop belongs to (nil when idle).
+    private var verifyResetEpoch: UInt64?
     private var interruptionObserver: NSObjectProtocol?
     private var interruptionEndedObserver: NSObjectProtocol?
     private var subjectAreaObserver: NSObjectProtocol?
@@ -514,10 +524,12 @@ final class CameraSession: NSObject, ObservableObject {
         if clamped != seconds {
             clampMessages.append("Shutter clamped to \(RecipeCameraMapper.formatShutter(clamped)).")
         }
+        let epoch = resetEpoch
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: clamped, preferredTimescale: 1_000_000),
             iso: ExposureClamp.clamp(durationSeconds: clamped, iso: device.iso,
                                      limits: liveExposureLimits(device)).iso)
+        guard resetEpoch == epoch else { return .invalid } // "Reset camera" won
         exposureLocked = true
         exposureSeconds = CameraValues.exposure(clamped, fallback: exposureSeconds)
         if captureMode == .auto || captureMode == .program { captureMode = .shutter }
@@ -537,9 +549,11 @@ final class CameraSession: NSObject, ObservableObject {
             durationSeconds: CMTimeGetSeconds(device.exposureDuration), iso: value,
             limits: liveExposureLimits(device))
         let clamped = live.iso
+        let epoch = resetEpoch
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: live.durationSeconds, preferredTimescale: 1_000_000),
             iso: clamped)
+        guard resetEpoch == epoch else { return .invalid } // "Reset camera" won
         exposureLocked = true
         iso = CameraValues.iso(clamped, fallback: iso)
         if captureMode == .auto { captureMode = .manual }
@@ -676,9 +690,11 @@ final class CameraSession: NSObject, ObservableObject {
     /// - switchToFront: Library apply flips to the front camera; a look-picker tap does not.
     /// - setLook: also activate the preset's look (Library apply). Intensity keeps the user's.
     func applySelfiePreset(_ preset: SelfiePresets.Preset, switchToFront: Bool, setLook: Bool) async {
+        let epoch = resetEpoch
         if switchToFront, !isFront {
             await ensureFrontCamera()
         }
+        guard resetEpoch == epoch else { return }
         if setLook {
             let current = activeCreativeLook?.id == preset.lookId ? activeCreativeLook?.intensity : nil
             let look = CreativeLook(id: preset.lookId, intensity: current ?? CreativeLookCatalog.defaultIntensity)
@@ -695,9 +711,11 @@ final class CameraSession: NSObject, ObservableObject {
         var targets = preset.targets
         targets.creativeLook = nil // look handled above; never recurse through setActiveLook
         _ = await applyPhoneTargets(targets, autoApplyLook: true)
+        guard resetEpoch == epoch else { return }
         if preset.meterOnFace {
             _ = await meterOnDetectedFace()
         }
+        guard resetEpoch == epoch else { return }
         if preset.lockWhiteBalanceAfterAE {
             await lockWhiteBalanceAfterExposureSettles()
         }
@@ -716,7 +734,9 @@ final class CameraSession: NSObject, ObservableObject {
     /// Guards point-of-interest support (many front cameras are fixed-focus).
     @discardableResult
     func meterOnDetectedFace() async -> Bool {
+        let epoch = resetEpoch
         let snapshot = await SceneSensor.shared.current()
+        guard resetEpoch == epoch else { return false }
         guard snapshot.age < 3, snapshot.features.subjectKind == .face,
               let box = snapshot.features.subjectBox,
               let ui = SelfiePresets.faceMeteringPoint(uiFaceBox: box.cgRect),
@@ -754,11 +774,14 @@ final class CameraSession: NSObject, ObservableObject {
             clampMessages.append("WB lock unavailable — guidance only.")
             return
         }
+        let epoch = resetEpoch
         let start = Date()
         while (device.isAdjustingExposure || device.isAdjustingWhiteBalance),
-              Date().timeIntervalSince(start) < timeout {
+              Date().timeIntervalSince(start) < timeout, resetEpoch == epoch {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
+        // "Reset camera" during the wait: keep continuous auto white balance.
+        guard resetEpoch == epoch, !Task.isCancelled else { return }
         configure(device) { device.whiteBalanceMode = .locked }
         whiteBalanceLocked = true
         applyNotes.append("White balance held once exposure settled.")
@@ -771,6 +794,7 @@ final class CameraSession: NSObject, ObservableObject {
     @discardableResult
     func applyPhoneTargets(_ targets: PhoneTargets, autoApplyLook: Bool = false) async -> Bool {
         var wrote = false
+        let epoch = resetEpoch
 
         // Prefer optical cameraDevice over zoom-only.
         // Front camera has one lens and no torch — skip both silently.
@@ -798,6 +822,9 @@ final class CameraSession: NSObject, ObservableObject {
         } else if durationSec != nil || isoVal != nil {
             clampMessages.append("Custom exposure unavailable on this lens/format — guidance only.")
         }
+        // "Reset camera" while the exposure write was in flight: the rest of
+        // this apply belongs to a cancelled run.
+        guard resetEpoch == epoch else { return false }
 
         // EV is folded into the ISO solve when custom shutter/ISO was written
         // this apply — programming a bias on top would fight the solve.
@@ -965,9 +992,11 @@ final class CameraSession: NSObject, ObservableObject {
         let c = ExposureClamp.clamp(durationSeconds: duration, iso: isoVal, limits: liveExposureLimits(device))
         let d = c.durationSeconds
         let i = c.iso
+        let epoch = resetEpoch
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: d, preferredTimescale: 1_000_000),
             iso: i)
+        guard resetEpoch == epoch else { return .invalid } // "Reset camera" won
         exposureLocked = true
         exposureSeconds = CameraValues.exposure(d, fallback: exposureSeconds)
         iso = CameraValues.iso(i, fallback: iso)
@@ -994,9 +1023,13 @@ final class CameraSession: NSObject, ObservableObject {
     private func issueExposureWrite(duration: CMTime, iso: Float) async -> CMTime {
         exposureWriteEpoch &+= 1
         let epoch = exposureWriteEpoch
+        let issuedResetEpoch = resetEpoch
         let task = Task<CMTime, Never> { @MainActor [weak self] in
             await withCheckedContinuation { (c: CheckedContinuation<CMTime, Never>) in
-                guard let self, let device = self.input?.device else {
+                // A reset landed between issue and write: drop the write so
+                // custom exposure never comes back after "Reset camera".
+                guard let self, let device = self.input?.device,
+                      self.resetEpoch == issuedResetEpoch else {
                     c.resume(returning: .invalid)
                     return
                 }
@@ -1527,7 +1560,8 @@ final class CameraSession: NSObject, ObservableObject {
         )
         // Selfie look picked on the front camera → also set its capture light (not on intensity drags).
         if changed, applySelfieLight, isFront, let preset = SelfiePresets.preset(lookId: copy.id) {
-            Task { @MainActor [weak self] in
+            selfieLightTask?.cancel()
+            selfieLightTask = Task { @MainActor [weak self] in
                 await self?.applySelfiePreset(preset, switchToFront: false, setLook: false)
             }
         }
@@ -1838,6 +1872,8 @@ final class CameraSession: NSObject, ObservableObject {
         // Normally a no-op: applyPhoneTargets awaited its writes before verify
         // started. Covers fire-and-forget issuers (dial taps) otherwise.
         await awaitInFlightExposureWrite()
+        verifyResetEpoch = resetEpoch
+        defer { verifyResetEpoch = nil }
         let r = await ExposureVerifyLoop.run(
             targetEV: targetEV, priority: priority,
             shutterCapSeconds: shutterCapSeconds,
@@ -1856,14 +1892,18 @@ final class CameraSession: NSObject, ObservableObject {
     /// tests substitute a fake device.
     func issueWrite(durationSeconds: Double, iso: Float) async -> CMTime {
         guard CameraValues.finitePositive(durationSeconds) != nil, CameraValues.finitePositive(iso) != nil else { return .invalid }
+        // The verify loop's run was reset ("Reset camera") — no more corrections.
+        if let fence = verifyResetEpoch, fence != resetEpoch { return .invalid }
         let limits = input.map { liveExposureLimits($0.device) } ?? capabilityLimits
         let c = ExposureClamp.clamp(durationSeconds: durationSeconds, iso: iso, limits: limits)
         let d = c.durationSeconds
         let i = c.iso
         // No clamp banners here: corrections are internal; the loop reports
         // `clamped` and the controller turns it into a single verify note.
+        let epoch = resetEpoch
         let sync = await issueExposureWrite(
             duration: CMTime(seconds: d, preferredTimescale: 1_000_000), iso: i)
+        guard resetEpoch == epoch else { return .invalid } // "Reset camera" won
         exposureLocked = true
         exposureSeconds = CameraValues.exposure(d, fallback: exposureSeconds)
         self.iso = CameraValues.iso(i, fallback: self.iso)
@@ -1973,6 +2013,154 @@ final class CameraSession: NSObject, ObservableObject {
         evBias = target.exposureBias
         if captureMode != .auto { captureMode = .auto }
         Analytics.shared.track("camera_exposure_reset", props: ["reason": reason, "front": isFront ? "1" : "0"])
+    }
+
+    // MARK: - Reset camera (user)
+
+    /// Snapshot of what "Reset camera" looks at (see `CameraResetPlan`).
+    var resetState: CameraResetState {
+        let device = input?.device
+        return CameraResetState(
+            exposureLocked: exposureLocked,
+            focusLocked: focusLocked,
+            whiteBalanceLocked: whiteBalanceLocked,
+            customExposure: device.map { $0.exposureMode == .custom } ?? false,
+            exposureBias: evBias,
+            captureMode: captureMode,
+            focusPoint: focusPoint,
+            lens: selectedLens,
+            zoomFactor: device.map { Double($0.videoZoomFactor) } ?? CameraDefaults.zoomFactor,
+            lensPosition: lensPosition,
+            flash: flash,
+            torchOn: torchOn,
+            lowLightBoostOn: lowLightBoostOn,
+            videoHDROn: videoHDROn,
+            preferredFrameRate: preferredFrameRate,
+            subjectAreaMonitoring: monitorSubjectArea,
+            activeLookId: activeCreativeLook?.id,
+            activeLookOwner: activeLookOwner,
+            lookIntensity: activeCreativeLook?.resolvedIntensity ?? CameraDefaults.lookIntensity,
+            previewLUTId: previewLUTId,
+            hasPendingBracket: pendingBracket != nil,
+            appliedRecipeId: appliedRecipeId,
+            appliedRecipeTitle: appliedRecipeTitle,
+            clampMessages: clampMessages,
+            applyNotes: applyNotes,
+            optimizeReason: optimizeReason,
+            apertureGuidance: apertureGuidance,
+            simulatedApertureCoach: simulatedApertureCoach,
+            isFront: isFront,
+            showGrid: showGrid,
+            mirrorFrontPhotos: mirrorFrontPhotos)
+    }
+
+    /// True when the camera differs from its defaults (a reset would change something).
+    var isModifiedFromDefaults: Bool { CameraResetPlan.isModified(resetState) }
+
+    /// "Reset camera": back to the app's defaults in one step. Extends the
+    /// #165 restart reset (`resetToContinuousAuto`: continuous AE/AF, zero
+    /// bias, nothing locked) with continuous auto white balance, centered
+    /// focus/exposure point, 1× wide lens, flash off, torch off, low-light
+    /// boost / video HDR / frame rate back to device defaults, no look /
+    /// LUT / recipe / bracket, and cleared status messages.
+    ///
+    /// Keeps camera position (front/back), the grid and mirror preferences.
+    /// In-flight session work (custom exposure writes, the AO verify loop,
+    /// the WB-lock-after-AE wait, a selfie look's capture light) is fenced by
+    /// `resetEpoch` and drops its writes. The caller cancels the AO run /
+    /// cloud refine / voice intent (`AutoOptimizeController.handleUserReset`).
+    func resetToDefaults(reason: String = "user_reset") {
+        let before = resetState
+        resetEpoch &+= 1
+        selfieLightTask?.cancel()
+        selfieLightTask = nil
+        let target = CameraResetPlan.reset(before)
+
+        if let device = input?.device {
+            // A recipe's format hint left the session on `.inputPriority`.
+            if session.sessionPreset != .photo, session.canSetSessionPreset(.photo) {
+                session.beginConfiguration()
+                session.sessionPreset = .photo
+                session.commitConfiguration()
+                updateCapabilities(device)
+            }
+        }
+        // Back camera on another lens (UW / Tele) → the default wide lens.
+        if !isFront, let device = input?.device, device.deviceType != .builtInWideAngleCamera {
+            _ = switchCameraDevice("wide")
+        }
+        // #165 restart reset: continuous AE/AF, zero bias, nothing locked,
+        // exposure point centered, capture mode Auto.
+        resetToContinuousAuto(reason: reason)
+        if let device = input?.device {
+            configure(device) {
+                if device.isFocusPointOfInterestSupported {
+                    device.focusPointOfInterest = CameraDefaults.pointOfInterest
+                }
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                    device.whiteBalanceMode = .continuousAutoWhiteBalance
+                }
+                let z = min(max(CGFloat(CameraDefaults.zoomFactor), device.minAvailableVideoZoomFactor),
+                            device.maxAvailableVideoZoomFactor)
+                device.videoZoomFactor = z
+                if device.hasTorch, device.torchMode != .off, device.isTorchModeSupported(.off) {
+                    device.torchMode = .off
+                }
+                if device.isLowLightBoostSupported {
+                    device.automaticallyEnablesLowLightBoostWhenAvailable = CameraDefaults.lowLightBoost
+                }
+                if device.activeFormat.isVideoHDRSupported, !device.automaticallyAdjustsVideoHDREnabled {
+                    device.automaticallyAdjustsVideoHDREnabled = true
+                }
+                if before.preferredFrameRate != nil {
+                    // .invalid restores the active format's default frame durations.
+                    device.activeVideoMinFrameDuration = .invalid
+                    device.activeVideoMaxFrameDuration = .invalid
+                }
+            }
+            lensLabel = Self.label(for: device.deviceType)
+        }
+        setSubjectAreaMonitoring(false)
+
+        // Published session state = the plan (also when no device, e.g. tests).
+        exposureLocked = target.exposureLocked
+        focusLocked = target.focusLocked
+        whiteBalanceLocked = target.whiteBalanceLocked
+        evBias = target.exposureBias
+        captureMode = target.captureMode
+        focusPoint = target.focusPoint
+        selectedLens = target.lens
+        lensPosition = target.lensPosition
+        flash = target.flash
+        torchOn = target.torchOn
+        lowLightBoostOn = target.lowLightBoostOn
+        videoHDROn = target.videoHDROn
+        preferredFrameRate = target.preferredFrameRate
+        monitorSubjectArea = target.subjectAreaMonitoring
+        activeCreativeLook = nil
+        activeLookOwner = target.activeLookOwner
+        previewLUTId = target.previewLUTId
+        pendingBracket = nil
+        appliedRecipeId = target.appliedRecipeId
+        appliedRecipeTitle = target.appliedRecipeTitle
+        clampMessages = target.clampMessages
+        applyNotes = target.applyNotes
+        optimizeReason = target.optimizeReason
+        apertureGuidance = target.apertureGuidance
+        simulatedApertureCoach = target.simulatedApertureCoach
+        refreshReadouts()
+
+        Analytics.shared.track("camera_reset", props: [
+            "reason": reason,
+            "front": isFront ? "1" : "0",
+            "was_locked": (before.exposureLocked || before.focusLocked) ? "1" : "0",
+            "had_look": before.activeLookId == nil ? "0" : "1",
+            "had_recipe": before.appliedRecipeId == nil ? "0" : "1",
+            "flash": before.flash.rawValue,
+        ])
     }
 
     /// Mean luma (0…1, gamma-encoded) of the latest preview frame, or nil when

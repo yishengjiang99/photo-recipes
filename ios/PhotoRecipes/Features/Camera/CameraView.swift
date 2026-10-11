@@ -47,6 +47,12 @@ struct CameraView: View {
     @State private var lookToast: String?
     /// Top-chrome toast for flash / flip (short-lived).
     @State private var chromeToast: String?
+    /// Bumped by "Reset camera": a Recommend already in flight must not apply
+    /// its recipe/look afterwards.
+    @State private var recommendEpoch = 0
+    /// Transient "Camera reset" — replaces the primary status for ~1.5 s.
+    @State private var resetStatusVisible = false
+    @State private var resetStatusTask: Task<Void, Never>?
     @State private var chromeToastTask: Task<Void, Never>?
     /// On-finder AO apply burst (dial deltas) — collapses into BeforeAfterChip.
     @State private var showApplyBurst = false
@@ -190,6 +196,8 @@ struct CameraView: View {
         .onDisappear {
             isCameraOnScreen = false
             chromeToastTask?.cancel()
+            resetStatusTask?.cancel()
+            resetStatusVisible = false
             applyBurstTask?.cancel()
             appliedFeedbackTask?.cancel()
             appliedFeedback = nil
@@ -311,6 +319,10 @@ struct CameraView: View {
                 onClearRecipe: session.appliedRecipeTitle == nil ? nil : {
                     showOverflow = false
                     showClearConfirm = true
+                },
+                onResetCamera: {
+                    showOverflow = false
+                    resetCamera(source: "overflow")
                 }
             )
             .presentationDetents([.medium])
@@ -689,13 +701,28 @@ struct CameraView: View {
                 }
                 Spacer(minLength: 4)
                 if session.focusLocked || session.exposureLocked {
-                    Text("AE/AF LOCK")
-                        .font(AppTheme.overline())
+                    // The lock badge doubles as the quick "Reset camera" — it only
+                    // exists in the modified state, so it adds no chrome (#133).
+                    Button {
+                        resetCamera(source: "aeaf_badge")
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("AE/AF LOCK")
+                                .font(AppTheme.overline())
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.caption2.weight(.bold))
+                        }
                         .foregroundStyle(AppTheme.aeLock)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Capsule().fill(AppTheme.agentStatusBg))
-                        .allowsHitTesting(false)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Exposure and focus locked")
+                    .accessibilityHint("Resets the camera to defaults")
+                    .accessibilityIdentifier("camera.aeafLock.reset")
                 }
                 if horizon.isAvailable {
                     Circle()
@@ -743,8 +770,9 @@ struct CameraView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(Capsule().fill(AppTheme.agentStatusBg))
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .move(edge: .top)))
                     .allowsHitTesting(false)
+                    .accessibilityIdentifier("camera.chromeToast")
             }
 
             // Statuses live on top — the center of the finder stays clear.
@@ -774,7 +802,23 @@ struct CameraView: View {
         return VStack(spacing: compact ? 6 : 8) {
             // Single primary status: the transient selfie pill *replaces* the status
             // for ~2 s (never stacks), then busy Recommend/AO, or ready warnings.
-            if appliedFeedbackPillVisible, !isStatusBusy,
+            if resetStatusVisible {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.caption.weight(.bold))
+                    Text(CameraDefaults.resetStatusCopy)
+                        .font(AppTheme.bodySmMedium())
+                        .lineLimit(1)
+                }
+                .foregroundStyle(AppTheme.ink)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(AppTheme.agentStatusBg))
+                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .scale(scale: 0.94)))
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("camera.resetStatus")
+            } else if appliedFeedbackPillVisible, !isStatusBusy,
                let title = appliedFeedback?.pillTitle {
                 AppliedFeedbackPill(title: title, detail: appliedFeedback?.pillDetail)
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
@@ -1595,6 +1639,7 @@ struct CameraView: View {
         }
 
         let streamStarted = RecommendStreamStartFlag()
+        let epoch = recommendEpoch
         do {
             try Task.checkCancellation()
             let response = try await APIClient.shared.recommendStream(
@@ -1613,6 +1658,8 @@ struct CameraView: View {
                 }
             }
             try Task.checkCancellation()
+            // "Reset camera" while matching: drop the late result.
+            guard recommendEpoch == epoch else { return }
             recommendResult = response
             recommendError = nil
             // Prefer auto-apply so the viewfinder changes immediately (autoApplyLook: true; no schema change).
@@ -2152,6 +2199,40 @@ struct CameraView: View {
         presentChromeToast(goingFront ? "Front camera" : "Back camera")
     }
 
+    /// "Reset camera" (··· menu + AE/AF LOCK badge): cancel in-flight AO /
+    /// cloud refine / voice / Recommend, put the device back to defaults
+    /// (`CameraSession.resetToDefaults`), and replace any status with a brief
+    /// "Camera reset". Keeps front/back, grid, permissions, Pro and settings.
+    private func resetCamera(source: String) {
+        cancelInFlightVoiceIntent() // voice task + Recommend status + running AO
+        recommendEpoch &+= 1
+        optimizer.handleUserReset() // AO run, Pass 2 refine, selfie-auto ownership
+        session.resetToDefaults(reason: source)
+        router.clearStaging() // a staged recipe no longer pins the next AO run
+        comparingOriginal = false
+        drawerLookIntensity = CameraDefaults.lookIntensity
+        captureError = nil
+        lookToast = nil
+        applyBurstTask?.cancel()
+        appliedFeedbackTask?.cancel()
+        withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.15)) {
+            showApplyBurst = false
+            appliedFeedback = nil
+            appliedFeedbackPillVisible = false
+        }
+        chromeToastTask?.cancel()
+        chromeToast = nil
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UIAccessibility.post(notification: .announcement, argument: CameraDefaults.resetStatusCopy)
+        resetStatusTask?.cancel()
+        withAnimation(reduceMotion ? nil : Animation.easeOut(duration: 0.15)) { resetStatusVisible = true }
+        resetStatusTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(CameraDefaults.resetStatusDuration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : Animation.easeIn(duration: 0.2)) { resetStatusVisible = false }
+        }
+    }
+
     private func presentChromeToast(_ message: String) {
         chromeToastTask?.cancel()
         withAnimation(.easeOut(duration: 0.15)) { chromeToast = message }
@@ -2248,6 +2329,7 @@ struct CameraOverflowSheet: View {
     var onVoice: () -> Void
     var onRefreshScene: () -> Void
     var onClearRecipe: (() -> Void)?
+    var onResetCamera: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -2293,6 +2375,14 @@ struct CameraOverflowSheet: View {
                             Label("Undo optimize", systemImage: "arrow.uturn.backward")
                         }
                     }
+                    Button {
+                        onResetCamera()
+                    } label: {
+                        Label("Reset camera", systemImage: "arrow.counterclockwise")
+                    }
+                    .accessibilityLabel("Reset camera")
+                    .accessibilityHint("Returns exposure, focus, zoom, flash and look to defaults")
+                    .accessibilityIdentifier("camera.overflow.resetCamera")
                     Button {
                         onVoice()
                     } label: {
