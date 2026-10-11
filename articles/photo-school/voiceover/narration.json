@@ -1,0 +1,66 @@
+{
+  "voice": {
+    "name": "Matilda",
+    "id": "XrExE9yKIg1WjnnlVkGX"
+  },
+  "model": "eleven_multilingual_v2",
+  "leadIn": 0.35,
+  "chapters": [
+    {
+      "title": "Think like a photographer",
+      "duration": 6,
+      "text": "Every Auto Optimize choice is a photographer's decision, made in code."
+    },
+    {
+      "title": "Shutter vs. ISO",
+      "duration": 9,
+      "text": "With a fixed aperture, exposure trades shutter for ISO: fast freezes motion but adds noise, slow blurs it."
+    },
+    {
+      "title": "Meter for the subject",
+      "duration": 9,
+      "text": "Averaging the frame turns a backlit face into a silhouette. Meter for the face, and let the window blow out."
+    },
+    {
+      "title": "Protect the highlights",
+      "duration": 9,
+      "text": "Clipped highlights hold no data. Crushed shadows can be lifted, with some noise. So guard the highlights first."
+    },
+    {
+      "title": "Tone curves make the look",
+      "duration": 9,
+      "text": "Most pro looks are tone curves. An S-curve adds contrast; lifted blacks and soft highlights feel like film."
+    },
+    {
+      "title": "White balance has two axes",
+      "duration": 9,
+      "text": "White balance has two axes: blue to amber, and green to magenta. A gray card reads neutral when it's right."
+    },
+    {
+      "title": "Protect skin tones",
+      "duration": 9,
+      "text": "Skin of every complexion sits near one line. Push a global grade and faces drift magenta, so protect that range."
+    },
+    {
+      "title": "Read the light",
+      "duration": 9,
+      "text": "Front light is flat, side light shows texture, back light makes a rim. Small sources light hard, large ones soft.",
+      "speed": 1.08
+    },
+    {
+      "title": "Composition basics",
+      "duration": 8,
+      "text": "Rule of thirds, a level horizon, leading lines and headroom. Each one makes a good guide overlay."
+    },
+    {
+      "title": "Know the pipeline",
+      "duration": 9,
+      "text": "Apple's ISP processes every frame before your code sees it. Shoot RAW alongside to see what it did."
+    },
+    {
+      "title": "Build a hard-scene test set",
+      "duration": 9,
+      "text": "Test every change on the scenes that break cameras, then shoot manually for a week. That habit is what Auto Optimize automates."
+    }
+  ]
+}

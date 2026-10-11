@@ -74,6 +74,7 @@ function page(url, { noindex = false } = {}) {
   return doc
 }
 
+// Note: /articles pages are static files written by scripts/prerender-articles.mjs (run before this script).
 const routes = { '/': 'index.html', '/privacy': 'privacy.html', '/terms': 'terms.html', '/support': 'support.html' }
 for (const [url, file] of Object.entries(routes)) {
   const doc = page(url)

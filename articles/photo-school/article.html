@@ -1,0 +1,68 @@
+---
+title: ProTune Photo School: Photography for camera builders
+slug: photo-school
+seoTitle: ProTune Photo School: Photography for Camera Builders
+description: An 11-part animated explainer of the photography behind ProTune's Auto Optimize: shutter vs. ISO, metering, highlights, tone curves, white balance, skin tones, light and composition.
+date: 2026-10-10
+updated: 2026-10-10
+author: Yisheng Jiang
+eyebrow: Photo School · developer field notes
+readingTime: 1.5-minute narrated explainer
+heroImage: card.webp
+heroAlt: Frame from the ProTune Photo School explainer: the shutter vs. ISO scene, with motion blur on one side and sensor noise on the other.
+ogImage: og.jpg
+featured: true
+navLabel: Photo School
+cardTitle: Photo School: how Auto Optimize thinks
+cardSummary: An 11-part animated explainer, about a minute and a half, of the photographic ideas behind every Auto Optimize decision: shutter vs. ISO, metering, highlights, white balance, skin tones and light.
+---
+<p class="lede">Every time you tap Auto Optimize, ProTune makes the calls a photographer would make: how fast the shutter should be, how much ISO the scene can take, where to meter, what color the light is. This explainer walks through those ideas in 11 short animated chapters, about a minute and a half end to end. Press play to hear the narration (or keep it muted with the sound button), and jump to any chapter.</p>
+
+<!-- include: explainer.html -->
+<!-- include: transcript.html -->
+
+<div class="prose">
+<p>Below is a written version of each chapter, so you can skim it or come back to one idea later.</p>
+
+<h2 id="think-like-a-photographer">1. Think like a photographer</h2>
+<p>Every Auto Optimize decision is a photographer's decision made in code. The opening frame is a viewfinder: a lens iris, focus brackets and a settings readout (f/1.78, 1/120 s, ISO 64, 5600K). The rest of the explainer unpacks the ideas behind each of those numbers.</p>
+
+<h2 id="shutter-vs-iso">2. Shutter vs. ISO</h2>
+<p>A phone's aperture is fixed, so exposure becomes a trade between shutter speed and ISO. The animation sweeps the shutter from 1/2000 s to 1/15 s while ISO moves the other way, from about ISO 3200 down to ISO 32, keeping the exposure the same. A fast shutter freezes a spinning subject but adds visible noise; a slow shutter keeps pixels clean but blurs anything that moves.</p>
+
+<h2 id="meter-for-the-subject">3. Meter for the subject</h2>
+<p>Average metering of a bright window turns a backlit face into a silhouette. Switching to face-weighted metering brightens the face to a usable level, and the window clips. That is usually the right call: the subject matters more than the background.</p>
+
+<h2 id="protect-the-highlights">4. Protect the highlights</h2>
+<p>A live histogram swings as exposure moves between roughly −0.8 and +1.1 EV. Clipped highlights hold no data and are gone for good. Crushed shadows can be lifted later at the cost of noise. So an exposure loop should guard the top of the histogram first.</p>
+
+<h2 id="tone-curves-make-the-look">5. Tone curves make the look</h2>
+<p>Most pro presets are tone-curve work. The demo moves a landscape from a linear curve (the flat sensor response) to an S-curve (deeper shadows, brighter highlights) to a faded-film curve (lifted blacks, soft highlights). Doing the math in linear or wide-gamut space avoids banding.</p>
+
+<h2 id="white-balance-has-two-axes">6. White balance has two axes</h2>
+<p>Temperature runs from blue to amber and tint runs from green to magenta. In the animation a color cast circles a two-axis plot and settles back to neutral, and a gray card in the scene reads equal R, G and B only when the balance is right. Mixed lighting is where auto white balance breaks.</p>
+
+<h2 id="protect-skin-tones">7. Protect skin tones</h2>
+<p>On a vectorscope, skin of every complexion sits near one line. Push a global hue shift and faces drift toward magenta. Protect that hue range and the rest of the grade, like sky and foliage, can go anywhere.</p>
+
+<h2 id="read-the-light">8. Read the light</h2>
+<p>A light source orbits a subject: front light is flat with few shadows, side light shows shape and texture, and back light makes a rim and a dark face. Small sources cast hard shadows; large sources cast soft ones. Backlit faces are a high-value case for Auto Optimize.</p>
+
+<h2 id="composition-basics">9. Composition basics</h2>
+<p>Rule of thirds, a level horizon, leading lines and headroom. The demo moves a figure from the center onto a thirds intersection and drops the horizon to the lower third. Each of these rules makes a good guide overlay or suggestion.</p>
+
+<h2 id="know-the-pipeline">10. Know the pipeline</h2>
+<p>The path runs from the sensor (Bayer RAW, 12-bit linear) through Apple's ISP (demosaic, noise reduction, Smart HDR, tone mapping) to ProTune (Auto Optimize: metering, white balance, look) and out as HEIC or ProRAW in Display P3. The ISP has already processed the image before your code sees a pixel, so shoot RAW next to the processed frame to see what it did, and use the manual controls AVFoundation gives you: <code>setExposureModeCustom(duration:iso:)</code>, <code>setExposureTargetBias(_:)</code>, <code>setWhiteBalanceModeLocked(with:)</code> and <code>AVCapturePhotoBracketSettings</code>.</p>
+
+<h2 id="build-a-hard-scene-test-set">11. Build a hard-scene test set</h2>
+<p>Run every change against the scenes that break cameras: a backlit face, neon at night, snow, mixed light, dark skin in low light and fast motion. Then shoot manually for a week and note which sliders you reach for in the edit. That habit is what Auto Optimize automates.</p>
+
+<h2 id="how-protune-uses-this">How ProTune uses this</h2>
+<p>ProTune AI Camera puts these ideas on the live iPhone camera. When you tap Auto Optimize, it reads light, motion and the subject in the viewfinder (faces and people included), picks a photo recipe, and writes real camera settings: shutter, ISO, EV, white balance and focus, plus zoom when available.</p>
+<ul>
+<li><strong>Shutter and ISO together.</strong> Because the aperture is fixed, it sets a custom shutter and ISO pair through AVFoundation, kept within what the active camera supports, then checks the result against the camera's own meter and corrects it.</li>
+<li><strong>Real dials, not filters.</strong> The settings go to the camera before you shoot. Aperture, ND filters and tripod use stay coaching tips, because an iPhone can't set them.</li>
+<li><strong>You stay in control.</strong> Teach Mode explains why each dial moved, Pro includes full manual dials, and you still press the shutter.</li>
+</ul>
+<p>Want the overview first? See <a href="/">how ProTune AI Camera works</a>, or browse <a href="/articles">all ProTune articles</a>.</p>
+</div>

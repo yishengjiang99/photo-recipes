@@ -9,6 +9,7 @@ import { Seo } from '../components/Seo'
 import { useSubscription } from '../hooks/useSubscription'
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, SITE_URL, APP_STORE_URL, OG_IMAGE_PATH, SISTER_SITES } from '../lib/site'
 import { track } from '../lib/analytics'
+import { FEATURED_ARTICLE } from '../generated/articles'
 
 const TRUST_LINE =
   'Free Peek with daily Auto Optimize runs · Pro $7.99/mo or $59.99/yr · 7-day free trial'
@@ -222,6 +223,11 @@ export function Landing() {
             <a href="#notes" className="hover:text-ink">
               Notes
             </a>
+            {FEATURED_ARTICLE ? (
+              <a href={FEATURED_ARTICLE.url} className="hover:text-ink">
+                {FEATURED_ARTICLE.navLabel || 'Articles'}
+              </a>
+            ) : null}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -280,6 +286,14 @@ export function Landing() {
               <a href="#notes" onClick={closeNav} className="py-1 hover:text-ink">
                 Field notes
               </a>
+              {FEATURED_ARTICLE ? (
+                <a href={FEATURED_ARTICLE.url} onClick={closeNav} className="py-1 hover:text-ink">
+                  {FEATURED_ARTICLE.navLabel || 'Articles'}
+                </a>
+              ) : null}
+              <a href="/articles" onClick={closeNav} className="py-1 hover:text-ink">
+                Articles
+              </a>
             </div>
           </div>
         ) : null}
@@ -331,6 +345,43 @@ export function Landing() {
             </div>
           </div>
         </section>
+
+        {/* Featured article (generated from articles/ by scripts/prerender-articles.mjs) */}
+        {FEATURED_ARTICLE ? (
+          <section aria-label="Featured article" className="pb-10 sm:pb-14">
+            <div className="mx-auto max-w-[1120px] px-4 sm:px-6">
+              <a
+                href={FEATURED_ARTICLE.url}
+                onClick={() => track('landing_featured_article', { slug: FEATURED_ARTICLE?.slug ?? '' })}
+                className="group grid overflow-hidden rounded-2xl border border-accent/40 bg-surface ring-1 ring-accent/20 transition hover:border-accent/70 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+              >
+                {FEATURED_ARTICLE.image ? (
+                  <img
+                    src={FEATURED_ARTICLE.image}
+                    alt={FEATURED_ARTICLE.imageAlt}
+                    width={960}
+                    height={540}
+                    loading="lazy"
+                    decoding="async"
+                    className="aspect-video h-full w-full bg-[#0e0f11] object-cover"
+                  />
+                ) : null}
+                <div className="flex flex-col justify-center p-5 text-left sm:p-7">
+                  <span className="w-fit rounded-full border border-accent/50 bg-accent-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-accent-soft">
+                    New · Photo School
+                  </span>
+                  <h2 className="font-display mt-3 text-2xl text-ink sm:text-3xl">{FEATURED_ARTICLE.cardTitle}</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-secondary sm:text-base">
+                    {FEATURED_ARTICLE.cardSummary}
+                  </p>
+                  <span className="mt-4 text-sm font-semibold text-accent-soft group-hover:underline">
+                    Watch the explainer →
+                  </span>
+                </div>
+              </a>
+            </div>
+          </section>
+        ) : null}
 
         {/* Proof strip */}
         <section className="border-y border-border/50 py-5" aria-label="Settable dials">
@@ -634,6 +685,14 @@ export function Landing() {
             <a href="#notes" className="hover:text-ink">
               Notes
             </a>
+            <a href="/articles" className="hover:text-ink">
+              Articles
+            </a>
+            {FEATURED_ARTICLE ? (
+              <a href={FEATURED_ARTICLE.url} className="hover:text-ink">
+                {FEATURED_ARTICLE.navLabel || FEATURED_ARTICLE.title}
+              </a>
+            ) : null}
             <Link to="/privacy" className="hover:text-ink">
               Privacy
             </Link>

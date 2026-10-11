@@ -23,6 +23,7 @@ on:
     # Allowlist only — iOS / TestFlight changes (ios/**, ios-testflight.yml) do NOT deploy the site.
     paths:
       - 'src/**'
+      - 'articles/**'
       - 'server/**'
       - 'public/**'
       - 'package.json'
@@ -35,6 +36,7 @@ on:
       - 'scripts/prerender*'
       - 'scripts/api-snapshot*'
       - 'scripts/indexnow-submit.sh'
+      - 'scripts/prerender-articles.mjs'
       - '.github/workflows/deploy-photo-grepawk.yml'
   workflow_dispatch:
 
@@ -141,6 +143,12 @@ jobs:
           fails=0
           chk() { local got; got="$(curl -s -o /dev/null -m 20 -w '%{http_code}' "$BASE$1")"; if [[ "$got" == "$2" ]]; then echo "ok   $1 -> $got"; else echo "FAIL $1 -> $got (want $2)"; fails=$((fails+1)); fi; }
           for p in / /privacy /terms /support /app /robots.txt /sitemap.xml /protune-og-1200x630.jpg /site.webmanifest; do chk "$p" 200; done
+          # Articles (generated from articles/): index + every article page in the built sitemap, one <h1> each.
+          for u in $(grep -oE '<loc>[^<]*/articles[^<]*</loc>' dist/sitemap.xml | sed -E 's#</?loc>##g; s#^https://[^/]+##'); do
+            chk "$u" 200
+            [[ "$(curl -s "$BASE$u" | grep -o '<h1[ >]' | wc -l)" == 1 ]] && echo "ok   one <h1> $u" || { echo "FAIL h1 count $u"; fails=$((fails+1)); }
+          done
+          chk /articles/ 301
           chk /this-page-does-not-exist 404
           H="$(curl -s -o /dev/null -D - "$BASE/" | tr -d '\r')"
           grep -qi '^strict-transport-security: max-age=31536000' <<<"$H" && echo "ok   HSTS" || { echo "FAIL HSTS"; fails=$((fails+1)); }
@@ -157,7 +165,8 @@ jobs:
       - name: IndexNow (non-fatal)
         # Runs only when every step above succeeded (deploy + gates). Never fails the job.
         continue-on-error: true
-        run: bash scripts/indexnow-submit.sh photo.grepawk.com 590954a7d5dad4ef7ebf49da91f6ab5d public/sitemap.xml
+        # dist/sitemap.xml = public/sitemap.xml + the generated /articles URLs.
+        run: bash scripts/indexnow-submit.sh photo.grepawk.com 590954a7d5dad4ef7ebf49da91f6ab5d dist/sitemap.xml
 
       - name: Upload gate artifacts
         if: always()

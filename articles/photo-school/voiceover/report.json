@@ -1,0 +1,94 @@
+{
+  "voice": {
+    "name": "Matilda",
+    "id": "XrExE9yKIg1WjnnlVkGX"
+  },
+  "model": "eleven_multilingual_v2",
+  "characters_this_run": 463,
+  "duration": 95.03,
+  "bytes": 760520,
+  "loudness_after": {
+    "input_i": "-16.01",
+    "input_tp": "-0.67",
+    "input_lra": "4.00"
+  },
+  "clips": [
+    {
+      "chapter": 1,
+      "title": "Think like a photographer",
+      "speech": 4.03,
+      "room": 5.5,
+      "fits": true
+    },
+    {
+      "chapter": 2,
+      "title": "Shutter vs. ISO",
+      "speech": 7.83,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 3,
+      "title": "Meter for the subject",
+      "speech": 6.43,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 4,
+      "title": "Protect the highlights",
+      "speech": 7.73,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 5,
+      "title": "Tone curves make the look",
+      "speech": 7.43,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 6,
+      "title": "White balance has two axes",
+      "speech": 8.5,
+      "room": 8.5,
+      "fits": false
+    },
+    {
+      "chapter": 7,
+      "title": "Protect skin tones",
+      "speech": 8.08,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 8,
+      "title": "Read the light",
+      "speech": 8.15,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 9,
+      "title": "Composition basics",
+      "speech": 6.26,
+      "room": 7.5,
+      "fits": true
+    },
+    {
+      "chapter": 10,
+      "title": "Know the pipeline",
+      "speech": 7.11,
+      "room": 8.5,
+      "fits": true
+    },
+    {
+      "chapter": 11,
+      "title": "Build a hard-scene test set",
+      "speech": 7.46,
+      "room": 8.5,
+      "fits": true
+    }
+  ]
+}

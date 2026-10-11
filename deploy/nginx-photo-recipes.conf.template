@@ -77,8 +77,8 @@ server {
         try_files $uri =404;
     }
 
-    # Unhashed public images/icons: one week (hashed /assets/ above get a year).
-    location ~* \.(css|png|jpg|jpeg|gif|svg|ico|webp|woff2?)$ {
+    # Unhashed public images/icons/audio (article narration mp3): one week (hashed /assets/ above get a year).
+    location ~* \.(css|png|jpg|jpeg|gif|svg|ico|webp|woff2?|mp3)$ {
         include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
         expires 7d;
         add_header Cache-Control "public, max-age=604800" always;
@@ -109,6 +109,21 @@ server {
         add_header Pragma "no-cache";
         add_header Expires "0";
         try_files /index.html =404;
+    }
+    # Articles: static pages written by scripts/prerender-articles.mjs from articles/ (no app JS).
+    # /articles -> dist/articles/index.html, /articles/<slug> -> dist/articles/<slug>/index.html.
+    # Trailing-slash variants 301 to the canonical slash-less URL; images under /articles/<slug>/ use the
+    # static-image location above.
+    location ~ ^/articles(/[a-z0-9-]+)?/$ {
+        rewrite ^(.*)/$ $1 permanent;
+    }
+    location ~ ^/articles(/[a-z0-9-]+)?$ {
+        include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        default_type text/html;
+        try_files /articles$1/index.html =404;
     }
     # Everything else: real files from dist/ (robots.txt, sitemap.xml, manifest, OG image), else 404.
     location / {
