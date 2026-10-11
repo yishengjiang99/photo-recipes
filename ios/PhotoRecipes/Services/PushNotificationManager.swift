@@ -31,6 +31,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
 
     private let lastRegisteredTokenKey = "push.lastRegisteredToken"
     private let lastServerRegisterOkKey = "push.lastServerRegisterOk"
+    /// token|environment|appVersion|anonId of the last successful /api/push/register.
+    static let lastRegisterFingerprintKey = "push.lastRegisterFingerprint"
     private var registerRetryTask: Task<Void, Never>?
     private var serverRegisterBackoffTask: Task<Void, Never>?
     /// Forces at least one /api/push/register attempt after a fresh Allow even if hex matches cache.
@@ -81,8 +83,36 @@ final class PushNotificationManager: NSObject, ObservableObject {
         UserDefaults.standard.bool(forKey: Self.didAskPushPermissionKey)
     }
 
+    /// True only when the last successful register was for this app version + install ID
+    /// (an app update keeps the APNs token, so token equality alone is not enough).
     private var serverRegisterOk: Bool {
-        UserDefaults.standard.bool(forKey: lastServerRegisterOkKey)
+        guard UserDefaults.standard.bool(forKey: lastServerRegisterOkKey),
+              let last = UserDefaults.standard.string(forKey: Self.lastRegisterFingerprintKey)
+        else { return false }
+        return Self.fingerprintMatchesContext(
+            last, environment: Self.apnsEnvironment, appVersion: Self.appVersion, anonId: Analytics.shared.anonId)
+    }
+
+    nonisolated static func registerFingerprint(
+        token: String, environment: String, appVersion: String, anonId: String
+    ) -> String {
+        [token, environment, appVersion, anonId].joined(separator: "|")
+    }
+
+    nonisolated static func fingerprintMatchesContext(
+        _ fingerprint: String, environment: String, appVersion: String, anonId: String
+    ) -> Bool {
+        let parts = fingerprint.components(separatedBy: "|")
+        return parts.count == 4 && parts[1] == environment && parts[2] == appVersion && parts[3] == anonId
+    }
+
+    /// Upload unless the exact same token + environment + version + install ID already succeeded.
+    /// Before 1.5 (77) the cache keyed on the token only, so an update from 1.4 never re-registered
+    /// and the server never linked the 1.5 install ID to the token.
+    nonisolated static func shouldUploadToken(
+        current: String, lastFingerprint: String?, lastOk: Bool, force: Bool
+    ) -> Bool {
+        force || !lastOk || lastFingerprint != current
     }
 
     var hasCompletedFirstCapture: Bool {
@@ -254,10 +284,15 @@ final class PushNotificationManager: NSObject, ObservableObject {
 
     private func registerTokenWithServer(_ hex: String) async {
         let defaults = UserDefaults.standard
-        let prior = defaults.string(forKey: lastRegisteredTokenKey)
-        let serverOk = defaults.bool(forKey: lastServerRegisterOkKey)
-        if prior == hex, serverOk, !forceRegisterAfterAllow {
-            print("[Push] skip /api/push/register (cached ok)")
+        let fingerprint = Self.registerFingerprint(
+            token: hex, environment: Self.apnsEnvironment, appVersion: Self.appVersion, anonId: Analytics.shared.anonId)
+        if !Self.shouldUploadToken(
+            current: fingerprint,
+            lastFingerprint: defaults.string(forKey: Self.lastRegisterFingerprintKey),
+            lastOk: defaults.bool(forKey: lastServerRegisterOkKey),
+            force: forceRegisterAfterAllow
+        ) {
+            print("[Push] skip /api/push/register (same token, version and install ID)")
             return
         }
         print("[Push] POST /api/push/register env=\(Self.apnsEnvironment) len=\(hex.count)")
@@ -270,6 +305,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
                 anonId: Analytics.shared.anonId
             )
             defaults.set(hex, forKey: lastRegisteredTokenKey)
+            defaults.set(fingerprint, forKey: Self.lastRegisterFingerprintKey)
             defaults.set(true, forKey: lastServerRegisterOkKey)
             forceRegisterAfterAllow = false
             print("[Push] /api/push/register ok env=\(Self.apnsEnvironment)")
@@ -288,9 +324,15 @@ final class PushNotificationManager: NSObject, ObservableObject {
             for delayNs in [1_500_000_000, 5_000_000_000, 15_000_000_000] as [UInt64] {
                 try? await Task.sleep(nanoseconds: delayNs)
                 guard !Task.isCancelled else { return }
-                if UserDefaults.standard.bool(forKey: lastServerRegisterOkKey),
-                   UserDefaults.standard.string(forKey: lastRegisteredTokenKey) == hex,
-                   !forceRegisterAfterAllow {
+                let fingerprint = Self.registerFingerprint(
+                    token: hex, environment: Self.apnsEnvironment, appVersion: Self.appVersion,
+                    anonId: Analytics.shared.anonId)
+                if !Self.shouldUploadToken(
+                    current: fingerprint,
+                    lastFingerprint: UserDefaults.standard.string(forKey: Self.lastRegisterFingerprintKey),
+                    lastOk: UserDefaults.standard.bool(forKey: lastServerRegisterOkKey),
+                    force: forceRegisterAfterAllow
+                ) {
                     return
                 }
                 print("[Push] /api/push/register backoff retry after \(delayNs)ns")
@@ -303,6 +345,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
                         anonId: Analytics.shared.anonId
                     )
                     UserDefaults.standard.set(hex, forKey: lastRegisteredTokenKey)
+                    UserDefaults.standard.set(fingerprint, forKey: Self.lastRegisterFingerprintKey)
                     UserDefaults.standard.set(true, forKey: lastServerRegisterOkKey)
                     forceRegisterAfterAllow = false
                     print("[Push] /api/push/register ok (backoff) env=\(Self.apnsEnvironment)")

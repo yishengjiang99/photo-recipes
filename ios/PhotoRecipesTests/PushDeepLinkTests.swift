@@ -30,4 +30,40 @@ final class PushDeepLinkTests: XCTestCase {
         defer { if let prior { UserDefaults.standard.set(prior, forKey: key) } }
         XCTAssertFalse(PushNotificationManager.marketingOptIn)
     }
+
+    // MARK: - Token upload cache (install ID ↔ token link)
+
+    func testAppUpdateWithSameTokenStillUploads() {
+        let token = String(repeating: "ab", count: 32)
+        let v14 = PushNotificationManager.registerFingerprint(
+            token: token, environment: "production", appVersion: "1.4 (72)", anonId: "anon-1")
+        let v15 = PushNotificationManager.registerFingerprint(
+            token: token, environment: "production", appVersion: "1.5 (77)", anonId: "anon-1")
+        XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: v15, lastFingerprint: v14, lastOk: true, force: false))
+        XCTAssertFalse(PushNotificationManager.shouldUploadToken(current: v15, lastFingerprint: v15, lastOk: true, force: false))
+    }
+
+    func testNewInstallIdOrLegacyCacheOrFailureUploads() {
+        let token = String(repeating: "cd", count: 32)
+        let a = PushNotificationManager.registerFingerprint(
+            token: token, environment: "production", appVersion: "1.5 (77)", anonId: "anon-1")
+        let b = PushNotificationManager.registerFingerprint(
+            token: token, environment: "production", appVersion: "1.5 (77)", anonId: "anon-2")
+        XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: b, lastFingerprint: a, lastOk: true, force: false))
+        // Pre-1.5 (77) installs only cached the raw token: no fingerprint → upload once.
+        XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: a, lastFingerprint: nil, lastOk: true, force: false))
+        XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: a, lastFingerprint: a, lastOk: false, force: false))
+        XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: a, lastFingerprint: a, lastOk: true, force: true))
+    }
+
+    func testFingerprintContextMatch() {
+        let f = PushNotificationManager.registerFingerprint(
+            token: "t", environment: "production", appVersion: "1.5 (77)", anonId: "anon-1")
+        XCTAssertTrue(PushNotificationManager.fingerprintMatchesContext(
+            f, environment: "production", appVersion: "1.5 (77)", anonId: "anon-1"))
+        XCTAssertFalse(PushNotificationManager.fingerprintMatchesContext(
+            f, environment: "production", appVersion: "1.5 (78)", anonId: "anon-1"))
+        XCTAssertFalse(PushNotificationManager.fingerprintMatchesContext(
+            "legacy-token-only", environment: "production", appVersion: "1.5 (77)", anonId: "anon-1"))
+    }
 }
