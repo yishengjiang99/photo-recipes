@@ -107,7 +107,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
     }
 
     /// Upload unless the exact same token + environment + version + install ID already succeeded.
-    /// Before 1.5 (77) the cache keyed on the token only, so an update from 1.4 never re-registered
+    /// Before this fix the cache keyed on the token only, so an update from 1.4 never re-registered
     /// and the server never linked the 1.5 install ID to the token.
     nonisolated static func shouldUploadToken(
         current: String, lastFingerprint: String?, lastOk: Bool, force: Bool

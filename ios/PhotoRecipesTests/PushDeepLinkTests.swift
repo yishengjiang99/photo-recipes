@@ -50,7 +50,7 @@ final class PushDeepLinkTests: XCTestCase {
         let b = PushNotificationManager.registerFingerprint(
             token: token, environment: "production", appVersion: "1.5 (77)", anonId: "anon-2")
         XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: b, lastFingerprint: a, lastOk: true, force: false))
-        // Pre-1.5 (77) installs only cached the raw token: no fingerprint → upload once.
+        // Older builds only cached the raw token: no fingerprint → upload once.
         XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: a, lastFingerprint: nil, lastOk: true, force: false))
         XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: a, lastFingerprint: a, lastOk: false, force: false))
         XCTAssertTrue(PushNotificationManager.shouldUploadToken(current: a, lastFingerprint: a, lastOk: true, force: true))
