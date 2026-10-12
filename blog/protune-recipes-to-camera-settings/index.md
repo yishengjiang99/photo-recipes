@@ -3,6 +3,8 @@ title: How ProTune AI Camera turns a photo recipe into real camera settings
 description: ProTune reads the scene, picks a photo recipe and writes shutter, ISO, EV, white balance and focus to the iPhone camera. Here is how that loop works.
 date: 2026-10-12
 publish: true
+hero: 02-auto-optimize.jpg
+heroAlt: ProTune on iPhone showing the settings Auto Optimize applied: shutter, ISO, EV, white balance and focus
 product: protune
 tags: [ProTune, iPhone camera, Core ML, photography]
 properNouns: [ProTune, Optimize, Auto]
@@ -27,6 +29,12 @@ The first pass runs entirely on the phone. No network is used and no pixels leav
 4. **Verify.** The app reads the values back from the camera to confirm what was applied, and can suggest a small pan left or right if you should reframe.
 
 Before and after chips show exactly which settings changed, and Teach mode explains why each one moved.
+
+```gallery
+02-auto-optimize.jpg | ProTune listing the settings Auto Optimize applied, from shutter and ISO to white balance and focus | One tap sets every dial
+04-control-drawer.jpg | The ProTune manual controls drawer with exposure, warmth, tint, contrast and saturation sliders | Manual control is one swipe away
+01-new-chrome.jpg | The ProTune camera screen with the Auto Optimize button next to the shutter | Auto Optimize sits next to the shutter
+```
 
 ## What the phone can set, and what stays a tip
 
