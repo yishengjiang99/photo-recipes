@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import {
   APIError,
@@ -45,6 +46,46 @@ describe('iap helpers', () => {
     )
     assert.equal(pem.startsWith('-----BEGIN'), true)
     assert.ok(pem.includes('\nX\n'))
+  })
+
+  it('normalizeApplePrivateKey rebuilds a PEM with line breaks stripped', () => {
+    const { privateKey } = crypto.generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+    })
+    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+    const flat = pem.replace(/\n/g, '')
+    const fixed = normalizeApplePrivateKey(flat)
+    assert.equal(crypto.createPrivateKey(fixed).asymmetricKeyType, 'ec')
+  })
+
+  it('normalizeApplePrivateKey repairs systemd-unescaped \\n (bare n line breaks)', () => {
+    // Repeat until the body has a "real" n somewhere, to prove we only strip
+    // the line-break positions, not legitimate base64 n characters.
+    for (let i = 0; i < 20; i++) {
+      const { privateKey } = crypto.generateKeyPairSync('ec', {
+        namedCurve: 'prime256v1',
+      })
+      const pem = (
+        privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+      ).trim()
+      // What systemd hands the process for an unquoted `KEY=...\n...` line
+      const mangled = pem.replace(/\n/g, 'n')
+      assert.throws(() => crypto.createPrivateKey(mangled))
+      const fixed = normalizeApplePrivateKey(mangled)
+      assert.equal(crypto.createPrivateKey(fixed).asymmetricKeyType, 'ec')
+      assert.equal(
+        crypto.createPrivateKey(fixed).export({ type: 'pkcs8', format: 'der' }).toString('hex'),
+        privateKey.export({ type: 'pkcs8', format: 'der' }).toString('hex'),
+      )
+    }
+  })
+
+  it('normalizeApplePrivateKey leaves a valid multi-line PEM untouched', () => {
+    const { privateKey } = crypto.generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+    })
+    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+    assert.equal(normalizeApplePrivateKey(pem), pem.trim())
   })
 
   it('decodeJwsPayload reads middle segment', () => {

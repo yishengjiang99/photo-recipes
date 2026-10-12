@@ -73,7 +73,47 @@ export function appleCredentialsConfigured(): boolean {
   )
 }
 
-/** PEM may arrive as a single-line env value with literal \n escapes. */
+/** True when Node can load the PEM as a private key. */
+function isLoadablePrivateKey(pem: string): boolean {
+  try {
+    crypto.createPrivateKey(pem)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function wrapPem(label: string, body: string): string {
+  const lines = body.match(/.{1,64}/g) ?? []
+  return `-----BEGIN ${label}-----\n${lines.join('\n')}\n-----END ${label}-----\n`
+}
+
+/**
+ * Undo systemd EnvironmentFile unescaping: an unquoted value containing
+ * literal `\n` arrives with the backslash dropped, i.e. every line break of
+ * the PEM became a bare `n`. Apple .p8 bodies are 64-char lines, so the
+ * stray `n`s sit right after the header, after each full 64-char line, and
+ * before the footer. Returns null when the body doesn't fit that pattern.
+ */
+function stripSystemdLineBreakArtifacts(body: string): string | null {
+  if (!body.startsWith('n') || !body.endsWith('n')) return null
+  let rest = body.slice(1, -1)
+  const out: string[] = []
+  while (rest.length > 64) {
+    if (rest[64] !== 'n') return null
+    out.push(rest.slice(0, 64))
+    rest = rest.slice(65)
+  }
+  out.push(rest)
+  return out.join('')
+}
+
+/**
+ * PEM may arrive as a single-line env value with literal \n escapes, with
+ * all line breaks stripped, or mangled by systemd's EnvironmentFile parser
+ * (`\n` → `n`). Rebuild a loadable PEM when possible; otherwise return the
+ * basic normalization so the caller's error surfaces as before.
+ */
 export function normalizeApplePrivateKey(raw: string): string {
   let key = raw.trim()
   // Strip wrapping quotes some secret managers add
@@ -83,7 +123,20 @@ export function normalizeApplePrivateKey(raw: string): string {
   ) {
     key = key.slice(1, -1)
   }
-  return key.replace(/\\n/g, '\n')
+  key = key.replace(/\\n/g, '\n').replace(/\r/g, '')
+  if (isLoadablePrivateKey(key)) return key
+
+  const m = /-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/.exec(key)
+  if (!m) return key
+  const label = m[1]!
+  const body = m[2]!.replace(/\s+/g, '')
+  const candidates = [body, stripSystemdLineBreakArtifacts(body)]
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const pem = wrapPem(label, candidate)
+    if (isLoadablePrivateKey(pem)) return pem
+  }
+  return key
 }
 
 function preferredAppleEnvironment(): Environment {
@@ -328,6 +381,8 @@ export function mountIapRoutes(app: Express) {
       if (appleCredentialsConfigured()) {
         const verified = await verifyWithAppleServerAPI(signed)
         if (!verified.ok) {
+          // Log so prod error sweeps can see why (message only, no payload).
+          console.error('[iap] verify failed:', verified.error)
           res.status(502).json({ error: verified.error })
           return
         }
