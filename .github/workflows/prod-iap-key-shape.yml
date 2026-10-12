@@ -1,0 +1,48 @@
+# READ-ONLY diagnostic: reports the SHAPE (never the content) of the running
+# photo-recipes APPLE_IAP_PRIVATE_KEY so a malformed key can be fixed. Changes nothing.
+name: Prod IAP key shape (read-only)
+on:
+  workflow_dispatch:
+jobs:
+  shape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          if [[ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]]; then printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts; else ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect key shape (no secret output)
+        run: |
+          ssh -o BatchMode=yes "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" 'bash -s' <<'REMOTE'
+          set -u
+          echo "== unit env sources"; systemctl show photo-recipes -p EnvironmentFiles -p WorkingDirectory -p User --no-pager
+          PID=$(systemctl show -p MainPID --value photo-recipes)
+          echo "mainpid=$PID"
+          SUDO=""; [ -r /proc/$PID/environ ] || SUDO="sudo -n"
+          $SUDO cat /proc/$PID/environ | tr '\0' '\n' | grep -E '^APPLE_IAP_(ISSUER_ID|KEY_ID|PRIVATE_KEY)=' > /tmp/.iapshape.$$ 2>/dev/null || true
+          chmod 600 /tmp/.iapshape.$$
+          node - /tmp/.iapshape.$$ <<'JS'
+          const fs=require('fs'),crypto=require('crypto');
+          const txt=fs.readFileSync(process.argv[2],'utf8');
+          // env lines: PRIVATE_KEY may contain real newlines, so split on known var starts
+          const m={};for(const k of ['ISSUER_ID','KEY_ID','PRIVATE_KEY']){const r=new RegExp('^APPLE_IAP_'+k+'=([\\s\\S]*?)(?=\\nAPPLE_IAP_|$)','m').exec(txt);m[k]=r?r[1].replace(/\n$/,''):null}
+          const k=m.PRIVATE_KEY;
+          console.log('issuerId: present='+!!m.ISSUER_ID+' len='+(m.ISSUER_ID||'').trim().length+' uuidShape='+/^[0-9a-f-]{36}$/i.test((m.ISSUER_ID||'').trim()));
+          console.log('keyId: present='+!!m.KEY_ID+' len='+(m.KEY_ID||'').trim().length);
+          if(!k){console.log('privateKey: MISSING from process env');process.exit(0)}
+          const t=k.trim();
+          const hdr=(t.match(/-----BEGIN ([A-Z ]+)-----/)||[])[1]||null;
+          console.log(JSON.stringify({len:t.length,realNewlines:(t.match(/\n/g)||[]).length,literalBackslashN:(t.match(/\\n/g)||[]).length,crlf:/\r/.test(t),beginHeader:hdr,hasEnd:/-----END /.test(t),wrappedQuotes:/^["']/.test(t),spacesInside:/[^\n] [^\n]/.test(t.replace(/-----[A-Z ]+-----/g,'')),looksBase64OfPem:t.startsWith('LS0tLS1CRUdJTi'),looksPath:/^\/|\.p8$/.test(t),pureBase64Body:/^[A-Za-z0-9+/=\s]+$/.test(t)}));
+          let norm=t; if(/^["']/.test(norm)&&norm.slice(-1)===norm[0]) norm=norm.slice(1,-1); norm=norm.replace(/\\n/g,'\n');
+          try{const kk=crypto.createPrivateKey(norm);console.log('currentNormalize: OK type='+kk.asymmetricKeyType)}catch(e){console.log('currentNormalize: FAIL '+e.code)}
+          JS
+          rm -f /tmp/.iapshape.$$
+          REMOTE
