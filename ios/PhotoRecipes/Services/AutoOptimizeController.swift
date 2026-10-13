@@ -868,14 +868,18 @@ final class AutoOptimizeController: ObservableObject {
         // The residual is hoisted into the AO Ready telemetry (Phase 3).
         var verifyResidualEV: Double? = nil
         var verifyIterations = 0
+        var verifyDurationMs: Int? = nil
         var shutterYieldNote: String? = nil
         if let targetEV = solution.targetEV,
            solution.phoneTargets.exposureDurationSec != nil,
            entitlements.canApplyDials {
+            let verifyStart = Date()
             let v = await session.verifyExposure(
                 targetEV: targetEV,
                 priority: solution.priority,
                 shutterCapSeconds: solution.shutterCapSeconds)
+            // Part 0.3: wall time of the verify loop (ms).
+            verifyDurationMs = Int(Date().timeIntervalSince(verifyStart) * 1000)
             verifyIterations = v.iterations
             if v.verified {
                 verifyResidualEV = v.residualEV
@@ -991,8 +995,12 @@ final class AutoOptimizeController: ObservableObject {
             solution: solution,
             residualEV: verifyResidualEV,
             verifyIterations: verifyIterations,
-            lensDeviceType: readback.lensDeviceType
+            lensDeviceType: readback.lensDeviceType,
+            readbackShutterSec: readback.exposureDuration,
+            readbackISO: readback.iso
         )) { _, new in new }
+        // Part 0.3: verify-loop wall time ("" when no verify ran).
+        successProps["t_verify_ms"] = verifyDurationMs.map { "\($0)" } ?? ""
         Analytics.shared.track("auto_optimize_success", props: successProps)
         AOPerf.end(perfId, outcome: "ready")
         consumeSharedFreeIfNeeded(entitlements)
@@ -1212,7 +1220,9 @@ final class AutoOptimizeController: ObservableObject {
         solution: SettingsSolver.Solution,
         residualEV: Double?,
         verifyIterations: Int,
-        lensDeviceType: String
+        lensDeviceType: String,
+        readbackShutterSec: Double? = nil,
+        readbackISO: Float? = nil
     ) -> [String: String] {
         AOTelemetrySerializer.readyProps(
             features: features,
@@ -1222,7 +1232,9 @@ final class AutoOptimizeController: ObservableObject {
             planResidualEV: solution.residualEV,
             residualEV: residualEV,
             verifyIterations: verifyIterations,
-            lensDeviceType: lensDeviceType
+            lensDeviceType: lensDeviceType,
+            readbackShutterSec: readbackShutterSec,
+            readbackISO: readbackISO
         )
     }
 
