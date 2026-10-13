@@ -126,10 +126,15 @@ const FUNNEL_IOS_CAPTURE = [
   'capture_success',
 ] as const
 
-const FUNNEL_MONETIZATION = [
+export const FUNNEL_MONETIZATION = [
   'paywall_view',
+  'paywall_dismiss',
   'paywall_plan_select',
   'purchase_start',
+  'purchase_cancelled',
+  'purchase_pending',
+  'purchase_failed',
+  'purchase_fail', // legacy (iOS ≤ 1.4); superseded by purchase_failed
   'checkout_redirect',
   'purchase_success',
 ] as const
