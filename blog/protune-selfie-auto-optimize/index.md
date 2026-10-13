@@ -2,6 +2,7 @@
 title: How ProTune picks a selfie look on the front camera
 description: Auto Optimize on the ProTune front camera now reads the light on your face and picks one of five selfie looks. Here is how it decides.
 date: 2026-10-12
+updated: 2026-10-13
 publish: true
 product: protune
 tags: [selfie, auto-optimize, ios]
@@ -62,4 +63,4 @@ The fix keeps the front camera on automatic exposure in low light, with only a p
 
 ## Try it
 
-ProTune is on the [App Store](https://apps.apple.com/us/app/protune-ai-camera/id6813991381). Flip to the front camera and tap Auto Optimize.
+The five-look selfie Auto Optimize is coming in the next ProTune update. It is not part of version 1.4. ProTune is on the [App Store](https://apps.apple.com/us/app/protune-ai-camera/id6813991381) now, so install it and you will get the selfie looks when the update arrives.
