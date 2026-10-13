@@ -1,6 +1,6 @@
 ---
 title: How ProTune picks a selfie look on the front camera
-description: Auto Optimize on the ProTune front camera now reads the light on your face and picks one of five selfie looks. Here is how it decides.
+description: In the next ProTune update, Auto Optimize on the front camera reads the light on your face and picks one of five selfie looks. Here is how it decides.
 date: 2026-10-12
 updated: 2026-10-13
 publish: true
@@ -9,7 +9,7 @@ tags: [selfie, auto-optimize, ios]
 hero: selfie-rules.jpg
 heroAlt: Chart of the six rules Auto Optimize checks to pick a selfie look
 ---
-ProTune is an AI camera app for iPhone. Its Auto Optimize button reads the scene and sets the camera for you. This week it learned selfies: on the front camera, with a face in the frame, it now picks one of five selfie looks and adjusts its own settings to match. This post explains how it chooses and what each look does to the photo.
+ProTune is an AI camera app for iPhone. Its Auto Optimize button reads the scene and sets the camera for you. The next ProTune update teaches it selfies: on the front camera, with a face in the frame, it will pick one of five selfie looks and adjust its own settings to match. This is not part of version 1.4. This post explains how it chooses and what each look does to the photo.
 
 ## Five selfie looks
 
@@ -40,7 +40,7 @@ The gate comes first. This only happens on the front camera and only when a real
 
 Your choice still wins. A look you ask for by voice or by name comes first, then a look you picked yourself this session, then the selfie choice, then the regular look suggestions.
 
-When a selfie look applies, you see a short warm glow around the edge, a bracket around the face, a soft haptic, and a pill such as "Selfie · Soft Glow · low light" for two seconds. With Reduce Motion on, these become simple fades.
+When a selfie look applies, you will see a short warm glow around the edge, a bracket around the face, a soft haptic, and a pill such as "Selfie · Soft Glow · low light" for two seconds. With Reduce Motion on, these become simple fades.
 
 ## What happens to the photo
 
@@ -57,7 +57,7 @@ The strength of each step has a hard cap. The under-eye step follows a tilted he
 
 ## Keeping dim selfies bright
 
-An early build of this feature could turn a dim selfie nearly black. The front camera in a dark room wants a slow shutter, and the solver's speed cap for selfies pushed the exposure several stops too dark, then locked it.
+An early test build of this feature could turn a dim selfie nearly black. The front camera in a dark room wants a slow shutter, and the solver's speed cap for selfies pushed the exposure several stops too dark, then locked it.
 
 The fix keeps the front camera on automatic exposure in low light, with only a positive brightness bias. A safety check also compares the frame after Auto Optimize with the one before. If it came out more than a stop darker than intended, the camera goes back to plain auto exposure and says so. The status text now reports what actually changed instead of what it tried to do.
 
