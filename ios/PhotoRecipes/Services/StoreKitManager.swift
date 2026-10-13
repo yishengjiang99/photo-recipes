@@ -108,11 +108,19 @@ final class StoreKitManager: ObservableObject {
         isPurchasing = true
         purchaseError = nil
         defer { isPurchasing = false }
+        let plan = PurchaseTelemetry.plan(for: product.id)
         do {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
-                let transaction = try checkVerified(verification)
+                let transaction: Transaction
+                do {
+                    transaction = try checkVerified(verification)
+                } catch {
+                    Analytics.shared.track("purchase_failed", props: PurchaseTelemetry.failedProps(
+                        error: error, productId: product.id, plan: plan, stage: "verification"))
+                    throw PurchaseTelemetry.AlreadyTracked(underlying: error)
+                }
                 let jws = verification.jwsRepresentation
                 await syncEntitlement(
                     signedTransaction: jws,
@@ -129,14 +137,23 @@ final class StoreKitManager: ObservableObject {
                 )
                 return true
             case .userCancelled:
+                Analytics.shared.track("purchase_cancelled", props: PurchaseTelemetry.baseProps(
+                    productId: product.id, plan: plan))
                 return false
             case .pending:
+                Analytics.shared.track("purchase_pending", props: PurchaseTelemetry.baseProps(
+                    productId: product.id, plan: plan))
                 purchaseError = "Purchase is pending approval."
                 return false
             @unknown default:
                 return false
             }
+        } catch let tracked as PurchaseTelemetry.AlreadyTracked {
+            purchaseError = tracked.underlying.localizedDescription
+            return false
         } catch {
+            Analytics.shared.track("purchase_failed", props: PurchaseTelemetry.failedProps(
+                error: error, productId: product.id, plan: plan, stage: "purchase"))
             purchaseError = error.localizedDescription
             return false
         }

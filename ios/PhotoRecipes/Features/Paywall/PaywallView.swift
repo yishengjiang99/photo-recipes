@@ -5,6 +5,9 @@ struct PaywallView: View {
     @EnvironmentObject private var entitlements: EntitlementsStore
     @EnvironmentObject private var storeKit: StoreKitManager
     @Environment(\.dismiss) private var dismiss
+    @State private var shownAt = Date()
+    @State private var selectedPlan: String?
+    @State private var dismissTracked = false
 
     var body: some View {
         NavigationStack {
@@ -113,16 +116,19 @@ struct PaywallView: View {
             }
             .navigationTitle("Upgrade")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { Analytics.shared.track("paywall_view", props: entitlements.paywallViewProps) }
+            .onAppear {
+                shownAt = Date()
+                selectedPlan = nil
+                dismissTracked = false
+                Analytics.shared.track("paywall_view", props: entitlements.paywallViewProps)
+            }
+            // Swipe-down / programmatic close: still emit paywall_dismiss once.
+            .onDisappear { trackDismiss(action: "swipe") }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     // Soft (post-success) sheet: "Keep using free" stays visible at every detent.
                     Button(entitlements.paywallMode == .soft ? "Keep using free" : "Close") {
-                        Analytics.shared.track("paywall_dismiss", props: [
-                            "mode": entitlements.paywallMode.rawValue,
-                            "paywall_trigger": entitlements.paywallTrigger,
-                            "action": entitlements.paywallMode == .soft ? "keep_free" : "close",
-                        ])
+                        trackDismiss(action: entitlements.paywallMode == .soft ? "keep_free" : "close")
                         dismiss()
                     }
                         .foregroundStyle(AppTheme.inkSecondary)
@@ -132,6 +138,24 @@ struct PaywallView: View {
             .toolbarBackground(AppTheme.surface, for: .navigationBar)
             .task { if storeKit.products.isEmpty { await storeKit.loadProducts() } }
         }
+    }
+
+    /// paywall_dismiss — once per presentation (button or swipe).
+    private func trackDismiss(action: String) {
+        guard !dismissTracked else { return }
+        dismissTracked = true
+        let q = FreeOptimizeQuota()
+        let triesLeft = entitlements.isPro
+            ? "unlimited"
+            : "\(q.remaining(serverDailyLimit: entitlements.status.freeDailyLimit))"
+        Analytics.shared.track("paywall_dismiss", props: PurchaseTelemetry.dismissProps(
+            mode: entitlements.paywallMode.rawValue,
+            trigger: entitlements.paywallTrigger,
+            action: action,
+            timeOnScreenMs: Int(Date().timeIntervalSince(shownAt) * 1000),
+            selectedPlan: selectedPlan,
+            freeTriesLeft: triesLeft
+        ))
     }
 
     private func planCard(
@@ -181,14 +205,16 @@ struct PaywallView: View {
             Button {
                 Task {
                     let plan = product.id.contains("yearly") ? "yearly" : "monthly"
+                    selectedPlan = plan
                     Analytics.shared.track("paywall_plan_select", props: ["plan": plan, "source": "ios_paywall"])
                     Analytics.shared.track("purchase_start", props: ["plan": plan, "source": "storekit"])
                     let ok = await storeKit.purchase(product)
+                    // cancelled / pending / failed are tracked in StoreKitManager.purchase
+                    // (purchase_cancelled, purchase_pending, purchase_failed).
                     if ok {
                         Analytics.shared.track("purchase_success", props: ["plan": plan, "source": "storekit"])
+                        dismissTracked = true // converted, not a dismiss
                         dismiss()
-                    } else if storeKit.purchaseError != nil {
-                        Analytics.shared.track("purchase_fail", props: ["plan": plan, "source": "storekit"])
                     }
                 }
             } label: {
