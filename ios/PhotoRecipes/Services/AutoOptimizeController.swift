@@ -1786,7 +1786,6 @@ final class AutoOptimizeController: ObservableObject {
         if session.lowLightBoostOn {
             lines.append(.init(label: "Low-light", before: "Off", after: "On", clamped: false, tier: .advanced))
         }
-        // Dedupe by label keeping last
         var seen = Set<String>()
         var deduped: [DiffLine] = []
         for line in lines.reversed() {

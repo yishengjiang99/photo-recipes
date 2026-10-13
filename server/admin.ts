@@ -99,7 +99,6 @@ export function isAdminAuthenticated(req: Request): boolean {
   const bearer = bearerToken(req)
   if (token && bearer && timingSafeEqualStr(bearer, token)) return true
 
-  // Also accept ADMIN_TOKEN via X-Admin-Token
   const hdr = req.headers['x-admin-token']
   const hdrVal = Array.isArray(hdr) ? hdr[0] : hdr
   if (token && typeof hdrVal === 'string' && timingSafeEqualStr(hdrVal.trim(), token)) {
@@ -500,7 +499,6 @@ export function mountAdminRoutes(app: Express) {
           })
           return
         }
-        // Prefer matching environment when present
         const match =
           tokens.find((t) => t.environment === environment) ?? tokens[0]!
         token = match.token

@@ -36,7 +36,6 @@ struct PaywallView: View {
                             .foregroundStyle(AppTheme.inkSecondary)
                             .multilineTextAlignment(.center)
 
-                        // Annual first — primary
                         if let yearly = storeKit.yearlyProduct {
                             planCard(
                                 product: yearly,

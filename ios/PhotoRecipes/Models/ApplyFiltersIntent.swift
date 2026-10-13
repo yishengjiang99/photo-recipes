@@ -57,7 +57,6 @@ enum ApplyFiltersIntent {
             .split(whereSeparator: { !$0.isLetter && $0 != "&" })
             .map(String.init)
         if shortLooks.contains(where: { tokens.contains($0) }) { return true }
-        // Exact short utterance
         if shortLooks.contains(t) { return true }
 
         return false

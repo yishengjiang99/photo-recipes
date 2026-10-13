@@ -256,7 +256,6 @@ final class APIClient: ObservableObject {
             throw APIError.http(-1, "No HTTP response")
         }
         if http.statusCode == 402 {
-            // Drain a small error payload if present
             var data = Data()
             for try await b in bytes {
                 data.append(b)

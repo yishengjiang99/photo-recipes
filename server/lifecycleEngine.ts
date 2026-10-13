@@ -57,7 +57,6 @@ const opsPath = () => p('push-lifecycle-ops.json', 'PUSH_LIFECYCLE_OPS_PATH')
 const pushEventsPath = () => p('push-events.jsonl', 'PUSH_EVENTS_LOG_PATH')
 
 // ---------------------------------------------------------------------------
-// Mode + kill switch
 // ---------------------------------------------------------------------------
 
 type Ops = { killSwitch?: boolean; mode?: LifecycleMode; updatedAt?: string; liveSince?: string; autoKill?: { at: string; reason: string } }
@@ -174,7 +173,6 @@ export function setLifecycleEventLoaderForTests(l: EventLoader | null) {
 }
 
 // ---------------------------------------------------------------------------
-// Time helpers
 // ---------------------------------------------------------------------------
 
 function localMinutes(now: Date, tz: string): number {
@@ -201,7 +199,6 @@ export function inQuiet(mins: number, q: { start: string; end: string }): boolea
 }
 
 // ---------------------------------------------------------------------------
-// Decision
 // ---------------------------------------------------------------------------
 
 export type Decision = {

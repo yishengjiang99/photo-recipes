@@ -132,7 +132,6 @@ export function releaseMultipartImageBuffer(req: Request): void {
 export function looksLikeImagePayload(value: unknown): boolean {
   if (typeof value !== 'string') return false
   if (/^data:image\//i.test(value)) return true
-  // Long base64 blobs
   if (value.length >= 200 && /^[A-Za-z0-9+/=\s]+$/.test(value.slice(0, 400))) {
     return true
   }

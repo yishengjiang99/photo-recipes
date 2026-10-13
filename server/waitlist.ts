@@ -87,7 +87,6 @@ async function resolveSegmentId(key: string): Promise<string | null> {
       return found.id
     }
 
-    // Create "waitlist" if missing
     const created = await fetch('https://api.resend.com/segments', {
       method: 'POST',
       headers: authHeaders(key),

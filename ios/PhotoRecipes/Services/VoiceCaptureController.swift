@@ -41,7 +41,6 @@ final class VoiceCaptureController: ObservableObject {
     private var silenceEndpointTask: Task<Void, Never>?
     private static let silenceEndpointNanoseconds: UInt64 = 1_000_000_000
 
-    // Grok batch fallback
     private var recorder: AVAudioRecorder?
     private var recordURL: URL?
 

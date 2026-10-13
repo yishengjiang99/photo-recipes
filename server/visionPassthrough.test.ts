@@ -41,7 +41,6 @@ describe('vision passthrough (no persist)', () => {
         assert.equal(looksLikeImagePayload(body[key]), false)
       }
     }
-    // Original data URL must not remain on body
     assert.notEqual(body.image, dataUrl)
   })
 

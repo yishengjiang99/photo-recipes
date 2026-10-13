@@ -33,7 +33,6 @@ struct RecipeCameraMapper {
             notes.append("Aperture \(aperture) is guidance-only — phone lenses are fixed; use DoF with subject distance instead.")
         }
 
-        // Shutter
         var shutter: Double?
         if let raw = dials.shutter {
             if let parsed = parseShutter(raw) {
@@ -93,7 +92,6 @@ struct RecipeCameraMapper {
             notes.append("Hyperfocal tip: tap-focus ~⅓ into the frame, then lock focus (Pro).")
         }
 
-        // Mode-driven notes
         switch dials.mode {
         case .shutterPriority:
             notes.append("Recipe wants shutter priority — phone applies fixed shutter + ISO when custom exposure is supported.")
