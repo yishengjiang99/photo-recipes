@@ -1,4 +1,5 @@
 ---
+keyword: selfie
 title: How ProTune picks a selfie look on the front camera
 description: In the next ProTune update, Auto Optimize on the front camera reads the light on your face and picks one of five selfie looks. Here is how it decides.
 date: 2026-10-12

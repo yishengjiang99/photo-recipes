@@ -1,4 +1,5 @@
 ---
+keyword: camera settings
 title: How ProTune AI Camera turns a photo recipe into real camera settings
 description: ProTune reads the scene, picks a photo recipe and writes shutter, ISO, EV, white balance and focus to the iPhone camera. Here is how that loop works.
 date: 2026-10-12

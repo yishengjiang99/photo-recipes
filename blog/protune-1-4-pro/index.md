@@ -1,4 +1,5 @@
 ---
+keyword: ProTune Pro
 title: ProTune 1.4 is live with ProTune Pro
 description: ProTune AI Camera 1.4 is on the App Store. It adds ProTune Pro with unlimited Auto Optimize and Coach, a 7-day free trial and a steadier paywall.
 date: 2026-10-13
