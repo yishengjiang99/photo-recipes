@@ -47,6 +47,7 @@ import { mountAttributionRoutes } from './attribution.ts'
 import { getMysqlPool } from './mysql.ts'
 import { ensurePushDevicesSchema } from './pushDevices.ts'
 import { ensureTelemetrySchema } from './telemetrySchema.ts'
+import { ensureInstallDevices } from './installDevices.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Local .env for dev. Production uses systemd EnvironmentFile=/etc/photo-recipes.env
@@ -591,6 +592,9 @@ async function start() {
   )
   if (mysqlPool) {
     void ensureTelemetrySchema().then((r) => {
+      void ensureInstallDevices().then((d) => {
+        if (d.ok) console.log(`MySQL: install_devices ready (backfill rows affected: ${d.backfilled})`)
+      })
       if (r.ok) {
         console.log(
           `MySQL: telemetry_events schema ready${r.indexAdded ? ' (added idx_telemetry_created)' : ''}`,

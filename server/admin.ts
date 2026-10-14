@@ -17,10 +17,13 @@ import {
   mergeApnsTokens,
 } from './pushDevices.ts'
 import {
+  dayBuckets,
   fetchDailyActiveUsers,
   fetchHourlyActiveUsers,
   fetchRecentApiErrors,
+  ptOffsetSec,
 } from './telemetry.ts'
+import { fetchDevicesSummary, REAL_APP } from './installDevices.ts'
 
 const ADMIN_COOKIE = 'pr_admin'
 const COOKIE_MAX_MS = 7 * 24 * 60 * 60 * 1000
@@ -140,6 +143,7 @@ async function telemetrySummary() {
     events24h: 0,
     events7d: 0,
     dau: 0,
+    dauRaw: 0,
     wau: 0,
     active8h: 0,
     topEvents: [] as Array<{ event: string; count: number }>,
@@ -181,6 +185,13 @@ async function telemetrySummary() {
        WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
     )) as unknown as [Array<{ n: number }>]
     const [[dau]] = (await pool.query(
+      `SELECT COUNT(DISTINCT e.anon_id) AS n FROM telemetry_events e
+       JOIN install_devices d ON d.anon_id = e.anon_id AND d.app = e.app AND d.platform = e.platform
+       WHERE e.created_at >= (NOW(3) - INTERVAL 1 DAY)
+         AND e.app = ? AND e.platform = 'ios' AND d.is_test = 0`,
+      [REAL_APP],
+    )) as unknown as [Array<{ n: number }>]
+    const [[dauRaw]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
        WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
     )) as unknown as [Array<{ n: number }>]
@@ -252,6 +263,7 @@ async function telemetrySummary() {
       events24h: Number(e24?.n) || 0,
       events7d: Number(e7?.n) || 0,
       dau: Number(dau?.n) || 0,
+      dauRaw: Number(dauRaw?.n) || 0,
       wau: Number(wau?.n) || 0,
       active8h: Number(a8?.n) || 0,
       topEvents: (topRows as Array<{ event: string; c: number }>).map((r) => ({
@@ -406,12 +418,13 @@ export function mountAdminRoutes(app: Express) {
 
   app.get('/api/admin/summary', requireAdmin, (_req, res) => {
     void (async () => {
-      const [telemetry, stripe, entitlements, push, recentErrors] = await Promise.all([
+      const [telemetry, stripe, entitlements, push, recentErrors, devices] = await Promise.all([
         telemetrySummary(),
         stripeIncomeSnapshot(),
         Promise.resolve(getEntitlementIncomeSnapshot()),
         Promise.resolve(getPushFunnelSnapshot(7)),
         fetchRecentApiErrors(40),
+        fetchDevicesSummary({ dayBuckets: (n) => dayBuckets(n), ptOffsetSec, days: 14 }),
       ])
       res.json({
         ok: true,
@@ -422,6 +435,7 @@ export function mountAdminRoutes(app: Express) {
         quota: getQuotaConfigSnapshot(),
         push,
         recentErrors,
+        devices,
       })
     })().catch((err: Error) => {
       console.error('[admin] summary:', err.message)

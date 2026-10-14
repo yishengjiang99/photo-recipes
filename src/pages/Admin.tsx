@@ -36,9 +36,32 @@ type Summary = {
       days: number
       timezone?: string
       definition: string
-      series: Array<{ bucket: number; day: string; users: number }>
+      series: Array<{ bucket: number; day: string; users: number; newUsers?: number; returning?: number }>
       error?: string
     }
+    dauRaw?: number
+    error?: string
+  }
+  devices?: {
+    timezone: string
+    definition: string
+    totals: { real: number; test: number; realIos: number; realWeb: number; otherApps: number }
+    today: { day: string; active: number; newInstalls: number; returning: number }
+    newPerDay: Array<{ day: string; newInstalls: number }>
+    recent: Array<{
+      anonId: string
+      app: string
+      platform: string
+      firstSeenAt: string
+      lastSeenAt: string
+      firstVersion: string | null
+      latestVersion: string | null
+      build: string | null
+      deviceModel: string | null
+      source: string | null
+      isTest: boolean
+      events: number
+    }>
     error?: string
   }
   stripe: {
@@ -336,14 +359,16 @@ function hourlyBars(series: Array<{ bucket: number; users: number }>): Bar[] {
   })
 }
 
-function dailyBars(series: Array<{ bucket: number; users: number }>): Bar[] {
+function dailyBars(
+  series: Array<{ bucket: number; users: number; newUsers?: number; returning?: number }>,
+): Bar[] {
   const every = Math.max(1, Math.ceil(series.length / 6))
   return series.map((p, i) => {
     const d = new Date(p.bucket * 1000)
     return {
       key: p.bucket,
       value: p.users,
-      tooltip: `${dayKeyFmt.format(d)} (PT): ${p.users} DAU`,
+      tooltip: `${dayKeyFmt.format(d)} (PT): ${p.users} DAU · ${p.newUsers ?? 0} new · ${p.returning ?? 0} returning`,
       tick: i % every === 0 || i === series.length - 1 ? dayKeyTick.format(d) : undefined,
     }
   })
@@ -709,18 +734,78 @@ export function Admin() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Kpi label="Events 24h" value={summary.telemetry.events24h} />
                 <Kpi label="Events 7d" value={summary.telemetry.events7d} />
-                <Kpi label="DAU" value={summary.telemetry.dau} hint="Distinct anon_id · 24h" />
+                <Kpi
+                  label="DAU (real iOS)"
+                  value={summary.telemetry.dau}
+                  hint={`Distinct non-test ProTune iOS installs · rolling 24h · raw all-traffic ${summary.telemetry.dauRaw ?? '—'}`}
+                />
                 <Kpi label="WAU" value={summary.telemetry.wau} hint="Distinct anon_id · 7d" />
               </div>
               {summary.telemetry.dailyActive ? (
                 <BarHistogram
                   title="Daily active users"
-                  windowLabel={`last ${summary.telemetry.dailyActive.days} days · PT calendar days`}
+                  windowLabel={`last ${summary.telemetry.dailyActive.days} days · PT calendar days · real iOS installs (hover: new/returning)`}
                   definition={summary.telemetry.dailyActive.definition}
                   error={summary.telemetry.dailyActive.error}
                   bars={dailyBars(summary.telemetry.dailyActive.series)}
                   peakLabel={(b) => dayKeyFmt.format(new Date(b.key * 1000))}
                 />
+              ) : null}
+              {summary.devices ? (
+                <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                  <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-secondary)]">
+                    Devices (installs) · PT days{summary.devices.error ? ` · ${summary.devices.error}` : ''}
+                    <div className="text-xs text-[var(--color-ink-tertiary)]">{summary.devices.definition}</div>
+                  </div>
+                  <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <Kpi label={`Today ${summary.devices.today.day} active`} value={summary.devices.today.active} hint="Real iOS installs seen today (PT)" />
+                    <Kpi label="New today" value={summary.devices.today.newInstalls} hint="First seen today (PT)" />
+                    <Kpi label="Returning today" value={summary.devices.today.returning} hint="First seen before today" />
+                    <Kpi
+                      label="Total real installs"
+                      value={summary.devices.totals.real}
+                      hint={`iOS ${summary.devices.totals.realIos} · web ${summary.devices.totals.realWeb} · test ${summary.devices.totals.test} · other apps ${summary.devices.totals.otherApps}`}
+                    />
+                  </div>
+                  <div className="px-3 pb-2 text-xs text-[var(--color-ink-secondary)]">
+                    New real iOS installs / PT day:{' '}
+                    {summary.devices.newPerDay.map((d) => `${d.day.slice(5)}: ${d.newInstalls}`).join(' · ')}
+                  </div>
+                  <div className="max-h-80 overflow-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-[var(--color-ink-tertiary)]">
+                        <tr>
+                          <th className="px-3 py-1">First seen (PT)</th>
+                          <th className="px-3 py-1">Last seen (PT)</th>
+                          <th className="px-3 py-1">anon</th>
+                          <th className="px-3 py-1">App / platform</th>
+                          <th className="px-3 py-1">Version</th>
+                          <th className="px-3 py-1">Model</th>
+                          <th className="px-3 py-1">Events</th>
+                          <th className="px-3 py-1">Test</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.devices.recent.map((r) => (
+                          <tr key={`${r.anonId}-${r.app}-${r.platform}-${r.firstSeenAt}`} className="border-t border-[var(--color-border)]">
+                            <td className="px-3 py-1">{ptHourFmt.format(new Date(r.firstSeenAt))}</td>
+                            <td className="px-3 py-1">{ptHourFmt.format(new Date(r.lastSeenAt))}</td>
+                            <td className="px-3 py-1 font-mono">{r.anonId}</td>
+                            <td className="px-3 py-1">{r.app} / {r.platform}</td>
+                            <td className="px-3 py-1">
+                              {r.firstVersion ?? '—'}
+                              {r.latestVersion && r.latestVersion !== r.firstVersion ? ` → ${r.latestVersion}` : ''}
+                              {r.build ? ` (${r.build})` : ''}
+                            </td>
+                            <td className="px-3 py-1">{r.deviceModel ?? '—'}</td>
+                            <td className="px-3 py-1">{r.events}</td>
+                            <td className="px-3 py-1">{r.isTest ? 'test' : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               ) : null}
               {summary.telemetry.hourlyActive ? (
                 <BarHistogram

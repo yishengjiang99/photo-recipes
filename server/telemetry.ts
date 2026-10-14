@@ -5,6 +5,7 @@
 import crypto from 'node:crypto'
 import type { Express, Request, Response } from 'express'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
+import { REAL_APP, upsertInstallDevice } from './installDevices.ts'
 
 const BLOCKED_PROP_KEYS = /^(email|e_?mail|phone|password|token|authorization|cookie|image|photo|frame|base64|gps|lat|lng|longitude|latitude|ssn|name|full.?name)$/i
 const MAX_PROP_KEYS = 24
@@ -102,6 +103,11 @@ export async function insertTelemetry(row: TelemetryRow): Promise<boolean> {
         row.ip_hash,
       ],
     )
+    try {
+      await upsertInstallDevice(pool, row)
+    } catch (err) {
+      console.warn('[install_devices] upsert failed:', err instanceof Error ? err.message : err)
+    }
     return true
   } catch (err) {
     console.warn(
@@ -478,7 +484,7 @@ export function ptDayBucket(tsSec: number): number {
   return Math.floor((tsSec + ptOffsetSec(tsSec)) / 86400) * 86400
 }
 
-export type DayBucket = { bucket: number; day: string; users: number }
+export type DayBucket = { bucket: number; day: string; users: number; newUsers: number; returning: number }
 
 export function dayBuckets(days: number, nowMs = Date.now()): number[] {
   const today = ptDayBucket(Math.floor(nowMs / 1000))
@@ -488,19 +494,25 @@ export function dayBuckets(days: number, nowMs = Date.now()): number[] {
 }
 
 export function fillDayBuckets(
-  rows: Array<{ bucket: number | string; users: number | string }>,
+  rows: Array<{ bucket: number | string; users: number | string; new_users?: number | string }>,
   buckets: number[],
 ): DayBucket[] {
-  const byBucket = new Map<number, number>()
+  const byBucket = new Map<number, { users: number; newUsers: number }>()
   for (const r of rows) {
     const b = Number(r.bucket)
-    if (Number.isFinite(b)) byBucket.set(b, Number(r.users) || 0)
+    if (Number.isFinite(b))
+      byBucket.set(b, { users: Number(r.users) || 0, newUsers: Number(r.new_users) || 0 })
   }
-  return buckets.map((bucket) => ({
-    bucket,
-    day: new Date(bucket * 1000).toISOString().slice(0, 10),
-    users: byBucket.get(bucket) ?? 0,
-  }))
+  return buckets.map((bucket) => {
+    const v = byBucket.get(bucket) ?? { users: 0, newUsers: 0 }
+    return {
+      bucket,
+      day: new Date(bucket * 1000).toISOString().slice(0, 10),
+      users: v.users,
+      newUsers: v.newUsers,
+      returning: Math.max(0, v.users - v.newUsers),
+    }
+  })
 }
 
 /** Daily active users by PT calendar day.
@@ -517,7 +529,7 @@ export async function fetchDailyActiveUsers(days = 30): Promise<{
 }> {
   const windowDays = Math.min(90, Math.max(1, Math.floor(days)))
   const definition =
-    'DAU = distinct anon_id with ≥1 telemetry event that PT calendar day ((UNIX_TIMESTAMP(created_at) + PT offset) DIV 86400). DST-aware. Same identity as DAU/WAU KPIs.'
+    'DAU = distinct real iOS ProTune installs (anon_id, app=photo-recipes, platform=ios, install_devices.is_test=0) with ≥1 event that PT calendar day (midnight–midnight America/Los_Angeles, DST-aware). New = install first seen that PT day; returning = first seen earlier. Excludes web, other apps (FinalCap/omr), server pseudo-ids and dev builds (1.2 build 50). anon_id is a per-install UUID in UserDefaults (resets on reinstall).'
   const buckets = dayBuckets(windowDays)
   const base = { days: windowDays, timezone: ACTIVE_HISTOGRAM_TIMEZONE, definition }
   const zeros = fillDayBuckets([], buckets)
@@ -531,14 +543,23 @@ export async function fetchDailyActiveUsers(days = 30): Promise<{
   const { switchAt, before, after } = ptOffsetRegime(fromSec, nowSec)
   try {
     const [rows] = await pool.query(
-      `SELECT (UNIX_TIMESTAMP(created_at)
-                + IF(UNIX_TIMESTAMP(created_at) >= ?, ?, ?)) DIV 86400 * 86400 AS bucket,
-              COUNT(DISTINCT anon_id) AS users
-       FROM telemetry_events
-       WHERE created_at >= FROM_UNIXTIME(?)
+      `SELECT (UNIX_TIMESTAMP(e.created_at)
+                + IF(UNIX_TIMESTAMP(e.created_at) >= ?, ?, ?)) DIV 86400 * 86400 AS bucket,
+              COUNT(DISTINCT e.anon_id) AS users,
+              COUNT(DISTINCT IF(
+                (UNIX_TIMESTAMP(d.first_seen_at)
+                  + IF(UNIX_TIMESTAMP(d.first_seen_at) >= ?, ?, ?)) DIV 86400
+                = (UNIX_TIMESTAMP(e.created_at)
+                  + IF(UNIX_TIMESTAMP(e.created_at) >= ?, ?, ?)) DIV 86400,
+                e.anon_id, NULL)) AS new_users
+       FROM telemetry_events e
+       JOIN install_devices d
+         ON d.anon_id = e.anon_id AND d.app = e.app AND d.platform = e.platform
+       WHERE e.created_at >= FROM_UNIXTIME(?)
+         AND e.app = ? AND e.platform = 'ios' AND d.is_test = 0
        GROUP BY bucket
        ORDER BY bucket`,
-      [switchAt, after, before, fromSec],
+      [switchAt, after, before, switchAt, after, before, switchAt, after, before, fromSec, REAL_APP],
     )
     return {
       ...base,
