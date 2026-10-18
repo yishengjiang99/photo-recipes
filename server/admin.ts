@@ -18,10 +18,12 @@ import {
 } from './pushDevices.ts'
 import {
   dayBuckets,
+  fetchCanonicalFunnel,
   fetchDailyActiveUsers,
   fetchHourlyActiveUsers,
   fetchRecentApiErrors,
   ptOffsetSec,
+  type CanonicalFunnel,
 } from './telemetry.ts'
 import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
 import { ALL_APPS, appAnd, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
@@ -171,9 +173,10 @@ async function telemetrySummary(app: AppScope) {
       series: [] as Array<{ bucket: number; day: string; users: number }>,
       error: undefined as string | undefined,
     },
+    canonicalFunnel: null as CanonicalFunnel | null,
   }
   const pool = getMysqlPool()
-  if (!pool) return empty
+  if (!pool) return { ...empty, canonicalFunnel: await fetchCanonicalFunnel(7, app) }
   const af = appAnd('app', app)
   const afE = appAnd('e.app', app)
   const platE = iosOnlyScope(app) ? " AND e.platform = 'ios'" : ''
@@ -272,9 +275,10 @@ async function telemetrySummary(app: AppScope) {
       }
       return grouped
     }
-    const [hourlyActive, dailyActive] = await Promise.all([
+    const [hourlyActive, dailyActive, canonicalFunnel] = await Promise.all([
       fetchHourlyActiveUsers(168, app),
       fetchDailyActiveUsers(30, app),
+      fetchCanonicalFunnel(7, app),
     ])
 
     return {
@@ -319,13 +323,19 @@ async function telemetrySummary(app: AppScope) {
       ),
       hourlyActive,
       dailyActive,
+      canonicalFunnel,
     }
   } catch (err) {
     console.warn(
       '[admin] telemetry summary failed:',
       err instanceof Error ? err.message : err,
     )
-    return { ...empty, configured: true, error: 'query_failed' }
+    return {
+      ...empty,
+      configured: true,
+      error: 'query_failed',
+      canonicalFunnel: await fetchCanonicalFunnel(7, app),
+    }
   }
 }
 

@@ -2,6 +2,11 @@
 /**
  * Print funnel step counts using MYSQL_* env (same as API).
  * Usage: node scripts/funnel-report.mjs [--days 7]
+ * Prints the CANONICAL funnel first (distinct session_id; stages sessions →
+ * camera_open → auto_optimize_start → auto_optimize_success; trailing
+ * complete days, America/Los_Angeles — see docs/telemetry-funnels.md),
+ * then alternate cuts (raw counts / distinct anon_id, rolling window),
+ * labelled as alternate. Alternate numbers are NOT comparable to canonical.
  */
 import mysql from 'mysql2/promise'
 import dotenv from 'dotenv'
@@ -48,8 +53,56 @@ const FUNNELS = {
   ],
 }
 
+// PT helpers mirror server/telemetry.ts (canonicalFunnelWindow).
+const PT = 'America/Los_Angeles'
+function ptOffsetSec(tsSec) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: PT, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(tsSec * 1000))
+  const v = (k) => Number(parts.find((x) => x.type === k)?.value)
+  const wall = Date.UTC(v('year'), v('month') - 1, v('day'), v('hour'), v('minute'), v('second')) / 1000
+  return Math.round((wall - Math.floor(tsSec)) / 60) * 60
+}
+function ptMidnightEpochSec(dayBucketSec) {
+  const guess = dayBucketSec - ptOffsetSec(dayBucketSec)
+  return dayBucketSec - ptOffsetSec(guess)
+}
+function canonicalWindow(windowDays, nowMs = Date.now()) {
+  const nowSec = Math.floor(nowMs / 1000)
+  const todayBucket = Math.floor((nowSec + ptOffsetSec(nowSec)) / 86400) * 86400
+  const startBucket = todayBucket - windowDays * 86400
+  return {
+    startSec: ptMidnightEpochSec(startBucket),
+    endSec: ptMidnightEpochSec(todayBucket),
+    startDay: new Date(startBucket * 1000).toISOString().slice(0, 10),
+    endDayExclusive: new Date(todayBucket * 1000).toISOString().slice(0, 10),
+  }
+}
+
 const pool = mysql.createPool(poolConfig())
 try {
+  const w = canonicalWindow(days)
+  const [[canonical]] = await pool.query(
+    `SELECT
+       COUNT(DISTINCT session_id) AS sessions,
+       COUNT(DISTINCT IF(event = 'camera_open', session_id, NULL)) AS camera_open,
+       COUNT(DISTINCT IF(event = 'auto_optimize_start', session_id, NULL)) AS auto_optimize_start,
+       COUNT(DISTINCT IF(event = 'auto_optimize_success', session_id, NULL)) AS auto_optimize_success
+     FROM telemetry_events
+     WHERE session_id IS NOT NULL AND session_id <> ''
+       AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)`,
+    [w.startSec, w.endSec],
+  )
+  console.log('canonical (distinct session_id, trailing complete PT days)', {
+    days,
+    window: `${w.startDay} -> ${w.endDayExclusive} (exclusive, America/Los_Angeles)`,
+    sessions: Number(canonical.sessions) || 0,
+    camera_open: Number(canonical.camera_open) || 0,
+    auto_optimize_start: Number(canonical.auto_optimize_start) || 0,
+    auto_optimize_success: Number(canonical.auto_optimize_success) || 0,
+  })
+  console.log('alternate cuts below (raw counts / distinct anon_id, rolling window) — not comparable to canonical')
   const [[dau]] = await pool.query(
     `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
   )
@@ -70,7 +123,7 @@ try {
     )
     const byEvent = Object.fromEntries(events.map((e) => [e, { c: 0, users: 0 }]))
     for (const r of rows) byEvent[r.event] = { c: Number(r.c), users: Number(r.users) }
-    console.log(name, byEvent)
+    console.log(`${name} (alternate)`, byEvent)
   }
 } finally {
   await pool.end()

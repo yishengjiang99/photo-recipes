@@ -119,6 +119,30 @@ export async function insertTelemetry(row: TelemetryRow): Promise<boolean> {
   }
 }
 
+/**
+ * THE canonical ProTune funnel — single source of truth is
+ * docs/telemetry-funnels.md. Do not redefine it elsewhere.
+ * Unit: distinct session_id. Stages: sessions (any telemetry event) →
+ * camera_open → auto_optimize_start → auto_optimize_success.
+ * Window: trailing complete days, America/Los_Angeles (today excluded).
+ * All platforms. Compare only like-for-like (same unit/stages/window/tz/scope).
+ */
+export const CANONICAL_FUNNEL_TIMEZONE = 'America/Los_Angeles'
+export const CANONICAL_FUNNEL_DAYS = 7
+export const CANONICAL_FUNNEL_STAGES = [
+  'sessions',
+  'camera_open',
+  'auto_optimize_start',
+  'auto_optimize_success',
+] as const
+export type CanonicalFunnelStage = (typeof CANONICAL_FUNNEL_STAGES)[number]
+export const CANONICAL_FUNNEL_DEFINITION =
+  'Canonical ProTune funnel: unit = distinct session_id (rows with NULL/empty session_id excluded); ' +
+  'stages = sessions (sessions with any telemetry event) → camera_open → auto_optimize_start → auto_optimize_success; ' +
+  'window = trailing complete days in America/Los_Angeles (PT calendar days, midnight–midnight, today excluded); ' +
+  'all platforms. Like-for-like only: never compare against raw event counts or distinct-anon_id (user-level) cuts.'
+
+/** Alternate cut (NOT the canonical funnel): raw event counts, rolling window. */
 const FUNNEL_WEB_ACTIVATION = [
   'landing_view',
   'landing_cta_camera',
@@ -127,12 +151,14 @@ const FUNNEL_WEB_ACTIVATION = [
   'auto_optimize_success',
 ] as const
 
+/** Alternate cut (NOT the canonical funnel): raw event counts, iOS only, rolling window. */
 const FUNNEL_IOS_CAPTURE = [
   'camera_open',
   'auto_optimize_success',
   'capture_success',
 ] as const
 
+/** Alternate cut (NOT the canonical funnel): the monetization funnel, by plan. */
 export const FUNNEL_MONETIZATION = [
   'paywall_view',
   'paywall_dismiss',
@@ -605,6 +631,121 @@ export async function fetchDailyActiveUsers(
   }
 }
 
+/** Real epoch seconds of PT midnight on a PT date key (see ptDayBucket). */
+export function ptMidnightEpochSec(dayBucketSec: number): number {
+  const guess = dayBucketSec - ptOffsetSec(dayBucketSec)
+  return dayBucketSec - ptOffsetSec(guess)
+}
+
+export type CanonicalFunnelWindow = {
+  days: number
+  timezone: string
+  startSec: number
+  endSec: number
+  startDay: string
+  endDayExclusive: string
+}
+
+/**
+ * Trailing complete PT days: [PT midnight of (today − days), PT midnight of
+ * today). Today is a partial day and is always excluded.
+ */
+export function canonicalFunnelWindow(
+  days: number = CANONICAL_FUNNEL_DAYS,
+  nowMs: number = Date.now(),
+): CanonicalFunnelWindow {
+  const windowDays = Math.min(90, Math.max(1, Math.floor(days) || CANONICAL_FUNNEL_DAYS))
+  const todayBucket = ptDayBucket(Math.floor(nowMs / 1000))
+  const startDayBucket = todayBucket - windowDays * 86400
+  return {
+    days: windowDays,
+    timezone: CANONICAL_FUNNEL_TIMEZONE,
+    startSec: ptMidnightEpochSec(startDayBucket),
+    endSec: ptMidnightEpochSec(todayBucket),
+    startDay: new Date(startDayBucket * 1000).toISOString().slice(0, 10),
+    endDayExclusive: new Date(todayBucket * 1000).toISOString().slice(0, 10),
+  }
+}
+
+export type CanonicalFunnel = {
+  name: 'canonical'
+  unit: 'distinct session_id'
+  timezone: string
+  days: number
+  windowStart: string
+  windowEndExclusive: string
+  windowStartDay: string
+  windowEndDayExclusive: string
+  definition: string
+  stages: readonly string[]
+  counts: Record<CanonicalFunnelStage, number>
+  conversions: {
+    sessionsToCamera: number | null
+    cameraToOptimizeStart: number | null
+    optimizeStartToSuccess: number | null
+  }
+  error?: string
+}
+
+const ratio = (a: number, b: number): number | null => (b > 0 ? a / b : null)
+
+/** The canonical funnel (see CANONICAL_FUNNEL_DEFINITION). All platforms. */
+export async function fetchCanonicalFunnel(
+  days: number = CANONICAL_FUNNEL_DAYS,
+  app: AppScope = null,
+  nowMs: number = Date.now(),
+): Promise<CanonicalFunnel> {
+  const w = canonicalFunnelWindow(days, nowMs)
+  const base: CanonicalFunnel = {
+    name: 'canonical',
+    unit: 'distinct session_id',
+    timezone: w.timezone,
+    days: w.days,
+    windowStart: new Date(w.startSec * 1000).toISOString(),
+    windowEndExclusive: new Date(w.endSec * 1000).toISOString(),
+    windowStartDay: w.startDay,
+    windowEndDayExclusive: w.endDayExclusive,
+    definition: CANONICAL_FUNNEL_DEFINITION,
+    stages: CANONICAL_FUNNEL_STAGES,
+    counts: { sessions: 0, camera_open: 0, auto_optimize_start: 0, auto_optimize_success: 0 },
+    conversions: { sessionsToCamera: null, cameraToOptimizeStart: null, optimizeStartToSuccess: null },
+  }
+  const pool = getMysqlPool()
+  if (!pool) return base
+  const inApp = appAnd('app', app)
+  try {
+    const [[row]] = (await pool.query(
+      `SELECT
+         COUNT(DISTINCT session_id) AS sessions,
+         COUNT(DISTINCT IF(event = 'camera_open', session_id, NULL)) AS camera_open,
+         COUNT(DISTINCT IF(event = 'auto_optimize_start', session_id, NULL)) AS auto_optimize_start,
+         COUNT(DISTINCT IF(event = 'auto_optimize_success', session_id, NULL)) AS auto_optimize_success
+       FROM telemetry_events
+       WHERE session_id IS NOT NULL AND session_id <> ''
+         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)${inApp.and}`,
+      [w.startSec, w.endSec, ...inApp.params],
+    )) as unknown as [Array<Record<string, number>>]
+    const counts: Record<CanonicalFunnelStage, number> = {
+      sessions: Number(row?.sessions) || 0,
+      camera_open: Number(row?.camera_open) || 0,
+      auto_optimize_start: Number(row?.auto_optimize_start) || 0,
+      auto_optimize_success: Number(row?.auto_optimize_success) || 0,
+    }
+    return {
+      ...base,
+      counts,
+      conversions: {
+        sessionsToCamera: ratio(counts.camera_open, counts.sessions),
+        cameraToOptimizeStart: ratio(counts.auto_optimize_start, counts.camera_open),
+        optimizeStartToSuccess: ratio(counts.auto_optimize_success, counts.auto_optimize_start),
+      },
+    }
+  } catch (err) {
+    console.warn('[telemetry] canonical funnel failed:', err instanceof Error ? err.message : err)
+    return { ...base, error: 'query_failed' }
+  }
+}
+
 export function mountTelemetryRoutes(app: Express) {
   app.post('/api/telemetry', (req: Request, res: Response) => {
     void (async () => {
@@ -667,8 +808,9 @@ export function mountTelemetryRoutes(app: Express) {
         return
       }
       const app = parsedApp.app
-      const [webActivation, iosCapture, monetization, activity, byPlan] =
+      const [canonical, webActivation, iosCapture, monetization, activity, byPlan] =
         await Promise.all([
+          fetchCanonicalFunnel(days, app),
           countEvents(days, FUNNEL_WEB_ACTIVATION, undefined, app),
           countEvents(days, FUNNEL_IOS_CAPTURE, 'ios', app),
           countEvents(days, FUNNEL_MONETIZATION, undefined, app),
@@ -681,11 +823,27 @@ export function mountTelemetryRoutes(app: Express) {
         app: app ?? 'all',
         mysql: isMysqlConfigured() && Boolean(getMysqlPool()),
         activity,
+        canonicalFunnel: canonical,
         funnels: {
+          canonical,
+          // Alternate cuts below — NOT the canonical funnel. They are raw
+          // event counts over a rolling NOW()-window (activity/byPlan are
+          // user-level, distinct anon_id). Never compare them against
+          // `canonical`; see docs/telemetry-funnels.md.
           web_activation: webActivation,
           ios_capture: iosCapture,
           monetization,
           conversion_by_plan: byPlan,
+        },
+        alternateCuts: {
+          web_activation:
+            'Alternate cut: raw event counts, rolling window, all platforms — not the canonical funnel.',
+          ios_capture:
+            'Alternate cut: raw event counts, rolling window, iOS only — not the canonical funnel.',
+          monetization:
+            'Alternate cut: monetization funnel by plan, raw event counts, rolling window — not the canonical funnel.',
+          activity:
+            'Alternate cut: user-level activity (distinct anon_id), rolling window — not the canonical funnel.',
         },
       })
     })()

@@ -46,6 +46,30 @@ type Summary = {
     }
     dauRaw?: number
     error?: string
+    canonicalFunnel?: {
+      name: string
+      unit: string
+      timezone: string
+      days: number
+      windowStart: string
+      windowEndExclusive: string
+      windowStartDay: string
+      windowEndDayExclusive: string
+      definition: string
+      stages: string[]
+      counts: {
+        sessions: number
+        camera_open: number
+        auto_optimize_start: number
+        auto_optimize_success: number
+      }
+      conversions: {
+        sessionsToCamera: number | null
+        cameraToOptimizeStart: number | null
+        optimizeStartToSuccess: number | null
+      }
+      error?: string
+    } | null
   }
   devices?: {
     timezone: string
@@ -856,6 +880,69 @@ export function Admin() {
                   hint={`Distinct anon_id · 7d · ${appName(appFilter)}`}
                 />
               </div>
+              {summary.telemetry.canonicalFunnel ? (
+                <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                  <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                    <div className="text-sm text-[var(--color-ink-secondary)]">
+                      Canonical funnel — THE ProTune funnel
+                      <span className="ml-2 text-xs text-[var(--color-ink-tertiary)]">
+                        trailing {summary.telemetry.canonicalFunnel.days} complete days ·{' '}
+                        {summary.telemetry.canonicalFunnel.windowStartDay} →{' '}
+                        {summary.telemetry.canonicalFunnel.windowEndDayExclusive} (exclusive) ·{' '}
+                        {summary.telemetry.canonicalFunnel.timezone} · {appName(appFilter)}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-[var(--color-ink-tertiary)]">
+                      {summary.telemetry.canonicalFunnel.definition}
+                    </p>
+                    {summary.telemetry.canonicalFunnel.error ? (
+                      <p className="mt-1 text-xs text-[var(--color-danger)]">
+                        Query failed ({summary.telemetry.canonicalFunnel.error}) — counts below are
+                        placeholders, not real zeros.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <Kpi
+                      label="1 · Sessions (any event)"
+                      value={summary.telemetry.canonicalFunnel.counts.sessions}
+                      hint="Distinct session_id"
+                    />
+                    <Kpi
+                      label="2 · Camera open"
+                      value={summary.telemetry.canonicalFunnel.counts.camera_open}
+                      hint={
+                        summary.telemetry.canonicalFunnel.conversions.sessionsToCamera != null
+                          ? `${Math.round(summary.telemetry.canonicalFunnel.conversions.sessionsToCamera * 1000) / 10}% of sessions`
+                          : 'Distinct session_id'
+                      }
+                    />
+                    <Kpi
+                      label="3 · Auto Optimize start"
+                      value={summary.telemetry.canonicalFunnel.counts.auto_optimize_start}
+                      hint={
+                        summary.telemetry.canonicalFunnel.conversions.cameraToOptimizeStart != null
+                          ? `${Math.round(summary.telemetry.canonicalFunnel.conversions.cameraToOptimizeStart * 1000) / 10}% of camera sessions`
+                          : 'Distinct session_id'
+                      }
+                    />
+                    <Kpi
+                      label="4 · Auto Optimize success"
+                      value={summary.telemetry.canonicalFunnel.counts.auto_optimize_success}
+                      hint={
+                        summary.telemetry.canonicalFunnel.conversions.optimizeStartToSuccess != null
+                          ? `${Math.round(summary.telemetry.canonicalFunnel.conversions.optimizeStartToSuccess * 1000) / 10}% of start sessions`
+                          : 'Distinct session_id'
+                      }
+                    />
+                  </div>
+                  <p className="px-3 pb-3 text-xs text-[var(--color-ink-tertiary)]">
+                    Alternate cuts on this page — raw event counts (Top events, Platform split) and
+                    user-level distinct anon_id (DAU/WAU, hourly/daily active) — are not the canonical
+                    funnel and are not comparable with the numbers above.
+                  </p>
+                </div>
+              ) : null}
               {summary.telemetry.dailyActive ? (
                 <BarHistogram
                   title="Daily active users"
@@ -937,7 +1024,7 @@ export function Admin() {
                 <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
                   <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
                     <span className="text-sm text-[var(--color-ink-secondary)]">
-                      Top events (7d)
+                      Top events (7d) — raw counts, alternate cut (not the canonical funnel)
                     </span>
                     <PlatformFilter
                       platforms={filterPlatforms}
