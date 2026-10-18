@@ -1081,6 +1081,13 @@ struct CameraView: View {
                 aoPrimaryButton(compact: compact)
                     .frame(width: sideSlot, alignment: .trailing)
             }
+
+            // Funnel proposal, first-session journey step 1: the Auto Optimize
+            // action in the thumb zone carries one line of benefit copy.
+            Text("One tap for better light and color")
+                .font(AppTheme.caption())
+                .foregroundStyle(AppTheme.inkSecondary)
+                .allowsHitTesting(false)
         }
         .padding(.horizontal, hPad)
     }
