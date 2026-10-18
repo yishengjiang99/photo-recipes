@@ -14,6 +14,13 @@ struct PhotoRecipesApp: App {
                     MainTabView()
                 } else {
                     OnboardingView {
+                        // First session lands on the camera tab the moment onboarding
+                        // completes. Pinned explicitly here rather than left to the
+                        // router's initial default, so nothing staged during first
+                        // launch (push attach, a deep link) can move the landing
+                        // elsewhere. openCamera() selects the tab only — it does not
+                        // stage a recipe or auto-start Auto Optimize.
+                        appModel.cameraRouter.openCamera()
                         hasCompletedOnboarding = true
                     }
                 }
