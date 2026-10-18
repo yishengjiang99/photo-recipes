@@ -23,7 +23,10 @@ import {
   fetchRecentApiErrors,
   ptOffsetSec,
 } from './telemetry.ts'
-import { fetchDevicesSummary, REAL_APP } from './installDevices.ts'
+import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
+import { ALL_APPS, appAnd, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
+
+const appKey = (app: AppScope): string => app ?? ALL_APPS
 
 const ADMIN_COOKIE = 'pr_admin'
 const COOKIE_MAX_MS = 7 * 24 * 60 * 60 * 1000
@@ -135,10 +138,11 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next()
 }
 
-async function telemetrySummary() {
+async function telemetrySummary(app: AppScope) {
   const configured = isMysqlConfigured() && Boolean(getMysqlPool())
   const empty = {
     configured,
+    app: appKey(app),
     events8h: 0,
     events24h: 0,
     events7d: 0,
@@ -170,73 +174,89 @@ async function telemetrySummary() {
   }
   const pool = getMysqlPool()
   if (!pool) return empty
+  const af = appAnd('app', app)
+  const afE = appAnd('e.app', app)
+  const platE = iosOnlyScope(app) ? " AND e.platform = 'ios'" : ''
 
   try {
     const [[e8]] = (await pool.query(
       `SELECT COUNT(*) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)${af.and}`,
+      af.params,
     )) as unknown as [Array<{ n: number }>]
     const [[e24]] = (await pool.query(
       `SELECT COUNT(*) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)${af.and}`,
+      af.params,
     )) as unknown as [Array<{ n: number }>]
     const [[e7]] = (await pool.query(
       `SELECT COUNT(*) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)${af.and}`,
+      af.params,
     )) as unknown as [Array<{ n: number }>]
     const [[dau]] = (await pool.query(
       `SELECT COUNT(DISTINCT e.anon_id) AS n FROM telemetry_events e
        JOIN install_devices d ON d.anon_id = e.anon_id AND d.app = e.app AND d.platform = e.platform
        WHERE e.created_at >= (NOW(3) - INTERVAL 1 DAY)
-         AND e.app = ? AND e.platform = 'ios' AND d.is_test = 0`,
-      [REAL_APP],
+         AND d.is_test = 0${platE}${afE.and}`,
+      afE.params,
     )) as unknown as [Array<{ n: number }>]
     const [[dauRaw]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)${af.and}`,
+      af.params,
     )) as unknown as [Array<{ n: number }>]
     const [[wau]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)${af.and}`,
+      af.params,
     )) as unknown as [Array<{ n: number }>]
     const [[a8]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)${af.and}`,
+      af.params,
     )) as unknown as [Array<{ n: number }>]
     const [topRows] = await pool.query(
       `SELECT event, COUNT(*) AS c FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)${af.and}
        GROUP BY event ORDER BY c DESC LIMIT 15`,
+      af.params,
     )
     const [topRows8h] = await pool.query(
       `SELECT event, COUNT(*) AS c FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)${af.and}
        GROUP BY event ORDER BY c DESC LIMIT 15`,
+      af.params,
     )
     const [platRows] = await pool.query(
       `SELECT platform, COUNT(*) AS c FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)${af.and}
        GROUP BY platform ORDER BY c DESC`,
+      af.params,
     )
     const [evPlat8h] = await pool.query(
       `SELECT platform, COUNT(*) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)${af.and}
        GROUP BY platform`,
+      af.params,
     )
     const [actPlat8h] = await pool.query(
       `SELECT platform, COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)${af.and}
        GROUP BY platform`,
+      af.params,
     )
     const [topPlatRows] = await pool.query(
       `SELECT platform, event, COUNT(*) AS c FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)${af.and}
        GROUP BY platform, event`,
+      af.params,
     )
     const [topPlatRows8h] = await pool.query(
       `SELECT platform, event, COUNT(*) AS c FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)
+       WHERE created_at >= (NOW(3) - INTERVAL 8 HOUR)${af.and}
        GROUP BY platform, event`,
+      af.params,
     )
     const topByPlatform = (
       rows: Array<{ platform: string; event: string; c: number }>,
@@ -253,12 +273,13 @@ async function telemetrySummary() {
       return grouped
     }
     const [hourlyActive, dailyActive] = await Promise.all([
-      fetchHourlyActiveUsers(168),
-      fetchDailyActiveUsers(30),
+      fetchHourlyActiveUsers(168, app),
+      fetchDailyActiveUsers(30, app),
     ])
 
     return {
       configured: true,
+      app: appKey(app),
       events8h: Number(e8?.n) || 0,
       events24h: Number(e24?.n) || 0,
       events7d: Number(e7?.n) || 0,
@@ -416,19 +437,35 @@ export function mountAdminRoutes(app: Express) {
     res.json({ ok: true })
   })
 
-  app.get('/api/admin/summary', requireAdmin, (_req, res) => {
+  /**
+   * GET /api/admin/summary[?app=<name>|all]
+   * `app` scopes the telemetry-derived sections (events, DAU/WAU, hourly/daily active,
+   * devices, recent errors) to telemetry_events.app / install_devices.app.
+   * Omitted → photo-recipes (the dashboard's original app-specific scope); `all` → every app.
+   * Stripe / IAP entitlements / quota / push funnel are NOT per-telemetry-app and ignore it.
+   */
+  app.get('/api/admin/summary', requireAdmin, (req, res) => {
+    const parsed = parseAppParam(req.query.app)
+    if (!parsed.ok) {
+      res.status(400).json({ error: 'invalid_app', hint: 'app must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} or "all".' })
+      return
+    }
+    const scope = parsed.app
     void (async () => {
-      const [telemetry, stripe, entitlements, push, recentErrors, devices] = await Promise.all([
-        telemetrySummary(),
+      const [telemetry, stripe, entitlements, push, recentErrors, devices, apps] = await Promise.all([
+        telemetrySummary(scope),
         stripeIncomeSnapshot(),
         Promise.resolve(getEntitlementIncomeSnapshot()),
         Promise.resolve(getPushFunnelSnapshot(7)),
-        fetchRecentApiErrors(40),
-        fetchDevicesSummary({ dayBuckets: (n) => dayBuckets(n), ptOffsetSec, days: 14 }),
+        fetchRecentApiErrors(40, scope),
+        fetchDevicesSummary({ dayBuckets: (n) => dayBuckets(n), ptOffsetSec, days: 14, app: scope }),
+        fetchKnownApps(),
       ])
       res.json({
         ok: true,
         generatedAt: new Date().toISOString(),
+        app: appKey(scope),
+        apps,
         telemetry,
         stripe,
         entitlements,
