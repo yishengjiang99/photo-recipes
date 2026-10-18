@@ -1,1 +1,5 @@
-New in 1.4: ProTune Pro is here — unlimited Auto Optimize and Coach, with a 7-day free trial on yearly and monthly plans. Plans now load more reliably on the paywall, with a one-tap retry if the App Store is slow to respond. Plus stability fixes.
+Your first great shot, faster
+• Finish setup and ProTune opens straight on the camera — no detours between you and your first photo.
+• Auto Optimize starts the moment you shoot: your first capture gets better light and color automatically, with shutter, ISO and focus set for the scene in front of you.
+• One tap for better light and color — now written right by the shutter, so you know what Auto Optimize will do before you press it.
+• If a run doesn't land, Try Auto Optimize is one tap away to go again.
