@@ -629,6 +629,11 @@ final class AutoOptimizeController: ObservableObject {
         overrideInactivityTask = nil
         pendingOverrideSession = nil
         let perfId = AOPerf.begin(runId: runId)
+        // Funnel contract: exactly one `auto_optimize_start` per run, emitted
+        // at the true start — the guards above have already returned for
+        // skipped (already running) and blocked (quota) attempts, so those
+        // never count as starts. Pairs with `auto_optimize_success` by run_id.
+        Analytics.shared.track("auto_optimize_start", props: Self.startProps(runId: runId, trigger: trigger, parentRunId: parentRunId))
         let isFirstSuccessPending = !UserDefaults.standard.bool(
             forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
         )
@@ -1210,6 +1215,19 @@ final class AutoOptimizeController: ObservableObject {
     /// GPU stats provenance for the run: "metal", "cpu", or "none".
     static func gpuStatsProvenance(_ features: SceneFeatures) -> String {
         features.gpuStatsFresh ? (features.gpuStatsSource ?? "unknown") : "none"
+    }
+
+    /// Props for `auto_optimize_start` — the funnel's optimize-start stage.
+    /// Carries the same run identity as `auto_optimize_success` (`run_id`,
+    /// `parent_run_id`, `trigger`, `path`) so start → success pairs per run;
+    /// anon/session ids and app_version/build ride along via `Analytics.track`.
+    nonisolated static func startProps(runId: String, trigger: String, parentRunId: String?) -> [String: String] {
+        [
+            "run_id": runId,
+            "trigger": trigger,
+            "parent_run_id": parentRunId ?? "",
+            "path": "local",
+        ]
     }
 
     /// Phase 3 telemetry props for `auto_optimize_success` (additive — the

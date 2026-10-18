@@ -1085,6 +1085,15 @@ struct CameraView: View {
         .padding(.horizontal, hPad)
     }
 
+    /// Finder CTA label. Proposal failure behaviour: after a failed run the
+    /// progress state is replaced with "Try Auto Optimize" (the original is
+    /// preserved and no paywall follows a failed attempt).
+    private var aoButtonTitle: String {
+        if optimizer.phase.isRunning { return "Working…" }
+        if case .error = optimizer.phase { return "Try Auto Optimize" }
+        return "Optimize"
+    }
+
     /// Auto Optimize as the primary finder CTA: filled accent, sparkles icon.
     /// Keeps the running state (ProgressView + "Working…") and disabled-while-running.
     private func aoPrimaryButton(compact: Bool) -> some View {
@@ -1101,7 +1110,7 @@ struct CameraView: View {
                     Image(systemName: "sparkles")
                         .font(.callout.weight(.bold))
                 }
-                Text(optimizer.phase.isRunning ? "Working…" : "Optimize")
+                Text(aoButtonTitle)
                     .font(AppTheme.bodySmMedium())
             }
             .foregroundStyle(AppTheme.accentOnAccent)

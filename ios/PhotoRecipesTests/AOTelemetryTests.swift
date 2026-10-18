@@ -307,4 +307,24 @@ final class AOTelemetryTests: XCTestCase {
         controller.recordPendingOverrideLabel()
         XCTAssertTrue(captured.isEmpty)
     }
+
+    // MARK: - auto_optimize_start props (funnel optimize-start stage)
+
+    /// The start event must carry the same run identity as
+    /// `auto_optimize_success` so the funnel can pair start → success per run.
+    func testStartPropsCarryRunIdentity() {
+        let props = AutoOptimizeController.startProps(
+            runId: "run-9", trigger: "auto_first_capture", parentRunId: nil)
+        XCTAssertEqual(props["run_id"], "run-9")
+        XCTAssertEqual(props["trigger"], "auto_first_capture")
+        XCTAssertEqual(props["parent_run_id"], "")
+        XCTAssertEqual(props["path"], "local")
+    }
+
+    func testStartPropsKeepParentRunId() {
+        let props = AutoOptimizeController.startProps(
+            runId: "run-10", trigger: "subject_change", parentRunId: "run-9")
+        XCTAssertEqual(props["run_id"], "run-10")
+        XCTAssertEqual(props["parent_run_id"], "run-9")
+    }
 }
