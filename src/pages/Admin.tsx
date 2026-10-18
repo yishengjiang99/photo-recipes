@@ -10,8 +10,13 @@ type SessionResp = {
 type Summary = {
   ok: boolean
   generatedAt: string
+  /** Selected app scope echoed by the API (`all` or an app name). */
+  app?: string
+  /** Distinct apps seen in telemetry / install_devices. */
+  apps?: string[]
   telemetry: {
     configured: boolean
+    app?: string
     events8h: number
     events24h: number
     events7d: number
@@ -148,6 +153,84 @@ type Summary = {
     method: string | null
     contentLength: string | null
   }>
+}
+
+const DEFAULT_APP = 'photo-recipes'
+const ALL_APPS = 'all'
+const APP_STORAGE_KEY = 'admin.app'
+// Mirrors the server's APP_PARAM_RE; anything else falls back to the default.
+const APP_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+
+function sanitizeApp(v: string | null | undefined): string | null {
+  const t = (v ?? '').trim()
+  if (!t) return null
+  if (t.toLowerCase() === ALL_APPS) return ALL_APPS
+  return APP_RE.test(t) ? t : null
+}
+
+/** URL ?app= wins, then localStorage, then photo-recipes (the original app-specific scope). */
+function initialApp(): string {
+  try {
+    const fromUrl = sanitizeApp(new URLSearchParams(window.location.search).get('app'))
+    if (fromUrl) return fromUrl
+    const fromStore = sanitizeApp(window.localStorage.getItem(APP_STORAGE_KEY))
+    if (fromStore) return fromStore
+  } catch {
+    /* storage / URL unavailable */
+  }
+  return DEFAULT_APP
+}
+
+function persistApp(app: string) {
+  try {
+    window.localStorage.setItem(APP_STORAGE_KEY, app)
+  } catch {
+    /* ignore */
+  }
+  try {
+    const url = new URL(window.location.href)
+    url.searchParams.set('app', app)
+    window.history.replaceState(window.history.state, '', url)
+  } catch {
+    /* ignore */
+  }
+}
+
+function appName(app: string): string {
+  return app === ALL_APPS ? 'All apps' : app
+}
+
+function AppSelector({
+  apps,
+  value,
+  onChange,
+  disabled,
+}: {
+  apps: string[]
+  value: string
+  onChange: (app: string) => void
+  disabled?: boolean
+}) {
+  const options = Array.from(new Set([DEFAULT_APP, ...apps, ...(value === ALL_APPS ? [] : [value])]))
+  return (
+    <label className="inline-flex items-center gap-2 text-xs text-[var(--color-ink-tertiary)]">
+      App
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label="Filter telemetry by app"
+        className="rounded-[var(--radius-pill)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none focus:border-[var(--color-tip)]"
+      >
+        <option value={ALL_APPS}>All apps</option>
+        {options.map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 }
 
 function money(cents: number, currency = 'usd'): string {
@@ -390,6 +473,8 @@ export function Admin() {
   const [quotaSaveMsg, setQuotaSaveMsg] = useState('')
   const [quotaSaveError, setQuotaSaveError] = useState('')
   const [platformFilter, setPlatformFilter] = useState('all')
+  const [appFilter, setAppFilter] = useState<string>(initialApp)
+  const [knownApps, setKnownApps] = useState<string[]>([])
 
   const refreshSession = useCallback(async () => {
     try {
@@ -407,11 +492,13 @@ export function Admin() {
     }
   }, [])
 
-  const loadSummary = useCallback(async () => {
+  const loadSummary = useCallback(async (app: string) => {
     setLoadingSummary(true)
     setLoadError('')
     try {
-      const res = await fetch('/api/admin/summary', { credentials: 'include' })
+      const res = await fetch(`/api/admin/summary?app=${encodeURIComponent(app)}`, {
+        credentials: 'include',
+      })
       if (res.status === 401) {
         setAuthed(false)
         setSummary(null)
@@ -424,6 +511,7 @@ export function Admin() {
         return
       }
       setSummary(data)
+      if (data.apps?.length) setKnownApps(data.apps)
       setAuthed(true)
       if (data.quota) {
         setDraftLimit(String(data.quota.freeDailyLimit))
@@ -441,9 +529,19 @@ export function Admin() {
   useEffect(() => {
     void (async () => {
       const ok = await refreshSession()
-      if (ok) await loadSummary()
+      if (ok) await loadSummary(appFilter)
     })()
+    // Initial load only; app changes go through onAppChange.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSession, loadSummary])
+
+  function onAppChange(next: string) {
+    if (next === appFilter) return
+    setAppFilter(next)
+    persistApp(next)
+    setPlatformFilter('all')
+    void loadSummary(next)
+  }
 
   async function saveQuota() {
     setSavingQuota(true)
@@ -517,7 +615,7 @@ export function Admin() {
       }
       setPassword('')
       setAuthed(true)
-      await loadSummary()
+      await loadSummary(appFilter)
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -625,12 +723,19 @@ export function Admin() {
               {summary?.generatedAt
                 ? `Updated ${fmtTime(summary.generatedAt)}`
                 : 'ProTune AI Camera · /admin'}
+              {` · ${appName(appFilter)}`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <AppSelector
+              apps={knownApps}
+              value={appFilter}
+              onChange={onAppChange}
+              disabled={loadingSummary}
+            />
             <button
               type="button"
-              onClick={() => void loadSummary()}
+              onClick={() => void loadSummary(appFilter)}
               disabled={loadingSummary}
               className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-ink-secondary)] hover:border-[var(--color-tip)] hover:text-[var(--color-tip)]"
             >
@@ -667,7 +772,7 @@ export function Admin() {
             <section>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
-                  Last 8 hours
+                  Last 8 hours · {appName(appFilter)}
                   {!summary.telemetry.configured ? (
                     <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
                       MySQL unset — empty snapshot
@@ -724,7 +829,7 @@ export function Admin() {
 
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
-                Telemetry
+                Telemetry · {appName(appFilter)}
                 {!summary.telemetry.configured ? (
                   <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
                     MySQL unset — empty snapshot
@@ -735,16 +840,26 @@ export function Admin() {
                 <Kpi label="Events 24h" value={summary.telemetry.events24h} />
                 <Kpi label="Events 7d" value={summary.telemetry.events7d} />
                 <Kpi
-                  label="DAU (real iOS)"
+                  label={appFilter === DEFAULT_APP ? 'DAU (real iOS)' : 'DAU (real installs)'}
                   value={summary.telemetry.dau}
-                  hint={`Distinct non-test ProTune iOS installs · rolling 24h · raw all-traffic ${summary.telemetry.dauRaw ?? '—'}`}
+                  hint={`Distinct non-test ${
+                    appFilter === DEFAULT_APP
+                      ? 'ProTune iOS installs'
+                      : appFilter === ALL_APPS
+                        ? 'installs, all apps & platforms'
+                        : `${appFilter} installs, any platform`
+                  } · rolling 24h · raw ${appName(appFilter)} traffic ${summary.telemetry.dauRaw ?? '—'}`}
                 />
-                <Kpi label="WAU" value={summary.telemetry.wau} hint="Distinct anon_id · 7d" />
+                <Kpi
+                  label="WAU"
+                  value={summary.telemetry.wau}
+                  hint={`Distinct anon_id · 7d · ${appName(appFilter)}`}
+                />
               </div>
               {summary.telemetry.dailyActive ? (
                 <BarHistogram
                   title="Daily active users"
-                  windowLabel={`last ${summary.telemetry.dailyActive.days} days · PT calendar days · real iOS installs (hover: new/returning)`}
+                  windowLabel={`last ${summary.telemetry.dailyActive.days} days · PT calendar days · ${appName(appFilter)} · ${appFilter === DEFAULT_APP ? 'real iOS installs' : 'real installs'} (hover: new/returning)`}
                   definition={summary.telemetry.dailyActive.definition}
                   error={summary.telemetry.dailyActive.error}
                   bars={dailyBars(summary.telemetry.dailyActive.series)}
@@ -754,7 +869,7 @@ export function Admin() {
               {summary.devices ? (
                 <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
                   <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-secondary)]">
-                    Devices (installs) · PT days{summary.devices.error ? ` · ${summary.devices.error}` : ''}
+                    Devices (installs) · {appName(appFilter)} · PT days{summary.devices.error ? ` · ${summary.devices.error}` : ''}
                     <div className="text-xs text-[var(--color-ink-tertiary)]">{summary.devices.definition}</div>
                   </div>
                   <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -896,6 +1011,9 @@ export function Admin() {
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
                 Income snapshot
+                <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                  global · Stripe + IAP, all apps — not filtered by app
+                </span>
               </h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Kpi
@@ -1127,6 +1245,9 @@ export function Admin() {
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
                 Push funnel (Exp1)
+                <span className="ml-2 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-[var(--color-ink-tertiary)] normal-case">
+                  global · {DEFAULT_APP} push registry — not filtered by app
+                </span>
                 <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
                   {summary.push.experimentEnabled ? 'flag on' : 'flag off'}
                   {summary.push.apnsEnvConfigured ? ' · APNs env' : ' · APNs unset'}
@@ -1192,7 +1313,7 @@ export function Admin() {
 
             <section>
               <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
-                Recent API / upload errors
+                Recent API / upload errors · {appName(appFilter)}
                 <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
                   api_error · optimize_error
                 </span>

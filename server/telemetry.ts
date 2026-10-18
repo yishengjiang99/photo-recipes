@@ -6,6 +6,7 @@ import crypto from 'node:crypto'
 import type { Express, Request, Response } from 'express'
 import { getMysqlPool, isMysqlConfigured } from './mysql.ts'
 import { REAL_APP, upsertInstallDevice } from './installDevices.ts'
+import { appAnd, appLabel, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
 
 const BLOCKED_PROP_KEYS = /^(email|e_?mail|phone|password|token|authorization|cookie|image|photo|frame|base64|gps|lat|lng|longitude|latitude|ssn|name|full.?name)$/i
 const MAX_PROP_KEYS = 24
@@ -149,20 +150,22 @@ async function countEvents(
   days: number,
   events: readonly string[],
   platform?: string,
+  app: AppScope = null,
 ): Promise<Record<string, number>> {
   const pool = getMysqlPool()
   const out: Record<string, number> = {}
   for (const e of events) out[e] = 0
   if (!pool) return out
+  const inApp = appAnd('app', app)
   try {
     const [rows] = await pool.query(
       `SELECT event, COUNT(*) AS c
        FROM telemetry_events
        WHERE created_at >= (NOW(3) - INTERVAL ? DAY)
          AND event IN (${events.map(() => '?').join(',')})
-         ${platform ? 'AND platform = ?' : ''}
+         ${platform ? 'AND platform = ?' : ''}${inApp.and}
        GROUP BY event`,
-      platform ? [days, ...events, platform] : [days, ...events],
+      platform ? [days, ...events, platform, ...inApp.params] : [days, ...events, ...inApp.params],
     )
     for (const r of rows as Array<{ event: string; c: number }>) {
       out[r.event] = Number(r.c) || 0
@@ -173,22 +176,25 @@ async function countEvents(
   return out
 }
 
-async function dauWau(days: number): Promise<{ dau: number; wau: number; events: number }> {
+async function dauWau(days: number, app: AppScope = null): Promise<{ dau: number; wau: number; events: number }> {
   const pool = getMysqlPool()
   if (!pool) return { dau: 0, wau: 0, events: 0 }
+  const inApp = appAnd('app', app)
   try {
     const [[dauRow]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)${inApp.and}`,
+      inApp.params,
     )) as unknown as [Array<{ n: number }>]
     const [[wauRow]] = (await pool.query(
       `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
+       WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)${inApp.and}`,
+      inApp.params,
     )) as unknown as [Array<{ n: number }>]
     const [[evRow]] = (await pool.query(
       `SELECT COUNT(*) AS n FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL ? DAY)`,
-      [days],
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY)${inApp.and}`,
+      [days, ...inApp.params],
     )) as unknown as [Array<{ n: number }>]
     return {
       dau: Number(dauRow?.n) || 0,
@@ -200,9 +206,10 @@ async function dauWau(days: number): Promise<{ dau: number; wau: number; events:
   }
 }
 
-async function conversionByPlan(days: number) {
+async function conversionByPlan(days: number, app: AppScope = null) {
   const pool = getMysqlPool()
   if (!pool) return []
+  const inApp = appAnd('app', app)
   try {
     const [rows] = await pool.query(
       `SELECT
@@ -212,9 +219,9 @@ async function conversionByPlan(days: number) {
          SUM(event = 'checkout_redirect') AS checkout_redirect
        FROM telemetry_events
        WHERE created_at >= (NOW(3) - INTERVAL ? DAY)
-         AND event IN ('paywall_view','purchase_success','checkout_redirect','purchase_start','paywall_plan_select')
+         AND event IN ('paywall_view','purchase_success','checkout_redirect','purchase_start','paywall_plan_select')${inApp.and}
        GROUP BY plan`,
-      [days],
+      [days, ...inApp.params],
     )
     return rows
   } catch {
@@ -308,18 +315,22 @@ export type RecentApiError = {
 }
 
 /** Recent api_error / optimize_error rows for the admin dashboard. */
-export async function fetchRecentApiErrors(limit = 40): Promise<RecentApiError[]> {
+export async function fetchRecentApiErrors(
+  limit = 40,
+  app: AppScope = null,
+): Promise<RecentApiError[]> {
   const pool = getMysqlPool()
   if (!pool) return []
   const lim = Math.min(100, Math.max(1, limit))
+  const inApp = appAnd('app', app)
   try {
     const [rows] = await pool.query(
       `SELECT created_at, event, platform, props_json
        FROM telemetry_events
-       WHERE event IN ('api_error', 'optimize_error')
+       WHERE event IN ('api_error', 'optimize_error')${inApp.and}
        ORDER BY created_at DESC
        LIMIT ?`,
-      [lim],
+      [...inApp.params, lim],
     )
     return (rows as Array<{
       created_at: Date | string
@@ -404,7 +415,10 @@ export function fillHourBuckets(
   return buckets.map((bucket) => ({ bucket, users: byBucket.get(bucket) ?? 0 }))
 }
 
-export async function fetchHourlyActiveUsers(hours = 168): Promise<{
+export async function fetchHourlyActiveUsers(
+  hours = 168,
+  app: AppScope = null,
+): Promise<{
   hours: number
   timezone: string
   definition: string
@@ -413,7 +427,8 @@ export async function fetchHourlyActiveUsers(hours = 168): Promise<{
 }> {
   const windowHours = Math.min(24 * 30, Math.max(1, Math.floor(hours)))
   const definition =
-    'Active users = distinct anon_id with ≥1 telemetry event in that hour (UNIX_TIMESTAMP(created_at) DIV 3600 * 3600). Same identity as DAU/WAU KPIs. Axis in PT.'
+    `Active users (${appLabel(app)}) = distinct anon_id with ≥1 telemetry event in that hour (UNIX_TIMESTAMP(created_at) DIV 3600 * 3600). Same identity as DAU/WAU KPIs. Axis in PT.`
+  const inApp = appAnd('app', app)
   const buckets = hourBuckets(windowHours)
   const base = { hours: windowHours, timezone: ACTIVE_HISTOGRAM_TIMEZONE, definition }
   const zeros = buckets.map((bucket) => ({ bucket, users: 0 }))
@@ -427,10 +442,10 @@ export async function fetchHourlyActiveUsers(hours = 168): Promise<{
       `SELECT UNIX_TIMESTAMP(created_at) DIV 3600 * 3600 AS bucket,
               COUNT(DISTINCT anon_id) AS users
        FROM telemetry_events
-       WHERE created_at >= FROM_UNIXTIME(?)
+       WHERE created_at >= FROM_UNIXTIME(?)${inApp.and}
        GROUP BY bucket
        ORDER BY bucket`,
-      [buckets[0]],
+      [buckets[0], ...inApp.params],
     )
     return {
       ...base,
@@ -441,6 +456,20 @@ export async function fetchHourlyActiveUsers(hours = 168): Promise<{
     console.warn('[telemetry] hourly active histogram failed:', msg)
     return { ...base, series: zeros, error: 'query_failed' }
   }
+}
+
+export function dailyActiveDefinition(app: AppScope): string {
+  const who =
+    app === REAL_APP
+      ? 'real iOS ProTune installs (anon_id, app=photo-recipes, platform=ios, install_devices.is_test=0)'
+      : app === null
+        ? 'real installs across all apps and platforms (anon_id × app × platform, install_devices.is_test=0)'
+        : `real installs of app=${app} on any platform (anon_id × platform, install_devices.is_test=0)`
+  const excl =
+    app === REAL_APP
+      ? 'Excludes web, other apps (FinalCap/omr), server pseudo-ids and dev builds (1.2 build 50).'
+      : 'Excludes server pseudo-ids and dev builds (1.2 build 50).'
+  return `DAU = distinct ${who} with ≥1 event that PT calendar day (midnight–midnight America/Los_Angeles, DST-aware). New = install first seen that PT day; returning = first seen earlier. ${excl} anon_id is a per-install UUID in UserDefaults (resets on reinstall).`
 }
 
 /** PT (America/Los_Angeles) UTC offset in seconds at epoch `tsSec` (e.g. -25200 PDT). */
@@ -520,7 +549,10 @@ export function fillDayBuckets(
  * (epoch of 00:00 UTC on the PT date). pt_offset is computed in Node (prod MySQL
  * has no tz tables) and switches at the DST instant if the window crosses one.
  */
-export async function fetchDailyActiveUsers(days = 30): Promise<{
+export async function fetchDailyActiveUsers(
+  days = 30,
+  app: AppScope = REAL_APP,
+): Promise<{
   days: number
   timezone: string
   definition: string
@@ -528,8 +560,9 @@ export async function fetchDailyActiveUsers(days = 30): Promise<{
   error?: string
 }> {
   const windowDays = Math.min(90, Math.max(1, Math.floor(days)))
-  const definition =
-    'DAU = distinct real iOS ProTune installs (anon_id, app=photo-recipes, platform=ios, install_devices.is_test=0) with ≥1 event that PT calendar day (midnight–midnight America/Los_Angeles, DST-aware). New = install first seen that PT day; returning = first seen earlier. Excludes web, other apps (FinalCap/omr), server pseudo-ids and dev builds (1.2 build 50). anon_id is a per-install UUID in UserDefaults (resets on reinstall).'
+  const definition = dailyActiveDefinition(app)
+  const inApp = appAnd('e.app', app)
+  const platSql = iosOnlyScope(app) ? " AND e.platform = 'ios'" : ''
   const buckets = dayBuckets(windowDays)
   const base = { days: windowDays, timezone: ACTIVE_HISTOGRAM_TIMEZONE, definition }
   const zeros = fillDayBuckets([], buckets)
@@ -556,10 +589,10 @@ export async function fetchDailyActiveUsers(days = 30): Promise<{
        JOIN install_devices d
          ON d.anon_id = e.anon_id AND d.app = e.app AND d.platform = e.platform
        WHERE e.created_at >= FROM_UNIXTIME(?)
-         AND e.app = ? AND e.platform = 'ios' AND d.is_test = 0
+         AND d.is_test = 0${platSql}${inApp.and}
        GROUP BY bucket
        ORDER BY bucket`,
-      [switchAt, after, before, switchAt, after, before, switchAt, after, before, fromSec, REAL_APP],
+      [switchAt, after, before, switchAt, after, before, switchAt, after, before, fromSec, ...inApp.params],
     )
     return {
       ...base,
@@ -627,17 +660,25 @@ export function mountTelemetryRoutes(app: Express) {
         return
       }
       const days = Math.min(90, Math.max(1, Number(req.query.days) || 7))
+      // Optional ?app=<name>; absent / `all` = every app (unchanged default for this API).
+      const parsedApp = parseAppParam(req.query.app, null)
+      if (!parsedApp.ok) {
+        res.status(400).json({ error: 'invalid_app' })
+        return
+      }
+      const app = parsedApp.app
       const [webActivation, iosCapture, monetization, activity, byPlan] =
         await Promise.all([
-          countEvents(days, FUNNEL_WEB_ACTIVATION, undefined),
-          countEvents(days, FUNNEL_IOS_CAPTURE, 'ios'),
-          countEvents(days, FUNNEL_MONETIZATION, undefined),
-          dauWau(days),
-          conversionByPlan(days),
+          countEvents(days, FUNNEL_WEB_ACTIVATION, undefined, app),
+          countEvents(days, FUNNEL_IOS_CAPTURE, 'ios', app),
+          countEvents(days, FUNNEL_MONETIZATION, undefined, app),
+          dauWau(days, app),
+          conversionByPlan(days, app),
         ])
       res.json({
         ok: true,
         days,
+        app: app ?? 'all',
         mysql: isMysqlConfigured() && Boolean(getMysqlPool()),
         activity,
         funnels: {

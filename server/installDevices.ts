@@ -5,6 +5,7 @@
  */
 import type { Pool } from 'mysql2/promise'
 import { getMysqlPool } from './mysql.ts'
+import { APP_PARAM_RE, REAL_APP, appAnd, iosOnlyScope, type AppScope } from './appFilter.ts'
 
 export const INSTALL_DEVICES_DDL = `CREATE TABLE IF NOT EXISTS install_devices (
   anon_id VARCHAR(64) NOT NULL,
@@ -27,7 +28,7 @@ export const INSTALL_DEVICES_DDL = `CREATE TABLE IF NOT EXISTS install_devices (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
 
 /** The primary product audience counted as "real users" on the admin. */
-export const REAL_APP = 'photo-recipes'
+export { REAL_APP }
 
 /**
  * Test/dev heuristics:
@@ -162,20 +163,58 @@ export type DevicesSummary = {
   error?: string
 }
 
+/**
+ * Distinct app values seen in install_devices plus telemetry_events (last 30d).
+ * Always includes REAL_APP first. Values are filtered to the safe app-name pattern.
+ */
+export async function fetchKnownApps(
+  pool: Pick<Pool, 'query'> | null = getMysqlPool(),
+): Promise<string[]> {
+  const out = new Set<string>([REAL_APP])
+  if (pool) {
+    try {
+      const [rows] = await pool.query(
+        `SELECT app FROM install_devices
+         UNION
+         SELECT DISTINCT app FROM telemetry_events
+         WHERE created_at >= (NOW(3) - INTERVAL 30 DAY)
+         ORDER BY app
+         LIMIT 200`,
+      )
+      for (const r of rows as Array<{ app: unknown }>) {
+        if (typeof r.app === 'string' && APP_PARAM_RE.test(r.app)) out.add(r.app)
+      }
+    } catch (err) {
+      console.warn('[install_devices] known apps failed:', err instanceof Error ? err.message : err)
+    }
+  }
+  return [...out].sort((a, b) => (a === REAL_APP ? -1 : b === REAL_APP ? 1 : a.localeCompare(b)))
+}
+
+export function devicesDefinition(app: AppScope): string {
+  const scope = app === null ? 'all apps' : `app ${app}`
+  const plat = iosOnlyScope(app) ? 'iOS only' : 'all platforms'
+  return `One row per install (anon_id × app × platform) in install_devices. New = first_seen_at on that PT day. Real = ${scope}, is_test=0 (excludes server pseudo-ids and 1.2(50) dev builds). Daily counts are ${plat}. anon_id resets on reinstall, so a reinstall counts as a new install.`
+}
+
 /** PT day helpers are passed in to avoid a circular import with telemetry.ts. */
 export async function fetchDevicesSummary(opts: {
   dayBuckets: (days: number) => number[]
   ptOffsetSec: (tsSec: number) => number
   days?: number
+  /** null = all apps; default REAL_APP. */
+  app?: AppScope
 }): Promise<DevicesSummary> {
   const days = opts.days ?? 14
+  const app: AppScope = opts.app === undefined ? REAL_APP : opts.app
+  const inApp = appAnd('app', app)
+  const platSql = iosOnlyScope(app) ? " AND platform = 'ios'" : ''
   const buckets = opts.dayBuckets(days)
   const today = buckets[buckets.length - 1]!
   const dayStr = (b: number) => new Date(b * 1000).toISOString().slice(0, 10)
   const empty: DevicesSummary = {
     timezone: 'America/Los_Angeles',
-    definition:
-      'One row per install (anon_id × app × platform) in install_devices. New = first_seen_at on that PT day. Real = app photo-recipes, is_test=0 (excludes server pseudo-ids and 1.2(50) dev builds). anon_id resets on reinstall, so a reinstall counts as a new install.',
+    definition: devicesDefinition(app),
     totals: { real: 0, test: 0, realIos: 0, realWeb: 0, otherApps: 0 },
     today: { day: dayStr(today), active: 0, newInstalls: 0, returning: 0 },
     newPerDay: buckets.map((b) => ({ day: dayStr(b), newInstalls: 0 })),
@@ -187,21 +226,29 @@ export async function fetchDevicesSummary(opts: {
   try {
     const [[t]] = (await pool.query(
       `SELECT
-         SUM(app = ? AND is_test = 0) AS real_n,
+         SUM(is_test = 0) AS real_n,
          SUM(is_test = 1) AS test_n,
-         SUM(app = ? AND is_test = 0 AND platform = 'ios') AS real_ios,
-         SUM(app = ? AND is_test = 0 AND platform = 'web') AS real_web,
-         SUM(app <> ? AND is_test = 0) AS other_apps
-       FROM install_devices`,
-      [REAL_APP, REAL_APP, REAL_APP, REAL_APP],
+         SUM(is_test = 0 AND platform = 'ios') AS real_ios,
+         SUM(is_test = 0 AND platform = 'web') AS real_web
+       FROM install_devices
+       WHERE 1 = 1${inApp.and}`,
+      inApp.params,
     )) as unknown as [Array<Record<string, number>>]
+    // Installs of every OTHER app (global context, not scoped to the selection).
+    const o: Record<string, number> | undefined =
+      app === null
+        ? { other_apps: 0 }
+        : ((await pool.query(
+            `SELECT COUNT(*) AS other_apps FROM install_devices WHERE app <> ? AND is_test = 0`,
+            [app],
+          )) as unknown as [Array<Record<string, number>>])[0][0]
     const newPerDay = await Promise.all(
       buckets.map(async (b) => {
         const [[r]] = (await pool.query(
           `SELECT COUNT(*) AS n FROM install_devices
-           WHERE app = ? AND platform = 'ios' AND is_test = 0
+           WHERE is_test = 0${platSql}${inApp.and}
              AND first_seen_at >= FROM_UNIXTIME(?) AND first_seen_at < FROM_UNIXTIME(?)`,
-          [REAL_APP, startSec(b), startSec(b + 86400)],
+          [...inApp.params, startSec(b), startSec(b + 86400)],
         )) as unknown as [Array<{ n: number }>]
         return { day: dayStr(b), newInstalls: Number(r?.n) || 0 }
       }),
@@ -210,13 +257,16 @@ export async function fetchDevicesSummary(opts: {
       `SELECT COUNT(*) AS active,
               SUM(first_seen_at >= FROM_UNIXTIME(?)) AS new_n
        FROM install_devices
-       WHERE app = ? AND platform = 'ios' AND is_test = 0 AND last_seen_at >= FROM_UNIXTIME(?)`,
-      [startSec(today), REAL_APP, startSec(today)],
+       WHERE is_test = 0${platSql}${inApp.and} AND last_seen_at >= FROM_UNIXTIME(?)`,
+      [startSec(today), ...inApp.params, startSec(today)],
     )) as unknown as [Array<{ active: number; new_n: number }>]
     const [recentRows] = await pool.query(
       `SELECT anon_id, app, platform, first_seen_at, last_seen_at, first_app_version,
               latest_app_version, latest_build, device_model, source, is_test, event_count
-       FROM install_devices ORDER BY first_seen_at DESC LIMIT 40`,
+       FROM install_devices
+       WHERE 1 = 1${inApp.and}
+       ORDER BY first_seen_at DESC LIMIT 40`,
+      inApp.params,
     )
     const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v))
     const active = Number(a?.active) || 0
@@ -228,7 +278,7 @@ export async function fetchDevicesSummary(opts: {
         test: Number(t?.test_n) || 0,
         realIos: Number(t?.real_ios) || 0,
         realWeb: Number(t?.real_web) || 0,
-        otherApps: Number(t?.other_apps) || 0,
+        otherApps: Number(o?.other_apps) || 0,
       },
       today: { day: dayStr(today), active, newInstalls: newN, returning: Math.max(0, active - newN) },
       newPerDay,
