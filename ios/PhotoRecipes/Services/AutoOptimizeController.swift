@@ -710,6 +710,11 @@ final class AutoOptimizeController: ObservableObject {
                     Analytics.shared.track("auto_optimize_fail", props: [
                         "error_code": "no_frame", "error_class": "no_frame",
                         "path": "local", "trigger": trigger,
+                        // Same run identity + tap→fail duration as
+                        // `auto_optimize_success` (`latency_ms` from the
+                        // run's `startedAt`), so failures time-box too.
+                        "run_id": runId,
+                        "latency_ms": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
                     ])
                     AOPerf.end(perfId, outcome: "no-frame")
                     return
@@ -746,6 +751,11 @@ final class AutoOptimizeController: ObservableObject {
             Analytics.shared.track("auto_optimize_fail", props: [
                 "error_code": "no_recipe", "error_class": "no_recipe",
                 "path": "local", "trigger": trigger,
+                // Same run identity + tap→fail duration as
+                // `auto_optimize_success` (`latency_ms` from the
+                // run's `startedAt`), so failures time-box too.
+                "run_id": runId,
+                "latency_ms": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
             ])
             AOPerf.end(perfId, outcome: "no-recipe")
             return
