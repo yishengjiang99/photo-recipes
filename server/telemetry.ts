@@ -9,12 +9,12 @@ import { REAL_APP, upsertInstallDevice } from './installDevices.ts'
 import { appAnd, appLabel, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
 
 const BLOCKED_PROP_KEYS = /^(email|e_?mail|phone|password|token|authorization|cookie|image|photo|frame|base64|gps|lat|lng|longitude|latitude|ssn|name|full.?name)$/i
-const MAX_PROP_KEYS = 24
+const MAX_PROP_KEYS = 64
 const MAX_PROP_STRING = 200
 const MAX_ANON = 64
 const MAX_SESSION = 64
 
-function sanitizeProps(raw: unknown): Record<string, string | number | boolean> | null {
+export function sanitizeProps(raw: unknown): Record<string, string | number | boolean> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const out: Record<string, string | number | boolean> = {}
   let n = 0
