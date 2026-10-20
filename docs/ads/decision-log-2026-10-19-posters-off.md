@@ -32,4 +32,4 @@ Consistent with our own steering data: the v17 video has been the campaign's cha
 
 ## Follow-up
 
-The 12-hour reevaluation (scheduled 2026-10-20 ~06:22 PT) now reads as a video-vs-video comparison: v17 (17s, established) vs v20 (10s, voiceover, transformation up front). Pause verification: executed 2026-10-19 evening; end state confirmed in the campaign's ads records.
+The 12-hour reevaluation (scheduled 2026-10-20 ~06:22 PT) now reads as a video-vs-video comparison: v17 (17s, established) vs v20 (10s, voiceover, transformation up front). Pause verification (read back 2026-10-19 21:05 PT): both posters confirmed PAUSED / effective CAMPAIGN_PAUSED; video v17 ACTIVE; video v20 ACTIVE with effective_status now ACTIVE (fully processed and delivering). Campaign and ad set ACTIVE throughout.
