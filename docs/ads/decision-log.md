@@ -54,3 +54,21 @@ Two findings drove the decision:
 Decision (user, 2026-10-20 08:01 PT: "Restart the campaign — videos only, pause the original first"): pause the original at the ad level, then restart the campaign. Posters stay off per the 2026-10-19 decision.
 
 Executed and verified (08:07 PT): campaign ACTIVE / effective ACTIVE; ad set ACTIVE / effective ACTIVE; original PAUSED; poster v17 and v18 PAUSED; video v17 and v20 ACTIVE and delivering. Budget unchanged at $40/day.
+
+## 2026-10-20 — Campaign STOPPED (revenue) + funnel review
+
+Decision (user, 2026-10-20 08:37 PT): "We need to stop the ads for now and pause the daily routine on this. It's not generating close to enough revenue to justify ad spending." Executed and verified (08:38 PT): campaign 52591274976908 PAUSED at the campaign level; ad set and both video ads effective CAMPAIGN_PAUSED; the configured lineup is preserved exactly (videos active-configured, posters + original paused), so a restart restores the video-only setup as-is. Budget setting untouched ($40/day).
+
+Routines (user's calls, 2026-10-20): the daily decision cycle and the daily delivery watchdog are PAUSED. The weekly steering review is KEPT and now carries this funnel review every week, with an explicit verdict on whether the revenue picture has changed enough to revisit the stop.
+
+### Funnel review (run 2026-10-20, trailing 7 complete days Oct 13-19 PT; method validated by exact reproduction of the prior window)
+
+Canonical funnel (distinct sessions): 296 sessions -> 153 camera (51.7%) -> 11 optimize starts -> 78 successes (camera->success 51.0%, sessions->success 26.4%). Starts are recovering with v1.6 (11 start sessions vs 3 last week; today Oct 20 all start sessions are v1.6 — the restored emission is firing in the wild).
+Revenue: 78 success -> 83 paywall_view -> 0 trial_start -> 3 purchase_success (paywall->purchase 3.6%). Supporting: paywall_trigger 106, plan_select 12, purchase_start 12, dismiss 24, restore 2, cancelled 2.
+Latency (iOS successes, n=117 with latency): median 1,075 ms, p95 14,589 ms (baseline median 1,056 / p95 11,716) — median flat, the slow tail ran heavier; 7.7% of runs over 10 s.
+All-time: purchase_success 5 rows total; trial_start 0 rows ever (no iOS first-party trial event exists).
+Movement check: no stage moved >= 20 points vs baselines (sessions->camera +11.6 pp vs operational baseline, +1.1 pp vs last reported).
+
+### Why the stop matches the math
+
+The funnel is not the leak: half of sessions open the camera, half of camera sessions succeed, 83 sessions saw the paywall. The leak is the last step — 12 purchase_start sessions yielded 3 purchases (about 1 in 28 paywall viewers), and trials are unmeasurable-to-zero. Against roughly $225-280/week of ad spend at the campaign's recent pace (~11 installs per 3 days at $8.76 blended CPI), even crediting all 3 weekly purchases to ads puts spend around $75-93 per purchase against $4.99/mo or $29.99/yr price points. The weekly steering review now re-tests this verdict every Monday against fresh funnel + revenue figures.
