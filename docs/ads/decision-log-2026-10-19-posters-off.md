@@ -1,4 +1,10 @@
-# Decision log — posters turned off (2026-10-19)
+# ProTune ads — decision log (running)
+
+Running record of campaign decisions for ProTune AI Camera - Installs (campaign 52591274976908). Every decision gets an entry here with the analysis it rests on, per the user's instruction 2026-10-19 ("Keep a running log in the same file"). Newest entries at the bottom.
+
+---
+
+## 2026-10-19 — Posters turned off
 
 **Decision (user directive, 2026-10-19 21:04 PT: "Turn off the posters"):** pause both poster ads in the ProTune install campaign. The ad set runs video-only until the user decides otherwise.
 
