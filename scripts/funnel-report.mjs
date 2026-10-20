@@ -53,6 +53,11 @@ const FUNNELS = {
   ],
 }
 
+// App scope: telemetry_events is shared with other apps (omr-sheet-cam,
+// grepawk-photos, ...). Every query below filters to ProTune's app value —
+// the same REAL_APP constant the server uses (server/appFilter.ts).
+const APP = 'photo-recipes'
+
 // PT helpers mirror server/telemetry.ts (canonicalFunnelWindow).
 const PT = 'America/Los_Angeles'
 function ptOffsetSec(tsSec) {
@@ -91,10 +96,12 @@ try {
        COUNT(DISTINCT IF(event = 'auto_optimize_success', session_id, NULL)) AS auto_optimize_success
      FROM telemetry_events
      WHERE session_id IS NOT NULL AND session_id <> ''
+       AND app = ?
        AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)`,
-    [w.startSec, w.endSec],
+    [APP, w.startSec, w.endSec],
   )
   console.log('canonical (distinct session_id, trailing complete PT days)', {
+    app: APP,
     days,
     window: `${w.startDay} -> ${w.endDayExclusive} (exclusive, America/Los_Angeles)`,
     sessions: Number(canonical.sessions) || 0,
@@ -104,12 +111,14 @@ try {
   })
   console.log('alternate cuts below (raw counts / distinct anon_id, rolling window) — not comparable to canonical')
   const [[dau]] = await pool.query(
-    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY)`,
+    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY) AND app = ?`,
+    [APP],
   )
   const [[wau]] = await pool.query(
-    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)`,
+    `SELECT COUNT(DISTINCT anon_id) AS n FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 7 DAY) AND app = ?`,
+    [APP],
   )
-  console.log(JSON.stringify({ days, dau: dau.n, wau: wau.n }, null, 2))
+  console.log(JSON.stringify({ app: APP, days, dau: dau.n, wau: wau.n }, null, 2))
 
   for (const [name, events] of Object.entries(FUNNELS)) {
     const ph = events.map(() => '?').join(',')
@@ -117,14 +126,15 @@ try {
     const [rows] = await pool.query(
       `SELECT event, COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
        FROM telemetry_events
-       WHERE created_at >= (NOW(3) - INTERVAL ? DAY) AND event IN (${ph})${platformFilter}
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY) AND event IN (${ph})${platformFilter} AND app = ?
        GROUP BY event`,
-      [days, ...events],
+      [days, ...events, APP],
     )
     const byEvent = Object.fromEntries(events.map((e) => [e, { c: 0, users: 0 }]))
     for (const r of rows) byEvent[r.event] = { c: Number(r.c), users: Number(r.users) }
     console.log(`${name} (alternate)`, byEvent)
   }
+  console.log('note: purchase_success counts above are first-party telemetry events (iOS source=storekit). Web Stripe sales do not emit purchase_success into telemetry and are not counted here; App Store Connect / Stripe are the sales ledgers.')
 } finally {
   await pool.end()
 }

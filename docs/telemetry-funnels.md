@@ -26,9 +26,17 @@ funnel).
   is the trailing 7 complete days. Bounds are computed as PT midnights in Node
   (production MySQL has no timezone tables) and applied as
   `created_at >= FROM_UNIXTIME(start)` AND `created_at < FROM_UNIXTIME(end)`.
-- **Platform / app scope:** all platforms. The server's app filter
-  (`?app=` / the admin app selector) still scopes which app's events are
-  counted; it does not change the unit, stages, window, or timezone.
+- **Platform / app scope:** all platforms; **app fixed to `photo-recipes`**.
+  `telemetry_events` is shared with other apps (`omr-sheet-cam`,
+  `grepawk-photos`, …), and their rows must never enter the ProTune funnel —
+  every canonical query filters `app = 'photo-recipes'` (the server's
+  `REAL_APP` constant; `fetchCanonicalFunnel` and `GET /api/telemetry/funnels`
+  both default to it). The server's `?app=` parameter / admin app selector can
+  still scope a read to another app or to all apps for cross-app questions,
+  but numbers produced that way are not the canonical ProTune funnel and must
+  not be quoted as it. (An unscoped read once inflated all-time
+  `purchase_success` from 4 to 5 with another app's purchase, and a weekly
+  sessions count by 72 foreign sessions.)
 - **Like-for-like rule:** only compare canonical numbers with canonical
   numbers produced under the identical unit, stages, window, timezone, and
   scope. Never compare a canonical (session) number against a raw event count
@@ -50,6 +58,7 @@ SELECT
   COUNT(DISTINCT IF(event = 'auto_optimize_success', session_id, NULL)) AS auto_optimize_success
 FROM telemetry_events
 WHERE session_id IS NOT NULL AND session_id <> ''
+  AND app = 'photo-recipes'
   AND created_at >= FROM_UNIXTIME(?)   -- PT midnight of the first day in the window
   AND created_at <  FROM_UNIXTIME(?);  -- PT midnight today (exclusive)
 ```
@@ -66,7 +75,8 @@ Each uses a different unit (raw event counts and/or distinct `anon_id`),
 and/or a rolling `NOW() - INTERVAL` window in server time instead of
 complete PT calendar days. Numbers from these cuts must be labelled with
 their cut when reported and must never be compared against, or substituted
-for, the canonical funnel above.
+for, the canonical funnel above. All cuts in this doc are scoped to
+`app = 'photo-recipes'`, same as the canonical funnel.
 
 ### A1. Web activation (alternate cut: raw counts + distinct anon_id, rolling 7 days)
 
@@ -76,6 +86,7 @@ Landing → Camera CTA → camera_open → auto_optimize_success
 SELECT event, COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+  AND app = 'photo-recipes'
   AND event IN (
     'landing_view','landing_cta_camera','camera_open',
     'auto_optimize_start','auto_optimize_success'
@@ -95,6 +106,7 @@ SELECT event, COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
   AND platform = 'ios'
+  AND app = 'photo-recipes'
   AND event IN ('camera_open','auto_optimize_success','capture_success')
 GROUP BY event
 ORDER BY FIELD(event,'camera_open','auto_optimize_success','capture_success');
@@ -106,6 +118,15 @@ Steps (same order as `GET /api/telemetry/funnels` → `funnels.monetization`):
 `paywall_view` → `paywall_dismiss` | `paywall_plan_select` → `purchase_start` →
 `purchase_cancelled` | `purchase_pending` | `purchase_failed` | `purchase_success`
 (`checkout_redirect` = web Stripe; `purchase_fail` = legacy iOS ≤ 1.4, replaced by `purchase_failed`).
+
+**Purchases are telemetry events, not sales.** `purchase_success` counts here
+are first-party telemetry events (iOS rows carry props `source=storekit`; the
+funnels API also splits them by source in
+`funnels.purchase_success_by_source`). Web Stripe sales do not emit
+`purchase_success` into telemetry, so they are never counted in this cut.
+App Store Connect is the sales ledger for StoreKit purchases and Stripe is
+the ledger for web sales — never quote a telemetry purchase count as total
+sales.
 
 iOS event props (all strings):
 
@@ -129,6 +150,7 @@ SELECT
   SUM(event='purchase_success') AS purchase_success
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+  AND app = 'photo-recipes'
   AND event IN ('paywall_view','paywall_dismiss','paywall_plan_select','purchase_start',
     'purchase_cancelled','purchase_pending','purchase_failed','purchase_fail',
     'checkout_redirect','purchase_success')
@@ -143,6 +165,7 @@ SELECT JSON_UNQUOTE(JSON_EXTRACT(props_json,'$.paywall_type')) AS paywall_type,
   ROUND(AVG(CAST(JSON_UNQUOTE(JSON_EXTRACT(props_json,'$.time_on_screen_ms')) AS UNSIGNED))) AS avg_ms
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY) AND event = 'paywall_dismiss'
+  AND app = 'photo-recipes'
 GROUP BY paywall_type;
 ```
 
@@ -150,10 +173,12 @@ GROUP BY paywall_type;
 
 ```sql
 SELECT COUNT(DISTINCT anon_id) AS dau
-FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY);
+FROM telemetry_events
+WHERE created_at >= (NOW(3) - INTERVAL 1 DAY) AND app = 'photo-recipes';
 
 SELECT COUNT(DISTINCT anon_id) AS wau
-FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 7 DAY);
+FROM telemetry_events
+WHERE created_at >= (NOW(3) - INTERVAL 7 DAY) AND app = 'photo-recipes';
 ```
 
 ### A5. Step drop-off counts (alternate cuts only)

@@ -9,6 +9,10 @@
 -- which computes PT midnights in Node — production MySQL has no tz tables).
 -- Left unset, the canonical query below returns no rows rather than a
 -- wrong-timezone number.
+-- EVERY query below filters app = 'photo-recipes': telemetry_events is shared
+-- with other apps (omr-sheet-cam, grepawk-photos, ...) and their rows must
+-- never enter ProTune numbers (a shared-table read once inflated all-time
+-- purchase_success from 4 to 5 with another app's purchase).
 
 SELECT 'canonical' AS funnel,
   COUNT(DISTINCT session_id) AS sessions,
@@ -17,6 +21,7 @@ SELECT 'canonical' AS funnel,
   COUNT(DISTINCT IF(event='auto_optimize_success', session_id, NULL)) AS auto_optimize_success
 FROM telemetry_events
 WHERE session_id IS NOT NULL AND session_id <> ''
+  AND app = 'photo-recipes'
   AND created_at >= FROM_UNIXTIME(@canonical_start)
   AND created_at < FROM_UNIXTIME(@canonical_end);
 
@@ -26,12 +31,14 @@ WHERE session_id IS NOT NULL AND session_id <> ''
 SELECT 'web_activation (alternate)' AS funnel, event, COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+  AND app = 'photo-recipes'
   AND event IN ('landing_view','landing_cta_camera','camera_open','auto_optimize_start','auto_optimize_success')
 GROUP BY event;
 
 SELECT 'ios_capture (alternate)' AS funnel, event, COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY) AND platform='ios'
+  AND app = 'photo-recipes'
   AND event IN ('camera_open','auto_optimize_success','capture_success')
 GROUP BY event;
 
@@ -46,6 +53,7 @@ SELECT 'monetization (alternate)' AS funnel,
   SUM(event='purchase_success') AS purchase_success
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY)
+  AND app = 'photo-recipes'
   AND event IN ('paywall_view','paywall_dismiss','paywall_plan_select','purchase_start',
     'purchase_cancelled','purchase_pending','purchase_failed','purchase_fail',
     'checkout_redirect','purchase_success')
@@ -56,8 +64,9 @@ SELECT 'paywall_dismiss (alternate)' AS funnel,
   COUNT(*) AS c, COUNT(DISTINCT anon_id) AS users
 FROM telemetry_events
 WHERE created_at >= (NOW(3) - INTERVAL 7 DAY) AND event = 'paywall_dismiss'
+  AND app = 'photo-recipes'
 GROUP BY paywall_type;
 
 -- Alternate cut: user-level DAU/WAU (distinct anon_id) — not the canonical funnel.
-SELECT COUNT(DISTINCT anon_id) AS dau FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY);
-SELECT COUNT(DISTINCT anon_id) AS wau FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 7 DAY);
+SELECT COUNT(DISTINCT anon_id) AS dau FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 1 DAY) AND app = 'photo-recipes';
+SELECT COUNT(DISTINCT anon_id) AS wau FROM telemetry_events WHERE created_at >= (NOW(3) - INTERVAL 7 DAY) AND app = 'photo-recipes';

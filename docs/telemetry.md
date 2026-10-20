@@ -46,6 +46,11 @@ curl -s -H "X-Telemetry-Read-Key: $TELEMETRY_READ_KEY" \
 node scripts/funnel-report.mjs --days 7
 ```
 
+The funnels endpoint defaults to `app=photo-recipes` (telemetry_events is
+shared with other apps); pass `?app=all` or `?app=<name>` to widen the scope
+explicitly. Purchase figures in the response are first-party telemetry
+events (`revenueNote` in the payload), not sales-ledger totals.
+
 ## Ad attribution (iOS 1.2+)
 
 Added for X App Install ads. Everything below is in addition to (not part of) the in-house pipeline.

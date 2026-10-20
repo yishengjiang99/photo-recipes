@@ -125,6 +125,8 @@ export async function insertTelemetry(row: TelemetryRow): Promise<boolean> {
  * Unit: distinct session_id. Stages: sessions (any telemetry event) →
  * camera_open → auto_optimize_start → auto_optimize_success.
  * Window: trailing complete days, America/Los_Angeles (today excluded).
+ * Scope: app = 'photo-recipes' (REAL_APP) only — telemetry_events is shared
+ * with other apps (omr-sheet-cam, grepawk-photos, …) whose rows never count.
  * All platforms. Compare only like-for-like (same unit/stages/window/tz/scope).
  */
 export const CANONICAL_FUNNEL_TIMEZONE = 'America/Los_Angeles'
@@ -140,7 +142,18 @@ export const CANONICAL_FUNNEL_DEFINITION =
   'Canonical ProTune funnel: unit = distinct session_id (rows with NULL/empty session_id excluded); ' +
   'stages = sessions (sessions with any telemetry event) → camera_open → auto_optimize_start → auto_optimize_success; ' +
   'window = trailing complete days in America/Los_Angeles (PT calendar days, midnight–midnight, today excluded); ' +
+  "scope = app 'photo-recipes' only (telemetry_events is shared with other apps; their rows never count); " +
   'all platforms. Like-for-like only: never compare against raw event counts or distinct-anon_id (user-level) cuts.'
+
+/**
+ * Revenue labelling for every purchase figure derived from telemetry:
+ * purchase_success rows are first-party telemetry events, NOT a sales ledger.
+ */
+export const PURCHASE_TELEMETRY_NOTE =
+  'purchase_success counts are first-party telemetry events (iOS purchases carry props source=storekit). ' +
+  'Web Stripe sales do not emit purchase_success into telemetry, so they are never counted here. ' +
+  'App Store Connect is the sales ledger for StoreKit purchases and Stripe is the ledger for web sales — ' +
+  'never quote telemetry purchase counts as total sales.'
 
 /** Alternate cut (NOT the canonical funnel): raw event counts, rolling window. */
 const FUNNEL_WEB_ACTIVATION = [
@@ -250,6 +263,32 @@ async function conversionByPlan(days: number, app: AppScope = null) {
       [days, ...inApp.params],
     )
     return rows
+  } catch {
+    return []
+  }
+}
+
+/** purchase_success split by props.source (storekit / stripe / unknown), same rolling window as conversionByPlan. */
+async function purchaseSuccessBySource(days: number, app: AppScope = null) {
+  const pool = getMysqlPool()
+  if (!pool) return [] as Array<{ source: string; purchases: number }>
+  const inApp = appAnd('app', app)
+  try {
+    const [rows] = await pool.query(
+      `SELECT
+         COALESCE(JSON_UNQUOTE(JSON_EXTRACT(props_json, '$.source')), 'unknown') AS source,
+         COUNT(*) AS c
+       FROM telemetry_events
+       WHERE created_at >= (NOW(3) - INTERVAL ? DAY)
+         AND event = 'purchase_success'${inApp.and}
+       GROUP BY source
+       ORDER BY c DESC`,
+      [days, ...inApp.params],
+    )
+    return (rows as Array<{ source: string; c: number }>).map((r) => ({
+      source: r.source || 'unknown',
+      purchases: Number(r.c) || 0,
+    }))
   } catch {
     return []
   }
@@ -689,10 +728,15 @@ export type CanonicalFunnel = {
 
 const ratio = (a: number, b: number): number | null => (b > 0 ? a / b : null)
 
-/** The canonical funnel (see CANONICAL_FUNNEL_DEFINITION). All platforms. */
+/**
+ * The canonical funnel (see CANONICAL_FUNNEL_DEFINITION). All platforms.
+ * App scope defaults to REAL_APP ('photo-recipes') — the canonical funnel is
+ * ProTune-only by definition; callers pass another scope (or null = all apps)
+ * only explicitly, and numbers produced that way are not the canonical funnel.
+ */
 export async function fetchCanonicalFunnel(
   days: number = CANONICAL_FUNNEL_DAYS,
-  app: AppScope = null,
+  app: AppScope = REAL_APP,
   nowMs: number = Date.now(),
 ): Promise<CanonicalFunnel> {
   const w = canonicalFunnelWindow(days, nowMs)
@@ -801,14 +845,17 @@ export function mountTelemetryRoutes(app: Express) {
         return
       }
       const days = Math.min(90, Math.max(1, Number(req.query.days) || 7))
-      // Optional ?app=<name>; absent / `all` = every app (unchanged default for this API).
-      const parsedApp = parseAppParam(req.query.app, null)
+      // Optional ?app=<name>; absent = photo-recipes (REAL_APP), the canonical
+      // ProTune scope — telemetry_events is shared with other apps, so the old
+      // all-apps default mixed their sessions/purchases into every figure.
+      // `all` (every app) or another app name only when passed explicitly.
+      const parsedApp = parseAppParam(req.query.app, REAL_APP)
       if (!parsedApp.ok) {
         res.status(400).json({ error: 'invalid_app' })
         return
       }
       const app = parsedApp.app
-      const [canonical, webActivation, iosCapture, monetization, activity, byPlan] =
+      const [canonical, webActivation, iosCapture, monetization, activity, byPlan, purchasesBySource] =
         await Promise.all([
           fetchCanonicalFunnel(days, app),
           countEvents(days, FUNNEL_WEB_ACTIVATION, undefined, app),
@@ -816,6 +863,7 @@ export function mountTelemetryRoutes(app: Express) {
           countEvents(days, FUNNEL_MONETIZATION, undefined, app),
           dauWau(days, app),
           conversionByPlan(days, app),
+          purchaseSuccessBySource(days, app),
         ])
       res.json({
         ok: true,
@@ -823,9 +871,11 @@ export function mountTelemetryRoutes(app: Express) {
         app: app ?? 'all',
         mysql: isMysqlConfigured() && Boolean(getMysqlPool()),
         activity,
+        revenueNote: PURCHASE_TELEMETRY_NOTE,
         canonicalFunnel: canonical,
         funnels: {
           canonical,
+          purchase_success_by_source: purchasesBySource,
           // Alternate cuts below — NOT the canonical funnel. They are raw
           // event counts over a rolling NOW()-window (activity/byPlan are
           // user-level, distinct anon_id). Never compare them against
@@ -841,7 +891,7 @@ export function mountTelemetryRoutes(app: Express) {
           ios_capture:
             'Alternate cut: raw event counts, rolling window, iOS only — not the canonical funnel.',
           monetization:
-            'Alternate cut: monetization funnel by plan, raw event counts, rolling window — not the canonical funnel.',
+            'Alternate cut: monetization funnel by plan, raw event counts, rolling window — not the canonical funnel. purchase_success figures are first-party telemetry events only — see revenueNote.',
           activity:
             'Alternate cut: user-level activity (distinct anon_id), rolling window — not the canonical funnel.',
         },
