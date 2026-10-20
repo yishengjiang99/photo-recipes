@@ -2,6 +2,8 @@
 
 Running record of campaign decisions for ProTune AI Camera - Installs (campaign 52591274976908). Every decision gets an entry here with the analysis it rests on, per the user's instruction 2026-10-19 ("Keep a running log in the same file"). Newest entries at the bottom.
 
+Daily practice (user instruction 2026-10-19 21:11 PT): this file is updated every day with the day's best decision for the campaign, and that decision is confirmed with the user before anything is executed. Renamed 2026-10-19 from decision-log-2026-10-19-posters-off.md to decision-log.md so the same file carries every day.
+
 ---
 
 ## 2026-10-19 — Posters turned off
