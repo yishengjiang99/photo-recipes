@@ -35,3 +35,22 @@ Consistent with our own steering data: the v17 video has been the campaign's cha
 ## Follow-up
 
 The 12-hour reevaluation (scheduled 2026-10-20 ~06:22 PT) now reads as a video-vs-video comparison: v17 (17s, established) vs v20 (10s, voiceover, transformation up front). Pause verification (read back 2026-10-19 21:05 PT): both posters confirmed PAUSED / effective CAMPAIGN_PAUSED; video v17 ACTIVE; video v20 ACTIVE with effective_status now ACTIVE (fully processed and delivering). Campaign and ad set ACTIVE throughout.
+
+## 2026-10-20 — Campaign restarted, video-only, original ad paused at ad level
+
+Context: the 12-hour reevaluation (06:22 PT, run at the user's request) found the campaign PAUSED again — the third external pause (after Oct 15 and Oct 18). It had been verified ACTIVE at 21:05 PT on Oct 19; no agent job touched Meta overnight. Nothing was delivering.
+
+Reevaluation numbers, last 3 days (campaign total $96.34, 11 installs, $8.76 blended CPI):
+- Original ad 52591299779708: $9.49, 6 installs, $1.58 CPI, 331 impressions
+- Poster v17: $14.79, 4 installs, $3.70 CPI
+- Poster v18: $25.38, 1 install, $25.38 CPI
+- Video v17: $44.99, 1,622 impressions, installs not reported at ad level
+- Video v20: $1.69, 72 impressions (first hours)
+
+Two findings drove the decision:
+1. The original ad was ACTIVE-configured all along — dark only while the campaign/ad set were off — which is how it spent $9.49 and took 6 installs during the Oct 18–19 live window. "Stays paused" in earlier notes was wrong at the ad level.
+2. All 11 installs in the window were attributed to the three image ads and zero to the videos despite ~half the spend — read as an ad-level attribution artifact, not evidence the videos produced nothing (blended CPI and engagement data say otherwise). The original's $1.58 CPI is 6 installs: a hint, not a verdict.
+
+Decision (user, 2026-10-20 08:01 PT: "Restart the campaign — videos only, pause the original first"): pause the original at the ad level, then restart the campaign. Posters stay off per the 2026-10-19 decision.
+
+Executed and verified (08:07 PT): campaign ACTIVE / effective ACTIVE; ad set ACTIVE / effective ACTIVE; original PAUSED; poster v17 and v18 PAUSED; video v17 and v20 ACTIVE and delivering. Budget unchanged at $40/day.
