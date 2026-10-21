@@ -24,6 +24,7 @@ export type SegmentId =
   | 'inactive_7'
   | 'inactive_14'
   | 'winback_30'
+  | 'weekly_tip'
 
 export type TelemetryEventRow = {
   event: string
@@ -252,6 +253,31 @@ export const SEGMENTS: Record<SegmentId, SegmentDef> = {
     deepLink: 'photo-recipes://camera',
     priority: 52,
   },
+  weekly_tip: {
+    id: 'weekly_tip',
+    cls: 'feature',
+    goal: 'Default weekly tip for every install: suggest one concrete shot idea to try with Auto Optimize or a creative look.',
+    deepLink: 'photo-recipes://camera',
+    priority: 90,
+  },
+}
+
+/** ISO-ish week bucket (UTC, Monday-based) for the default campaign dedupe key. */
+function weekBucket(now: Date): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+  return d.toISOString().slice(0, 10)
+}
+
+/** Neutral features for installs with no telemetry link / no recent events. */
+export function emptyFeatures(tier: Tier, firstSeenAt: Date | null, now: Date): ActivityFeatures {
+  const dsi = firstSeenAt ? (now.getTime() - firstSeenAt.getTime()) / D : null
+  return {
+    firstSeenAt, lastSeenAt: null, daysSinceInstall: dsi, hoursInactive: null, daysInactive: null,
+    sessions7d: 0, captures7d: 0, capturesTotal: 0, aoSuccessTotal: 0, looksApplied30d: 0, recipeOpens30d: 0,
+    paywallViews7d: 0, lastPaywallViewAt: null, purchasesTotal: 0, quotaHits7d: 0, lastAbandonAt: null,
+    lastCaptureAt: null, favoriteLook: null, tier,
+  }
 }
 
 export type SegmentMatch = {
@@ -329,6 +355,8 @@ export function matchSegments(
     else if (di >= 30 && di < 45) out.push({ segment: S.winback_30, dedupeKey: `winback_30:${episode}` })
   }
 
+  // Default campaign: every install qualifies (Pro and active users included), once per week.
+  out.push({ segment: S.weekly_tip, dedupeKey: `weekly_tip:${weekBucket(now)}` })
   return out.sort((a, b) => a.segment.priority - b.segment.priority)
 }
 

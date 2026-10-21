@@ -3,13 +3,13 @@
  * (guardrailed), and either log a dry-run decision or send via APNs.
  *
  * SAFETY DEFAULTS
- *  - Mode comes from PUSH_LIFECYCLE_MODE (default "dry_run"). Modes, least → most permissive:
+ *  - Mode comes from PUSH_LIFECYCLE_MODE (default "live"). Modes, least → most permissive:
  *      off        nothing runs
- *      dry_run    evaluate + generate copy + log "would_send"; never calls APNs   (DEFAULT)
+ *      dry_run    evaluate + generate copy + log "would_send"; never calls APNs
  *      sandbox    real sends only to tokens registered as APNs *sandbox* (Xcode debug builds)
  *      allowlist  real sends only to guest ids in PUSH_LIFECYCLE_ALLOWLIST (e.g. your TestFlight
  *                 device); everyone else stays dry-run
- *      live       real sends to every eligible install
+ *      live       real sends to every eligible install   (DEFAULT)
  *  - Kill switch: PUSH_KILL_SWITCH=true (env) or POST /api/push/lifecycle/ops {killSwitch:true}
  *    (runtime, no redeploy) stops lifecycle AND legacy come-shoot sends.
  *    The runtime override can only make things *safer* (downgrade the mode), never upgrade.
@@ -32,6 +32,7 @@ import { tierFromEntitlement } from './pushScheduler.ts'
 import {
   copyFactsFor,
   featuresFromEvents,
+  emptyFeatures,
   matchSegments,
   type ActivityFeatures,
   type SegmentMatch,
@@ -82,7 +83,8 @@ function parseMode(v: unknown): LifecycleMode | null {
 }
 
 export function envLifecycleMode(): LifecycleMode {
-  return parseMode(process.env.PUSH_LIFECYCLE_MODE?.toLowerCase()) ?? 'dry_run'
+  // Shipped → on for everyone by default; set PUSH_LIFECYCLE_MODE=off|dry_run to turn it down.
+  return parseMode(process.env.PUSH_LIFECYCLE_MODE?.toLowerCase()) ?? 'live'
 }
 
 export function readOps(): Ops {
@@ -240,14 +242,17 @@ async function evaluateGuest(prefs: PushPrefs, ctx: EvalCtx): Promise<{ d: Decis
   const g = guestHash(prefs.guestId)
   const skip = (reason: string, extra: Partial<Decision> = {}) => ({ d: { guest: g, decision: 'skip' as const, reason, ...extra } })
   if (!prefs.pushOptIn) return skip('not_opted_in')
-  if (!prefs.telemetryAnonId) return skip('no_activity_link')
+  const tokens = mergeApnsTokens(prefs.apnsDeviceTokens, await listPushTokensForGuest(prefs.guestId))
+  if (!tokens.length) return skip('no_device_token')
 
   const ent = findEntitlementByGuestId(prefs.guestId)
   const tier = tierFromEntitlement(ent)
-  const ev = await loader(prefs.telemetryAnonId, ctx.now)
-  if (!ev) return skip('no_activity_store')
-  if (!ev.rows.length) return skip('no_recent_activity')
-  const features = featuresFromEvents(ev.rows, ctx.now, tier, ev.firstSeen)
+  // No telemetry link / store / events → fall back to the guest's own data (default campaign).
+  const ev = prefs.telemetryAnonId ? await loader(prefs.telemetryAnonId, ctx.now).catch(() => null) : null
+  const optedIn = prefs.optedInAt ? new Date(prefs.optedInAt) : null
+  const features = ev && ev.rows.length
+    ? featuresFromEvents(ev.rows, ctx.now, tier, ev.firstSeen)
+    : emptyFeatures(tier, optedIn && Number.isFinite(optedIn.getTime()) ? optedIn : null, ctx.now)
 
   // Dry-run and real histories are separate so switching modes starts clean.
   const realMode = ctx.mode !== 'dry_run'

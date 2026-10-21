@@ -48,7 +48,7 @@ describe('lifecycle segments', () => {
     assert.equal(f.favoriteLook, 'warm_film')
     assert.equal(matchSegments(f, NOW)[0]?.segment.id, 'inactive_7')
     assert.equal(matchSegments(featuresFromEvents([ev('session_start', 35 * D)], NOW, 'free'), NOW)[0]?.segment.id, 'winback_30')
-    assert.equal(matchSegments(featuresFromEvents([ev('session_start', 50 * D)], NOW, 'free'), NOW).length, 0)
+    assert.deepEqual(matchSegments(featuresFromEvents([ev('session_start', 50 * D)], NOW, 'free'), NOW).map((m) => m.segment.id), ['weekly_tip'])
   })
 })
 
@@ -184,15 +184,17 @@ describe('lifecycle engine safety', () => {
     process.env.APNS_P8_CONTENTS = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   }
 
-  it('defaults to dry_run and never calls APNs, even with APNs configured', async () => {
+  it('defaults to live (shipped = on for everyone); dry_run never calls APNs', async () => {
     liveApnsEnv()
+    assert.equal(effectiveMode(), 'live')
+    process.env.PUSH_LIFECYCLE_MODE = 'dry_run'
     assert.equal(effectiveMode(), 'dry_run')
     const s = await runLifecycleTick(NOW)
     assert.equal(s.wouldSend, 1)
     assert.equal(s.sent, 0)
     assert.equal(apnsCalls, 0)
-    // dedupe: second tick does not re-generate the same message
-    const s2 = await runLifecycleTick(new Date(NOW.getTime() + 25 * H))
+    // caps apply in dry-run too: a second tick within 24h generates nothing
+    const s2 = await runLifecycleTick(new Date(NOW.getTime() + 2 * H))
     assert.equal(s2.wouldSend, 0)
     assert.equal(lifecycleReport().kpis.wouldSend, 1)
   })
@@ -265,10 +267,12 @@ describe('lifecycle engine safety', () => {
     assert.equal(s3.sent, 0)
     // promotional segment without marketing consent → skipped
     setLifecycleEventLoaderForTests(async () => ({ rows: [ev('session_start', 20 * D), ev('camera_open', 8 * D)], firstSeen: null }))
+    // without consent the promotional segment is passed over for the default feature campaign
     const s4 = await runLifecycleTick(new Date(NOW.getTime() + 3 * D))
-    assert.equal(s4.skipped.no_marketing_consent, 1)
+    assert.equal(s4.sent, 1)
+    assert.equal(s4.decisions[0]?.segment, 'weekly_tip')
     updatePushPrefs('g1', { marketingOptIn: true })
-    const s5 = await runLifecycleTick(new Date(NOW.getTime() + 3 * D))
+    const s5 = await runLifecycleTick(new Date(NOW.getTime() + 4 * D + 2 * H))
     assert.equal(s5.sent, 1)
     assert.equal(s5.decisions[0]?.segment, 'inactive_7')
   })

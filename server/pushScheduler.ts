@@ -49,14 +49,13 @@ async function pruneDeadToken(token: string): Promise<void> {
 export type EntitlementTier = 'free' | 'trial' | 'pro'
 
 export function isPushExp1Enabled(): boolean {
-  return process.env.PUSH_EXP1_ENABLED?.trim().toLowerCase() === 'true'
+  // Shipped features are on for everyone; only an explicit PUSH_EXP1_ENABLED=false (kill switch) disables.
+  return process.env.PUSH_EXP1_ENABLED?.trim().toLowerCase() !== 'false'
 }
 
-/** Stable 50% treatment when flag enabled; holdout bit or hash → control. */
-export function inTreatment(guestId: string, prefs: PushPrefs): boolean {
-  if (prefs.experimentHoldout) return false
-  const digest = crypto.createHash('sha256').update(`push_exp1:${guestId}`).digest()
-  return (digest[0]! & 1) === 1
+/** No cohort split any more: every opted-in install is treated (kept for API compatibility). */
+export function inTreatment(_guestId: string, _prefs: PushPrefs): boolean {
+  return true
 }
 
 export function tierFromEntitlement(ent: Entitlement | null): EntitlementTier {
@@ -380,7 +379,7 @@ export type NudgeTickResult = {
 /**
  * Primary engagement path: D1 return + evening come-shoot.
  * Does NOT require shootWindow (Exp1's missing piece that caused 0 sends).
- * Enabled whenever PUSH_EXP1_ENABLED is true (same ops flag / cron).
+ * Enabled unless PUSH_EXP1_ENABLED is explicitly false (same ops flag / cron).
  */
 export async function runComeShootNudgeTick(
   now = new Date(),
