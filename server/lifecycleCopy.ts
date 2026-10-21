@@ -138,6 +138,8 @@ export function templateCopy(segment: SegmentId, facts: CopyFacts): Copy {
       return { title: 'An easy recipe to try', body: 'Pick a recipe in the Library and ProTune sets up the camera for it.' }
     case 'winback_30':
       return { title: 'Your camera presets are here', body: 'Whenever you are ready to shoot again, Auto Optimize is one tap away.' }
+    case 'weekly_tip':
+      return { title: 'A shot idea for this week', body: 'Point at a scene, tap Auto Optimize, then try a creative look on the next frame.' }
   }
 }
 
