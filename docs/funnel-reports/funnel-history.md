@@ -65,3 +65,29 @@ Verdict: no stage qualifies under the speaking rule (≥20pp vs BOTH baselines A
 Supporting (distinct sessions / events): paywall_trigger 96 / 180, paywall_plan_select 11 / 20, purchase_start 11 / 19, checkout_redirect 1 / 1, paywall_dismiss 19 / 30, purchase_restore 2 / 2, purchase_cancelled 1 / 3, purchase_pending 0, purchase_failed 0, purchase_fail 0.
 Revenue verdict: no stage moved ≥20pp vs both the revenue baseline (68 → 69 → 0 → 2, Oct 11–17) and the last reported figures (same reading), and neither one-time exception fired. Silent run — figures recorded only.
 Last reported figures unchanged: sessions→camera 50.6% (130/257, Oct 11–17 PT) plus the 2026-10-18 instrumentation-break / baseline-reset report and the 2026-10-18 revenue first reading.
+
+## METHOD CORRECTION — 2026-10-20 (read before any future run)
+The telemetry_events table is SHARED across apps (column `app`: photo-recipes 9,774 rows, omr-sheet-cam 472, grepawk-photos 34). All historical queries above counted every app. Rules from now on: ALWAYS filter app='photo-recipes'. Known contamination: purchase_success all-time for ProTune = 4 rows, not 5 (id 8785, Oct 17, is omr-sheet-cam — a Music Reader purchase). Revenue-stage counts in windows including Oct 17 carry small omr additions (paywall_view +3 sess, paywall_trigger +27 sess in Oct 13-19); the sessions denominator carried +72 omr sessions in Oct 13-19 (ProTune-only sessions 224; sessions->camera ProTune-only = 68.3%). camera_open / auto_optimize_* counts are unaffected (omr emits none). Stripe web sales: checkout starts exist (Oct 11, Oct 13) but NO stripe purchase_success is ever recorded — the web success path does not emit it; Stripe revenue must be read from Stripe, never inferred from telemetry. ASC remains the App Store revenue ledger of record.
+
+## Daily run 2026-10-20
+
+Method: first daily run under the 2026-10-20 correction — all counts filtered app='photo-recipes' (SELECT only, SSH CONNECT-proxy route). Validation: this run's trailing-7 sessions→camera (ProTune-only) reproduces the correction note's figure exactly (153/224 = 68.3%). Comparisons against the operational baseline and last reported figures are NOT like-for-like for session-denominator stages (the old counts included omr-sheet-cam / grepawk-photos sessions); camera_open / auto_optimize_* stage counts are unaffected by the filter.
+
+### Trailing 7 complete days — window 2026-10-13 → 2026-10-19 PT
+Primary definition: 224 sessions → 153 camera opens → 11 optimize starts → 78 successes.
+Conversions: sessions→camera 68.3% (153/224), camera→optimize-start 7.2% (11/153), start→success n/a (78 successes vs 11 starts — start stage still under-counted, but recovering: starts by version = v1.6 9 sessions, v1.2 1, NULL 1; v1.6 went live 2026-10-19, so only the last day of this window carried the restored emission). ao_tap: 55 sessions / 101 events.
+Daily distinct sessions (PT): Oct 13: 69, 14: 27, 15: 27, 16: 16, 17: 18, 18: 28, 19: 39. (Oct 17 reads 18 ProTune-only vs 85 in the old all-apps series — the difference is omr-sheet-cam's Oct 17 volume.)
+Success latency (auto_optimize_success latency_ms, trailing 7 days): n=117 events, median 1,075 ms, p95 16,521 ms.
+
+### Revenue — same window, independent stage counts
+- auto_optimize_success: 78 sessions (148 events)
+- paywall_view: 80 sessions (102 events) — success→paywall 102.6% (extra paywall entry points, as before)
+- trial_start: 0 sessions, 0 events — still ZERO rows all-time for app='photo-recipes'. Not exception (a).
+- purchase_success: 2 sessions (2 events) — paywall_view→purchase_success 2.5% (2/80). Not exception (b) (2 < 5). All-time ProTune purchase_success = 4 rows / 4 sessions.
+Supporting (distinct sessions / events): paywall_trigger 79 / 102, paywall_plan_select 11 / 20, purchase_start 11 / 19, checkout_redirect 1 / 1, paywall_dismiss 22 / 31, purchase_restore 2 / 2, purchase_cancelled 2 / 4, purchase_pending 0, purchase_failed 0, purchase_fail 0.
+
+### Today PT so far — 2026-10-20 (through ~17:22 PDT)
+46 sessions → 16 camera opens → 4 optimize starts → 4 successes. Conversions: sessions→camera 34.8% (16/46, partial day, small n). Revenue today: paywall_view 4 sessions, paywall_trigger 3, paywall_plan_select 1, purchase_start 1, paywall_dismiss 2, checkout_redirect 1, trial_start 0, purchase_success 0. ao_tap 4 sessions.
+
+### Verdict
+Silent run. sessions→camera 68.3% vs last reported 50.6% is +17.7pp (under the 20pp threshold) and is not like-for-like anyway (app filter changed the denominator); the ≥20pp-vs-operational-baseline gap (+28.2pp) is a method artifact of removing 72 non-ProTune sessions from the Oct 13–19 denominator, not a stage movement. Neither one-time exception fired (trial_start still 0 all-time; trailing-7 purchase_success sessions 2 < 5). Figures recorded only; last reported figures unchanged.
