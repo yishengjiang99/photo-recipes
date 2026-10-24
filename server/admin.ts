@@ -26,6 +26,7 @@ import {
   type CanonicalFunnel,
 } from './telemetry.ts'
 import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
+import { fetchFinalcapUsage, parseDaysParam } from './finalcapUsage.ts'
 import { ALL_APPS, appAnd, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
 
 const appKey = (app: AppScope): string => app ?? ALL_APPS
@@ -513,6 +514,31 @@ export function mountAdminRoutes(app: Express) {
       ok: true,
       quota: getQuotaConfigSnapshot(),
       config: result.config,
+    })
+  })
+
+  /**
+   * GET /api/admin/finalcap-usage[?days=30]
+   * FinalCap usage from the FinalCap server's OWN database (daily inference
+   * usage, chat interactions, registered users, Apple subscribers) — a
+   * separate data source from this app's telemetry_events; never merged into
+   * the summary figures above. Soft-empty when FINALCUT_MYSQL_* is unset.
+   */
+  app.get('/api/admin/finalcap-usage', requireAdmin, (req, res) => {
+    const parsed = parseDaysParam(req.query.days)
+    if (!parsed.ok) {
+      res.status(400).json({
+        error: 'invalid_days',
+        hint: 'days must be an integer between 1 and 90 (default 30).',
+      })
+      return
+    }
+    void (async () => {
+      const finalcap = await fetchFinalcapUsage(parsed.days)
+      res.json({ ok: true, generatedAt: new Date().toISOString(), finalcap })
+    })().catch((err: Error) => {
+      console.error('[admin] finalcap-usage:', err.message)
+      res.status(500).json({ error: err.message || 'finalcap_usage_failed' })
     })
   })
 

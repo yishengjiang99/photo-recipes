@@ -179,6 +179,31 @@ type Summary = {
   }>
 }
 
+/** FinalCap usage — separate data source (FinalCap's own server DB), see /api/admin/finalcap-usage. */
+type FinalcapUsage = {
+  configured: boolean
+  days: number
+  timezone: string
+  definitions: { dailyActive: string; chat: string; subscribers: string }
+  dailyUsage: Array<{ day: string; activeUsers: number; inferences: number }>
+  chatByDay: Array<{
+    day: string
+    human2ai: number
+    ai2human: number
+    error: number
+    total: number
+  }>
+  totals: {
+    registeredUsers: number
+    activeSubscribers: number
+    subscribersByUserFlag: number
+    activeUsersInWindow: number
+    inferencesInWindow: number
+    chatInWindow: number
+  }
+  error?: string
+}
+
 const DEFAULT_APP = 'photo-recipes'
 const ALL_APPS = 'all'
 const APP_STORAGE_KEY = 'admin.app'
@@ -466,6 +491,25 @@ function hourlyBars(series: Array<{ bucket: number; users: number }>): Bar[] {
   })
 }
 
+function finalcapBars(series: Array<{ day: string; activeUsers: number; inferences: number }>): Bar[] {
+  const every = Math.max(1, Math.ceil(series.length / 6))
+  return series.map((p, i) => {
+    const [y, m, d] = p.day.split('-').map(Number)
+    const label = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).toLocaleDateString('en-US', {
+      timeZone: 'UTC',
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    })
+    return {
+      key: i,
+      value: p.activeUsers,
+      tooltip: `${label} (UTC): ${p.activeUsers} active users · ${p.inferences} inferences`,
+      tick: i % every === 0 || i === series.length - 1 ? `${m}/${d}` : undefined,
+    }
+  })
+}
+
 function dailyBars(
   series: Array<{ bucket: number; users: number; newUsers?: number; returning?: number }>,
 ): Bar[] {
@@ -489,6 +533,9 @@ export function Admin() {
   const [loginError, setLoginError] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [finalcap, setFinalcap] = useState<FinalcapUsage | null>(null)
+  const [finalcapError, setFinalcapError] = useState('')
+  const [loadingFinalcap, setLoadingFinalcap] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [draftLimit, setDraftLimit] = useState('5')
@@ -550,14 +597,44 @@ export function Admin() {
     }
   }, [])
 
+  const loadFinalcap = useCallback(async () => {
+    setLoadingFinalcap(true)
+    setFinalcapError('')
+    try {
+      const res = await fetch('/api/admin/finalcap-usage?days=30', {
+        credentials: 'include',
+      })
+      if (res.status === 401) {
+        setFinalcap(null)
+        return
+      }
+      const data = (await res.json()) as {
+        finalcap?: FinalcapUsage
+        error?: string
+      }
+      if (!res.ok || !data.finalcap) {
+        setFinalcapError(data.error || `Failed (${res.status})`)
+        return
+      }
+      setFinalcap(data.finalcap)
+    } catch (err) {
+      setFinalcapError(err instanceof Error ? err.message : 'Failed to load FinalCap usage')
+    } finally {
+      setLoadingFinalcap(false)
+    }
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const ok = await refreshSession()
-      if (ok) await loadSummary(appFilter)
+      if (ok) {
+        await loadSummary(appFilter)
+        await loadFinalcap()
+      }
     })()
     // Initial load only; app changes go through onAppChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSession, loadSummary])
+  }, [refreshSession, loadSummary, loadFinalcap])
 
   function onAppChange(next: string) {
     if (next === appFilter) return
@@ -640,6 +717,7 @@ export function Admin() {
       setPassword('')
       setAuthed(true)
       await loadSummary(appFilter)
+      await loadFinalcap()
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -654,6 +732,7 @@ export function Admin() {
     })
     setAuthed(false)
     setSummary(null)
+    setFinalcap(null)
   }
 
   // Platform filter: separate iOS from web events across the telemetry views.
@@ -759,7 +838,10 @@ export function Admin() {
             />
             <button
               type="button"
-              onClick={() => void loadSummary(appFilter)}
+              onClick={() => {
+                void loadSummary(appFilter)
+                void loadFinalcap()
+              }}
               disabled={loadingSummary}
               className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-ink-secondary)] hover:border-[var(--color-tip)] hover:text-[var(--color-tip)]"
             >
@@ -1469,6 +1551,115 @@ export function Admin() {
               </p>
             </section>
           </>
+        ) : null}
+
+        {finalcap || loadingFinalcap || finalcapError ? (
+          <section>
+            <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+              FinalCap usage
+              <span className="ml-2 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-[var(--color-ink-tertiary)] normal-case">
+                FinalCap app · its own server database — separate from the telemetry above
+              </span>
+              {finalcap ? (
+                <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                  last {finalcap.days} days · UTC
+                </span>
+              ) : null}
+            </h2>
+            {finalcapError ? (
+              <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
+                FinalCap usage failed to load: {finalcapError}
+              </p>
+            ) : null}
+            {!finalcap && loadingFinalcap ? (
+              <div className="flex justify-center py-8 text-[var(--color-ink-tertiary)]">
+                <Loader2 className="h-5 w-5 animate-spin text-[var(--color-tip)]" />
+              </div>
+            ) : null}
+            {finalcap && !finalcap.configured ? (
+              <p className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink-secondary)]">
+                FinalCap database is not configured on this server. Set FINALCUT_MYSQL_*
+                in /etc/photo-recipes.env (the FinalCap app&apos;s own MySQL credentials)
+                and restart the API.
+              </p>
+            ) : null}
+            {finalcap && finalcap.configured ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Kpi
+                    label="Active users (30d)"
+                    value={finalcap.totals.activeUsersInWindow}
+                    hint={`${finalcap.totals.inferencesInWindow} inferences in window`}
+                  />
+                  <Kpi
+                    label="Chat interactions (30d)"
+                    value={finalcap.totals.chatInWindow}
+                    hint="human + assistant + error rows"
+                  />
+                  <Kpi
+                    label="Registered users"
+                    value={finalcap.totals.registeredUsers}
+                    hint="FinalCap users table, all time"
+                  />
+                  <Kpi
+                    label="Active subscribers"
+                    value={finalcap.totals.activeSubscribers}
+                    hint={`Apple transactions · ${finalcap.totals.subscribersByUserFlag} by user flag`}
+                  />
+                </div>
+                <BarHistogram
+                  title="FinalCap daily active users"
+                  windowLabel={`last ${finalcap.days} days`}
+                  definition={finalcap.definitions.dailyActive}
+                  error={finalcap.error}
+                  bars={finalcapBars(finalcap.dailyUsage)}
+                />
+                <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                  <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                    <div className="text-sm text-[var(--color-ink-secondary)]">
+                      Chat interactions by type
+                    </div>
+                    <p className="mt-0.5 text-xs text-[var(--color-ink-tertiary)]">
+                      {finalcap.definitions.chat}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[var(--color-ink-tertiary)]">
+                      {finalcap.definitions.subscribers}
+                    </p>
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="text-xs text-[var(--color-ink-tertiary)]">
+                        <th className="px-3 py-2 font-medium">Day (UTC)</th>
+                        <th className="px-3 py-2 font-medium">Active users</th>
+                        <th className="px-3 py-2 font-medium">Inferences</th>
+                        <th className="px-3 py-2 font-medium">User msgs</th>
+                        <th className="px-3 py-2 font-medium">Replies</th>
+                        <th className="px-3 py-2 font-medium">Errors</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...finalcap.chatByDay].reverse().map((row, i) => {
+                        const usage = finalcap.dailyUsage[finalcap.dailyUsage.length - 1 - i]
+                        return (
+                          <tr
+                            key={row.day}
+                            className="border-t border-[var(--color-border)] align-top"
+                          >
+                            <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{row.day}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{usage?.activeUsers ?? 0}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{usage?.inferences ?? 0}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{row.human2ai}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{row.ai2human}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{row.error}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
+          </section>
         ) : null}
       </main>
     </div>
