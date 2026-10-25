@@ -728,6 +728,103 @@ export type CanonicalFunnel = {
 
 const ratio = (a: number, b: number): number | null => (b > 0 ? a / b : null)
 
+export type SessionStageStep = {
+  stage: string
+  sessions: number
+  /** sessions(this stage) / sessions(previous stage); null for the first stage or when the previous stage is 0. */
+  conversionFromPrev: number | null
+  /** sessions(this stage) / sessions(first stage); null for the first stage or when the first stage is 0. */
+  conversionFromFirst: number | null
+}
+
+export type SessionStageFunnel = {
+  unit: 'distinct session_id'
+  timezone: string
+  days: number
+  windowStart: string
+  windowEndExclusive: string
+  windowStartDay: string
+  windowEndDayExclusive: string
+  stages: readonly string[]
+  counts: Record<string, number>
+  steps: SessionStageStep[]
+  error?: string
+}
+
+/**
+ * Generic distinct-session stage funnel over telemetry_events — the counting
+ * engine behind the canonical ProTune funnel, parameterized by stage list
+ * and app scope. The pseudo-stage 'sessions' counts sessions with ANY event;
+ * every other stage counts distinct session_id rows carrying that event.
+ * Other apps' funnels (e.g. FinalCap, app='finalcap' — see
+ * server/finalcapFunnels.ts) reuse this engine with their own stage lists;
+ * numbers for any scope/stage list other than the canonical ones are NOT
+ * the canonical funnel. Event names are always bound parameters — only the
+ * number of count columns varies with the stage list.
+ */
+export async function fetchSessionStageFunnel(
+  days: number,
+  app: AppScope,
+  stages: readonly string[],
+  nowMs: number = Date.now(),
+  poolArg?: ReturnType<typeof getMysqlPool>,
+): Promise<SessionStageFunnel> {
+  const w = canonicalFunnelWindow(days, nowMs)
+  const counts: Record<string, number> = {}
+  for (const s of stages) counts[s] = 0
+  const base: SessionStageFunnel = {
+    unit: 'distinct session_id',
+    timezone: w.timezone,
+    days: w.days,
+    windowStart: new Date(w.startSec * 1000).toISOString(),
+    windowEndExclusive: new Date(w.endSec * 1000).toISOString(),
+    windowStartDay: w.startDay,
+    windowEndDayExclusive: w.endDayExclusive,
+    stages,
+    counts,
+    steps: stages.map((stage) => ({
+      stage,
+      sessions: 0,
+      conversionFromPrev: null,
+      conversionFromFirst: null,
+    })),
+  }
+  const pool = poolArg === undefined ? getMysqlPool() : poolArg
+  if (!pool) return base
+  const eventStages = stages.filter((s) => s !== 'sessions')
+  const inApp = appAnd('app', app)
+  try {
+    const selectCols = eventStages
+      .map((_, i) => `COUNT(DISTINCT IF(event = ?, session_id, NULL)) AS s${i}`)
+      .join(',\n         ')
+    const [[row]] = (await pool.query(
+      `SELECT
+         COUNT(DISTINCT session_id) AS sessions${eventStages.length ? `,\n         ${selectCols}` : ''}
+       FROM telemetry_events
+       WHERE session_id IS NOT NULL AND session_id <> ''
+         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)${inApp.and}`,
+      [...eventStages, w.startSec, w.endSec, ...inApp.params],
+    )) as unknown as [Array<Record<string, number>>]
+    if (row) {
+      let ei = 0
+      for (const s of stages) {
+        counts[s] = s === 'sessions' ? Number(row.sessions) || 0 : Number(row[`s${ei++}`]) || 0
+      }
+    }
+    const first = stages.length ? counts[stages[0]!]! : 0
+    const steps = stages.map((stage, i) => ({
+      stage,
+      sessions: counts[stage]!,
+      conversionFromPrev: i === 0 ? null : ratio(counts[stage]!, counts[stages[i - 1]!]!),
+      conversionFromFirst: i === 0 ? null : ratio(counts[stage]!, first),
+    }))
+    return { ...base, counts, steps }
+  } catch (err) {
+    console.warn('[telemetry] stage funnel failed:', err instanceof Error ? err.message : err)
+    return { ...base, error: 'query_failed' }
+  }
+}
+
 /**
  * The canonical funnel (see CANONICAL_FUNNEL_DEFINITION). All platforms.
  * App scope defaults to REAL_APP ('photo-recipes') — the canonical funnel is
@@ -739,54 +836,31 @@ export async function fetchCanonicalFunnel(
   app: AppScope = REAL_APP,
   nowMs: number = Date.now(),
 ): Promise<CanonicalFunnel> {
-  const w = canonicalFunnelWindow(days, nowMs)
-  const base: CanonicalFunnel = {
+  const f = await fetchSessionStageFunnel(days, app, CANONICAL_FUNNEL_STAGES, nowMs)
+  const counts: Record<CanonicalFunnelStage, number> = {
+    sessions: f.counts.sessions ?? 0,
+    camera_open: f.counts.camera_open ?? 0,
+    auto_optimize_start: f.counts.auto_optimize_start ?? 0,
+    auto_optimize_success: f.counts.auto_optimize_success ?? 0,
+  }
+  return {
     name: 'canonical',
-    unit: 'distinct session_id',
-    timezone: w.timezone,
-    days: w.days,
-    windowStart: new Date(w.startSec * 1000).toISOString(),
-    windowEndExclusive: new Date(w.endSec * 1000).toISOString(),
-    windowStartDay: w.startDay,
-    windowEndDayExclusive: w.endDayExclusive,
+    unit: f.unit,
+    timezone: f.timezone,
+    days: f.days,
+    windowStart: f.windowStart,
+    windowEndExclusive: f.windowEndExclusive,
+    windowStartDay: f.windowStartDay,
+    windowEndDayExclusive: f.windowEndDayExclusive,
     definition: CANONICAL_FUNNEL_DEFINITION,
     stages: CANONICAL_FUNNEL_STAGES,
-    counts: { sessions: 0, camera_open: 0, auto_optimize_start: 0, auto_optimize_success: 0 },
-    conversions: { sessionsToCamera: null, cameraToOptimizeStart: null, optimizeStartToSuccess: null },
-  }
-  const pool = getMysqlPool()
-  if (!pool) return base
-  const inApp = appAnd('app', app)
-  try {
-    const [[row]] = (await pool.query(
-      `SELECT
-         COUNT(DISTINCT session_id) AS sessions,
-         COUNT(DISTINCT IF(event = 'camera_open', session_id, NULL)) AS camera_open,
-         COUNT(DISTINCT IF(event = 'auto_optimize_start', session_id, NULL)) AS auto_optimize_start,
-         COUNT(DISTINCT IF(event = 'auto_optimize_success', session_id, NULL)) AS auto_optimize_success
-       FROM telemetry_events
-       WHERE session_id IS NOT NULL AND session_id <> ''
-         AND created_at >= FROM_UNIXTIME(?) AND created_at < FROM_UNIXTIME(?)${inApp.and}`,
-      [w.startSec, w.endSec, ...inApp.params],
-    )) as unknown as [Array<Record<string, number>>]
-    const counts: Record<CanonicalFunnelStage, number> = {
-      sessions: Number(row?.sessions) || 0,
-      camera_open: Number(row?.camera_open) || 0,
-      auto_optimize_start: Number(row?.auto_optimize_start) || 0,
-      auto_optimize_success: Number(row?.auto_optimize_success) || 0,
-    }
-    return {
-      ...base,
-      counts,
-      conversions: {
-        sessionsToCamera: ratio(counts.camera_open, counts.sessions),
-        cameraToOptimizeStart: ratio(counts.auto_optimize_start, counts.camera_open),
-        optimizeStartToSuccess: ratio(counts.auto_optimize_success, counts.auto_optimize_start),
-      },
-    }
-  } catch (err) {
-    console.warn('[telemetry] canonical funnel failed:', err instanceof Error ? err.message : err)
-    return { ...base, error: 'query_failed' }
+    counts,
+    conversions: {
+      sessionsToCamera: ratio(counts.camera_open, counts.sessions),
+      cameraToOptimizeStart: ratio(counts.auto_optimize_start, counts.camera_open),
+      optimizeStartToSuccess: ratio(counts.auto_optimize_success, counts.auto_optimize_start),
+    },
+    ...(f.error ? { error: f.error } : {}),
   }
 }
 

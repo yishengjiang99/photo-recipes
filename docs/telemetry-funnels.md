@@ -191,3 +191,22 @@ Also: `scripts/funnel-report.sql` and `scripts/funnel-report.mjs` (both put
 the canonical funnel first, then the alternate cuts, labelled as such; the
 `.sql` canonical query takes its PT-midnight bounds from caller-set
 `@canonical_start` / `@canonical_end`, as its header explains).
+
+## FinalCap app funnel — NOT the canonical funnel, different app
+
+`telemetry_events` is shared: the FinalCap iOS app (v1.0.1+) sends client
+events with `app = 'finalcap'` into the same table (session_id = one per
+cold launch). Its funnel reuses the canonical counting method — distinct
+`session_id`, trailing complete PT days — via the parameterized
+`fetchSessionStageFunnel` in `server/telemetry.ts`, with FinalCap's own
+stages (defined in `server/finalcapFunnels.ts`):
+
+- Core: `app_open` → `editor_open` → `edit_start` → `edit_success`
+- Export: `export_start` → `export_success`
+- Revenue: `paywall_view` → `trial_start` → `purchase_success`
+
+Served to the admin panel at `GET /api/admin/finalcap-funnels` and shown in
+the panel's "FinalCap funnels (app events)" block. Never compare these
+numbers against the canonical ProTune funnel (different app, different
+stages), and never merge them with the FinalCap server-database figures
+(`GET /api/admin/finalcap-usage`) — that is a separate data source.

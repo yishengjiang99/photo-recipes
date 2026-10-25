@@ -27,6 +27,7 @@ import {
 } from './telemetry.ts'
 import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
 import { fetchFinalcapUsage, parseDaysParam } from './finalcapUsage.ts'
+import { fetchFinalcapFunnels } from './finalcapFunnels.ts'
 import { ALL_APPS, appAnd, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
 
 const appKey = (app: AppScope): string => app ?? ALL_APPS
@@ -539,6 +540,35 @@ export function mountAdminRoutes(app: Express) {
     })().catch((err: Error) => {
       console.error('[admin] finalcap-usage:', err.message)
       res.status(500).json({ error: err.message || 'finalcap_usage_failed' })
+    })
+  })
+
+  /**
+   * GET /api/admin/finalcap-funnels[?days=30]
+   * FinalCap app funnels from THIS app's telemetry_events (app = 'finalcap'
+   * client events, distinct session_id, trailing complete PT days) — a
+   * separate data source from /api/admin/finalcap-usage above (FinalCap's
+   * own database) and never merged into the ProTune figures. Soft-zero
+   * until FinalCap v1.0.1 ships and its events land. A sibling endpoint
+   * (rather than a field on finalcap-usage) keeps the two sources' config
+   * and failure domains separate: this one reads the panel's primary
+   * MySQL, not FINALCUT_MYSQL_*.
+   */
+  app.get('/api/admin/finalcap-funnels', requireAdmin, (req, res) => {
+    const parsed = parseDaysParam(req.query.days)
+    if (!parsed.ok) {
+      res.status(400).json({
+        error: 'invalid_days',
+        hint: 'days must be an integer between 1 and 90 (default 30).',
+      })
+      return
+    }
+    void (async () => {
+      const funnels = await fetchFinalcapFunnels(parsed.days)
+      res.json({ ok: true, generatedAt: new Date().toISOString(), funnels })
+    })().catch((err: Error) => {
+      console.error('[admin] finalcap-funnels:', err.message)
+      res.status(500).json({ error: err.message || 'finalcap_funnels_failed' })
     })
   })
 
