@@ -204,6 +204,37 @@ type FinalcapUsage = {
   error?: string
 }
 
+/**
+ * FinalCap funnels — FinalCap client app telemetry (app = 'finalcap') read from THIS
+ * panel's telemetry_events, see /api/admin/finalcap-funnels. NOT the FinalCap server
+ * database above; NOT the canonical ProTune funnel.
+ */
+type FinalcapFunnelStep = {
+  stage: string
+  sessions: number
+  conversionFromPrev: number | null
+  conversionFromFirst: number | null
+}
+type FinalcapFunnelGroup = {
+  stages: string[]
+  counts: Record<string, number>
+  steps: FinalcapFunnelStep[]
+}
+type FinalcapFunnels = {
+  app: string
+  unit: string
+  days: number
+  timezone: string
+  windowStartDay: string
+  windowEndDayExclusive: string
+  definition: string
+  revenueNote: string
+  core: FinalcapFunnelGroup
+  export: FinalcapFunnelGroup
+  revenue: FinalcapFunnelGroup
+  error?: string
+}
+
 const DEFAULT_APP = 'photo-recipes'
 const ALL_APPS = 'all'
 const APP_STORAGE_KEY = 'admin.app'
@@ -491,6 +522,11 @@ function hourlyBars(series: Array<{ bucket: number; users: number }>): Bar[] {
   })
 }
 
+/** 0.756 -> "75.6%" (one decimal, matching the canonical funnel hints); null when undefined. */
+function pct1(r: number | null | undefined): string | null {
+  return r == null ? null : `${Math.round(r * 1000) / 10}%`
+}
+
 function finalcapBars(series: Array<{ day: string; activeUsers: number; inferences: number }>): Bar[] {
   const every = Math.max(1, Math.ceil(series.length / 6))
   return series.map((p, i) => {
@@ -536,6 +572,9 @@ export function Admin() {
   const [finalcap, setFinalcap] = useState<FinalcapUsage | null>(null)
   const [finalcapError, setFinalcapError] = useState('')
   const [loadingFinalcap, setLoadingFinalcap] = useState(false)
+  const [finalcapFunnels, setFinalcapFunnels] = useState<FinalcapFunnels | null>(null)
+  const [finalcapFunnelsError, setFinalcapFunnelsError] = useState('')
+  const [loadingFinalcapFunnels, setLoadingFinalcapFunnels] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [draftLimit, setDraftLimit] = useState('5')
@@ -624,17 +663,47 @@ export function Admin() {
     }
   }, [])
 
+  const loadFinalcapFunnels = useCallback(async () => {
+    setLoadingFinalcapFunnels(true)
+    setFinalcapFunnelsError('')
+    try {
+      const res = await fetch('/api/admin/finalcap-funnels?days=30', {
+        credentials: 'include',
+      })
+      if (res.status === 401) {
+        setFinalcapFunnels(null)
+        return
+      }
+      const data = (await res.json()) as {
+        funnels?: FinalcapFunnels
+        error?: string
+      }
+      if (!res.ok || !data.funnels) {
+        setFinalcapFunnelsError(data.error || `Failed (${res.status})`)
+        return
+      }
+      setFinalcapFunnels(data.funnels)
+    } catch (err) {
+      setFinalcapFunnelsError(
+        err instanceof Error ? err.message : 'Failed to load FinalCap funnels',
+      )
+    } finally {
+      setLoadingFinalcapFunnels(false)
+    }
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const ok = await refreshSession()
       if (ok) {
         await loadSummary(appFilter)
         await loadFinalcap()
+        await loadFinalcapFunnels()
       }
     })()
     // Initial load only; app changes go through onAppChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSession, loadSummary, loadFinalcap])
+  }, [refreshSession, loadSummary, loadFinalcap, loadFinalcapFunnels])
 
   function onAppChange(next: string) {
     if (next === appFilter) return
@@ -1658,6 +1727,143 @@ export function Admin() {
                   </table>
                 </div>
               </>
+            ) : null}
+          </section>
+        ) : null}
+
+        {finalcapFunnels || loadingFinalcapFunnels || finalcapFunnelsError ? (
+          <section>
+            <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+              FinalCap funnels (app events)
+              <span className="ml-2 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-[var(--color-ink-tertiary)] normal-case">
+                FinalCap app · client telemetry (app = &apos;finalcap&apos;) in this
+                panel&apos;s telemetry_events — separate from the FinalCap server database
+                above
+              </span>
+              {finalcapFunnels ? (
+                <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                  trailing {finalcapFunnels.days} complete days ·{' '}
+                  {finalcapFunnels.windowStartDay} → {finalcapFunnels.windowEndDayExclusive}{' '}
+                  (exclusive) · {finalcapFunnels.timezone}
+                </span>
+              ) : null}
+            </h2>
+            {finalcapFunnelsError ? (
+              <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
+                FinalCap funnels failed to load: {finalcapFunnelsError}
+              </p>
+            ) : null}
+            {!finalcapFunnels && loadingFinalcapFunnels ? (
+              <div className="flex justify-center py-8 text-[var(--color-ink-tertiary)]">
+                <Loader2 className="h-5 w-5 animate-spin text-[var(--color-tip)]" />
+              </div>
+            ) : null}
+            {finalcapFunnels ? (
+              <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                  <div className="text-sm text-[var(--color-ink-secondary)]">
+                    Session funnel — distinct session_id (one per cold launch)
+                  </div>
+                  <p className="mt-0.5 text-xs text-[var(--color-ink-tertiary)]">
+                    {finalcapFunnels.definition}
+                  </p>
+                  {finalcapFunnels.error ? (
+                    <p className="mt-1 text-xs text-[var(--color-danger)]">
+                      Query failed ({finalcapFunnels.error}) — counts below are
+                      placeholders, not real zeros.
+                    </p>
+                  ) : finalcapFunnels.core.counts.app_open === 0 ? (
+                    <p className="mt-1 text-xs text-[var(--color-ink-tertiary)]">
+                      No FinalCap app events in this window yet — client telemetry arrives
+                      with FinalCap v1.0.1. Counts will populate as sessions are recorded.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Kpi
+                    label="1 · App open"
+                    value={finalcapFunnels.core.counts.app_open ?? 0}
+                    hint="Distinct session_id"
+                  />
+                  <Kpi
+                    label="2 · Editor open"
+                    value={finalcapFunnels.core.counts.editor_open ?? 0}
+                    hint={
+                      pct1(finalcapFunnels.core.steps[1]?.conversionFromPrev) != null
+                        ? `${pct1(finalcapFunnels.core.steps[1]?.conversionFromPrev)} of app-open sessions`
+                        : 'Distinct session_id'
+                    }
+                  />
+                  <Kpi
+                    label="3 · Edit start"
+                    value={finalcapFunnels.core.counts.edit_start ?? 0}
+                    hint={
+                      pct1(finalcapFunnels.core.steps[2]?.conversionFromPrev) != null
+                        ? `${pct1(finalcapFunnels.core.steps[2]?.conversionFromPrev)} of editor sessions`
+                        : 'Distinct session_id'
+                    }
+                  />
+                  <Kpi
+                    label="4 · Edit success"
+                    value={finalcapFunnels.core.counts.edit_success ?? 0}
+                    hint={
+                      pct1(finalcapFunnels.core.steps[3]?.conversionFromPrev) != null
+                        ? `${pct1(finalcapFunnels.core.steps[3]?.conversionFromPrev)} of edit-start sessions`
+                        : 'Distinct session_id'
+                    }
+                  />
+                </div>
+                <div className="border-t border-[var(--color-border)] px-3 pt-3 text-xs font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                  Export
+                </div>
+                <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Kpi
+                    label="Export start"
+                    value={finalcapFunnels.export.counts.export_start ?? 0}
+                    hint="Distinct session_id"
+                  />
+                  <Kpi
+                    label="Export success"
+                    value={finalcapFunnels.export.counts.export_success ?? 0}
+                    hint={
+                      pct1(finalcapFunnels.export.steps[1]?.conversionFromPrev) != null
+                        ? `${pct1(finalcapFunnels.export.steps[1]?.conversionFromPrev)} of export starts`
+                        : 'Distinct session_id'
+                    }
+                  />
+                </div>
+                <div className="border-t border-[var(--color-border)] px-3 pt-3 text-xs font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                  Revenue
+                </div>
+                <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <Kpi
+                    label="Paywall views"
+                    value={finalcapFunnels.revenue.counts.paywall_view ?? 0}
+                    hint="Distinct session_id"
+                  />
+                  <Kpi
+                    label="Trial starts"
+                    value={finalcapFunnels.revenue.counts.trial_start ?? 0}
+                    hint={
+                      pct1(finalcapFunnels.revenue.steps[1]?.conversionFromPrev) != null
+                        ? `${pct1(finalcapFunnels.revenue.steps[1]?.conversionFromPrev)} of paywall views`
+                        : 'Distinct session_id'
+                    }
+                  />
+                  <Kpi
+                    label="Purchase success"
+                    value={finalcapFunnels.revenue.counts.purchase_success ?? 0}
+                    hint={
+                      pct1(finalcapFunnels.revenue.steps[2]?.conversionFromFirst) != null
+                        ? `${pct1(finalcapFunnels.revenue.steps[2]?.conversionFromFirst)} of paywall views`
+                        : 'Distinct session_id'
+                    }
+                  />
+                </div>
+                <p className="px-3 pb-3 text-xs text-[var(--color-ink-tertiary)]">
+                  {finalcapFunnels.revenueNote}
+                </p>
+              </div>
             ) : null}
           </section>
         ) : null}
