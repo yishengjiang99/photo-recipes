@@ -28,6 +28,7 @@ import {
 import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
 import { fetchFinalcapUsage, parseDaysParam } from './finalcapUsage.ts'
 import { fetchFinalcapFunnels } from './finalcapFunnels.ts'
+import { fetchGbkBilling } from './gbkBilling.ts'
 import { ALL_APPS, appAnd, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
 
 const appKey = (app: AppScope): string => app ?? ALL_APPS
@@ -570,6 +571,32 @@ export function mountAdminRoutes(app: Express) {
       console.error('[admin] finalcap-funnels:', err.message)
       res.status(500).json({ error: err.message || 'finalcap_funnels_failed' })
     })
+  })
+
+  /**
+   * GET /api/admin/gbk-billing[?days=30]
+   * GBK Composer billing funnel from the GBK server's own SQLite tables on
+   * this host (billing_daily aggregates + billing_log recents), read by
+   * server/gbkBilling.ts. A separate data source from this panel's
+   * telemetry and from the FinalCap sections — never merged. Soft-zero
+   * (`available: false`) when the GBK files are absent on the host.
+   */
+  app.get('/api/admin/gbk-billing', requireAdmin, (req, res) => {
+    const parsed = parseDaysParam(req.query.days)
+    if (!parsed.ok) {
+      res.status(400).json({
+        error: 'invalid_days',
+        hint: 'days must be an integer between 1 and 90 (default 30).',
+      })
+      return
+    }
+    try {
+      const billing = fetchGbkBilling(parsed.days)
+      res.json({ ok: true, generatedAt: new Date().toISOString(), billing })
+    } catch (err) {
+      console.error('[admin] gbk-billing:', (err as Error).message)
+      res.status(500).json({ error: (err as Error).message || 'gbk_billing_failed' })
+    }
   })
 
   /**

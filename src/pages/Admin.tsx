@@ -235,6 +235,37 @@ type FinalcapFunnels = {
   error?: string
 }
 
+/**
+ * GBK Composer billing funnel — GBK server billing tables on this host
+ * (billing_daily + billing_log), see /api/admin/gbk-billing. NOT this panel's
+ * telemetry; NOT the FinalCap sources above.
+ */
+type GbkBilling = {
+  available: boolean
+  days: number
+  totals: Record<string, number>
+  byDay: Array<{ day: string; counts: Record<string, number> }>
+  steps: {
+    overall: { paywall_view: number; checkout_start: number; purchase: number }
+    bySurface: Array<{
+      surface: string
+      platform: string
+      paywall_view: number
+      checkout_start: number
+      purchase: number
+    }>
+  }
+  recent: Array<{
+    ts: number
+    account: string
+    event: string
+    plan: string
+    surface: string
+    platform: string
+    detail: string
+  }>
+}
+
 const DEFAULT_APP = 'photo-recipes'
 const ALL_APPS = 'all'
 const APP_STORAGE_KEY = 'admin.app'
@@ -574,6 +605,9 @@ export function Admin() {
   const [loadingFinalcap, setLoadingFinalcap] = useState(false)
   const [finalcapFunnels, setFinalcapFunnels] = useState<FinalcapFunnels | null>(null)
   const [finalcapFunnelsError, setFinalcapFunnelsError] = useState('')
+  const [gbkBilling, setGbkBilling] = useState<GbkBilling | null>(null)
+  const [gbkBillingError, setGbkBillingError] = useState('')
+  const [loadingGbkBilling, setLoadingGbkBilling] = useState(false)
   const [loadingFinalcapFunnels, setLoadingFinalcapFunnels] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [loadingSummary, setLoadingSummary] = useState(false)
@@ -692,6 +726,35 @@ export function Admin() {
     }
   }, [])
 
+  const loadGbkBilling = useCallback(async () => {
+    setLoadingGbkBilling(true)
+    setGbkBillingError('')
+    try {
+      const res = await fetch('/api/admin/gbk-billing?days=30', {
+        credentials: 'include',
+      })
+      if (res.status === 401) {
+        setGbkBilling(null)
+        return
+      }
+      const data = (await res.json()) as {
+        billing?: GbkBilling
+        error?: string
+      }
+      if (!res.ok || !data.billing) {
+        setGbkBillingError(data.error || `Failed (${res.status})`)
+        return
+      }
+      setGbkBilling(data.billing)
+    } catch (err) {
+      setGbkBillingError(
+        err instanceof Error ? err.message : 'Failed to load GBK billing funnel',
+      )
+    } finally {
+      setLoadingGbkBilling(false)
+    }
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const ok = await refreshSession()
@@ -699,11 +762,12 @@ export function Admin() {
         await loadSummary(appFilter)
         await loadFinalcap()
         await loadFinalcapFunnels()
+        await loadGbkBilling()
       }
     })()
     // Initial load only; app changes go through onAppChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSession, loadSummary, loadFinalcap, loadFinalcapFunnels])
+  }, [refreshSession, loadSummary, loadFinalcap, loadFinalcapFunnels, loadGbkBilling])
 
   function onAppChange(next: string) {
     if (next === appFilter) return
@@ -1727,6 +1791,173 @@ export function Admin() {
                   </table>
                 </div>
               </>
+            ) : null}
+          </section>
+        ) : null}
+
+        {gbkBilling || loadingGbkBilling || gbkBillingError ? (
+          <section>
+            <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+              GBK Composer — billing funnel
+              <span className="ml-2 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-[var(--color-ink-tertiary)] normal-case">
+                GBK server billing tables on this host (billing_daily +
+                billing_log) — separate from this panel&apos;s telemetry;
+                Stripe web money events land only once the checkout webhook
+                hop is wired
+              </span>
+              {gbkBilling ? (
+                <span className="ml-2 rounded-full bg-[var(--color-tip-bg)] px-2 py-0.5 text-[var(--color-tip)] normal-case">
+                  trailing {gbkBilling.days} days · UTC days
+                </span>
+              ) : null}
+            </h2>
+            {gbkBillingError ? (
+              <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
+                GBK billing funnel failed to load: {gbkBillingError}
+              </p>
+            ) : null}
+            {!gbkBilling && loadingGbkBilling ? (
+              <div className="flex justify-center py-8 text-[var(--color-ink-tertiary)]">
+                <Loader2 className="h-5 w-5 animate-spin text-[var(--color-tip)]" />
+              </div>
+            ) : null}
+            {gbkBilling && !gbkBilling.available ? (
+              <p className="text-sm text-[var(--color-ink-tertiary)]">
+                GBK billing data not found on this host.
+              </p>
+            ) : null}
+            {gbkBilling && gbkBilling.available ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Kpi label="Signups" value={gbkBilling.totals.signup ?? 0} />
+                  <Kpi
+                    label="Compositions"
+                    value={gbkBilling.totals.composition_created ?? 0}
+                    hint={`${gbkBilling.totals.first_composition ?? 0} first compositions`}
+                  />
+                  <Kpi
+                    label="Paywall views"
+                    value={gbkBilling.totals.paywall_view ?? 0}
+                    hint={`${gbkBilling.totals.paywall_dismiss ?? 0} dismissals`}
+                  />
+                  <Kpi
+                    label="Checkouts started"
+                    value={gbkBilling.totals.checkout_start ?? 0}
+                  />
+                  <Kpi
+                    label="Purchases"
+                    value={gbkBilling.totals.purchase ?? 0}
+                    hint={`${gbkBilling.totals.trial_start ?? 0} trials · ${gbkBilling.totals.renewal ?? 0} renewals · ${gbkBilling.totals.trial_convert ?? 0} trial converts`}
+                  />
+                  <Kpi
+                    label="Cancels"
+                    value={gbkBilling.totals.cancel ?? 0}
+                    hint={`${gbkBilling.totals.refund ?? 0} refunds · ${gbkBilling.totals.restore ?? 0} restores`}
+                  />
+                  <Kpi
+                    label="Exports"
+                    value={gbkBilling.totals.export ?? 0}
+                    hint={`${gbkBilling.totals.share_published ?? 0} shares published`}
+                  />
+                  <Kpi
+                    label="Funnel (overall)"
+                    value={`${gbkBilling.steps.overall.paywall_view} → ${gbkBilling.steps.overall.checkout_start} → ${gbkBilling.steps.overall.purchase}`}
+                    hint="paywall views → checkouts → purchases"
+                  />
+                </div>
+                {gbkBilling.steps.bySurface.length ? (
+                  <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                    <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                      Funnel steps by surface / platform
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-[var(--color-ink-tertiary)]">
+                          <th className="px-3 py-2 font-medium">Surface</th>
+                          <th className="px-3 py-2 font-medium">Platform</th>
+                          <th className="px-3 py-2 font-medium">Paywall views</th>
+                          <th className="px-3 py-2 font-medium">Checkouts</th>
+                          <th className="px-3 py-2 font-medium">Purchases</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gbkBilling.steps.bySurface.map((r) => (
+                          <tr
+                            key={`${r.surface}/${r.platform}`}
+                            className="border-t border-[var(--color-border)]"
+                          >
+                            <td className="px-3 py-2">{r.surface || '—'}</td>
+                            <td className="px-3 py-2">{r.platform || '—'}</td>
+                            <td className="px-3 py-2">{r.paywall_view}</td>
+                            <td className="px-3 py-2">{r.checkout_start}</td>
+                            <td className="px-3 py-2">{r.purchase}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                  <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                    Per day (UTC)
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-[var(--color-ink-tertiary)]">
+                        <th className="px-3 py-2 font-medium">Day</th>
+                        <th className="px-3 py-2 font-medium">Signups</th>
+                        <th className="px-3 py-2 font-medium">Compositions</th>
+                        <th className="px-3 py-2 font-medium">Paywall views</th>
+                        <th className="px-3 py-2 font-medium">Checkouts</th>
+                        <th className="px-3 py-2 font-medium">Purchases</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...gbkBilling.byDay].reverse().map((d) => (
+                        <tr
+                          key={d.day}
+                          className="border-t border-[var(--color-border)]"
+                        >
+                          <td className="px-3 py-2">{d.day}</td>
+                          <td className="px-3 py-2">{d.counts.signup ?? 0}</td>
+                          <td className="px-3 py-2">{d.counts.composition_created ?? 0}</td>
+                          <td className="px-3 py-2">{d.counts.paywall_view ?? 0}</td>
+                          <td className="px-3 py-2">{d.counts.checkout_start ?? 0}</td>
+                          <td className="px-3 py-2">{d.counts.purchase ?? 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {gbkBilling.recent.length ? (
+                  <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                    <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-ink-tertiary)]">
+                      Latest billing events (per account)
+                    </div>
+                    <ul className="divide-y divide-[var(--color-border)] text-sm">
+                      {gbkBilling.recent.map((e, i) => (
+                        <li key={`${e.ts}-${i}`} className="px-3 py-2">
+                          <span className="text-[var(--color-ink-tertiary)]">
+                            {new Date(e.ts).toLocaleString()}
+                          </span>{' '}
+                          · <span className="font-medium">{e.event}</span> ·{' '}
+                          {e.account}
+                          {e.plan ? ` · ${e.plan}` : ''}
+                          {e.surface || e.platform
+                            ? ` · ${e.surface || '—'}/${e.platform || '—'}`
+                            : ''}
+                          {e.detail ? (
+                            <span className="text-[var(--color-ink-tertiary)]">
+                              {' '}
+                              · {e.detail}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </section>
         ) : null}
