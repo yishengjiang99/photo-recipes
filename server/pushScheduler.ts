@@ -30,6 +30,13 @@ import {
   isProStatus,
   type Entitlement,
 } from './entitlements.ts'
+import { generateCopy, type CopyResult } from './lifecycleCopy.ts'
+import {
+  SEGMENTS,
+  prettyLook,
+  type CopyFacts,
+  type SegmentDef,
+} from './lifecycleSegments.ts'
 
 export const DEEP_LINK = 'photo-recipes://auto-optimize'
 
@@ -352,20 +359,92 @@ function nudgedToday(prefs: PushPrefs, now: Date): boolean {
   return sameUtcDay(new Date(t), now) || now.getTime() - t < 18 * 60 * 60 * 1000
 }
 
-function comeShootCopy(kind: 'd1_return' | 'come_shoot_nudge'): {
-  title: string
-  body: string
-} {
-  if (kind === 'd1_return') {
-    return {
-      title: 'Come shoot tonight',
-      body: 'Golden light is waiting — open ProTune and tap Auto Optimize.',
+/** Facts source for nudge copy (wired in push.ts to the lifecycle engine's telemetry-derived
+ * facts; tests and other callers may omit it and get conservative defaults). */
+export type NudgeFactsProvider = (
+  prefs: PushPrefs,
+  tier: EntitlementTier,
+  segment: SegmentDef,
+  now: Date,
+) => Promise<CopyFacts>
+
+function defaultNudgeFacts(tier: EntitlementTier): CopyFacts {
+  return { tier, capturesLastWeek: '0', usedAutoOptimize: false, favoriteLook: null, awayFor: null }
+}
+
+/**
+ * Pre-approved rotation pool — used ONLY when the AI pipeline would repeat the exact text this
+ * user received last time (e.g. Grok unreachable and the template is a repeat). Every variant
+ * names the user's recipe chips; the tests hold all of them to validateCopy for every chip.
+ */
+export function nudgeFallbackPool(
+  kind: 'd1_return' | 'come_shoot_nudge',
+  chips: Array<{ id: string; title: string }>,
+): Array<{ title: string; body: string }> {
+  const names = chips.map((c) => prettyLook(c.id)).filter((n): n is string => !!n)
+  const a = names[0] ?? 'a recipe'
+  const b = names[1] ?? 'a portrait recipe'
+  const c = names[2] ?? 'a landscape recipe'
+  return kind === 'd1_return'
+    ? [
+        { title: 'Come shoot tonight', body: `Golden light is waiting — try ${a}. Open ProTune and tap Auto Optimize.` },
+        { title: 'An evening idea', body: `${a} is an easy first recipe. Open the camera and tap Auto Optimize.` },
+        { title: 'Tonight, one tap', body: `Open the camera, load ${a} and tap Auto Optimize for tuned settings.` },
+      ]
+    : [
+        { title: 'Golden hour', body: `Light is soft right now — try ${a} and Auto Optimize a frame.` },
+        { title: 'Evening light', body: `${a}, ${b} and ${c} all suit this light. Open the camera and Auto Optimize one.` },
+        { title: 'Soft light outside', body: `A good evening for ${a}. Open the camera and let Auto Optimize set it up.` },
+        { title: 'This evening', body: `Point at the soft light and try ${a}. Auto Optimize dials in the settings.` },
+      ]
+}
+
+export function nudgeFallbackCopy(
+  kind: 'd1_return' | 'come_shoot_nudge',
+  chips: Array<{ id: string; title: string }>,
+  avoid: { title: string; body: string } | null,
+): { title: string; body: string } {
+  const pool = nudgeFallbackPool(kind, chips)
+  return pool.find((v) => !avoid || v.title !== avoid.title || v.body !== avoid.body) ?? pool[0]!
+}
+
+/**
+ * Nudge copy comes from the same AI pipeline as the lifecycle pushes (Grok draft → guardrail
+ * validation → cache → template), personalized with the user's facts and tonight's recipe chips.
+ * Rotation guarantee: the exact text a user received last time is never sent again back-to-back —
+ * a cache hit that repeats it triggers a fresh generation, and if that still repeats, the
+ * pre-approved pool supplies a different variant naming the chips.
+ */
+export async function buildNudgeCopy(
+  kind: 'd1_return' | 'come_shoot_nudge',
+  prefs: PushPrefs,
+  tier: EntitlementTier,
+  chips: Array<{ id: string; title: string }>,
+  now: Date,
+  factsProvider?: NudgeFactsProvider,
+): Promise<CopyResult> {
+  const segment = SEGMENTS[kind === 'd1_return' ? 'onboarding_d1' : 'weekly_tip']
+  let facts = defaultNudgeFacts(tier)
+  if (factsProvider) {
+    try {
+      facts = await factsProvider(prefs, tier, segment, now)
+    } catch {
+      /* keep defaults — copy generation must never block the send */
     }
   }
-  return {
-    title: 'Golden hour',
-    body: 'Light is soft right now — open the camera and Auto Optimize a frame.',
+  // The chips riding in this push's payload are the suggestion the text should name.
+  facts = { ...facts, favoriteLook: prettyLook(chips[0]?.id ?? null) ?? facts.favoriteLook }
+  const last = prefs.lastNudgeCopy
+  const sameAsLast = (c: { title: string; body: string }) =>
+    !!last && c.title === last.title && c.body === last.body
+  let res = await generateCopy(segment.id, segment.goal, facts, { now })
+  if (sameAsLast(res)) {
+    res = await generateCopy(segment.id, segment.goal, facts, { now, bypassCache: true })
   }
+  if (sameAsLast(res)) {
+    return { ...nudgeFallbackCopy(kind, chips, last), source: 'template' }
+  }
+  return res
 }
 
 export type NudgeTickResult = {
@@ -383,6 +462,7 @@ export type NudgeTickResult = {
  */
 export async function runComeShootNudgeTick(
   now = new Date(),
+  opts: { copyFacts?: NudgeFactsProvider } = {},
 ): Promise<NudgeTickResult> {
   const result: NudgeTickResult = {
     enabled: isPushExp1Enabled(),
@@ -457,8 +537,8 @@ export async function runComeShootNudgeTick(
         continue
       }
 
-      const copy = comeShootCopy(kind)
       const chips = pickRecipeChips(guestId, 3)
+      const copy = await buildNudgeCopy(kind, prefs, tier, chips, now, opts.copyFacts)
       const payload: ApnsPayload = {
         aps: {
           alert: { title: copy.title, body: copy.body },
@@ -487,7 +567,7 @@ export async function runComeShootNudgeTick(
       }
 
       if (anyOk) {
-        recordNudgeSent(guestId, now)
+        recordNudgeSent(guestId, now, copy)
         result.sent += 1
         console.info(
           JSON.stringify({
@@ -497,6 +577,8 @@ export async function runComeShootNudgeTick(
             guestId,
             tier,
             deepLink: DEEP_LINK,
+            copySource: copy.source,
+            copyTitle: copy.title,
           }),
         )
       }

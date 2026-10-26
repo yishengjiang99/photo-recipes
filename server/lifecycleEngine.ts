@@ -35,6 +35,8 @@ import {
   emptyFeatures,
   matchSegments,
   type ActivityFeatures,
+  type CopyFacts,
+  type SegmentDef,
   type SegmentMatch,
   type TelemetryEventRow,
   type Tier,
@@ -312,6 +314,20 @@ export type TickSummary = {
 }
 
 let ticking = false
+
+/**
+ * Copy facts for the legacy come-shoot / D1 nudge (pushScheduler): the same telemetry-derived
+ * facts the lifecycle engine writes with, so both push paths personalize from one source.
+ * Falls back to empty features (guest's own opt-in age only) when no telemetry is linked.
+ */
+export async function copyFactsForNudge(prefs: PushPrefs, tier: Tier, segment: SegmentDef, now: Date): Promise<CopyFacts> {
+  const ev = prefs.telemetryAnonId ? await loader(prefs.telemetryAnonId, now).catch(() => null) : null
+  const optedIn = prefs.optedInAt ? new Date(prefs.optedInAt) : null
+  const features = ev && ev.rows.length
+    ? featuresFromEvents(ev.rows, now, tier, ev.firstSeen)
+    : emptyFeatures(tier, optedIn && Number.isFinite(optedIn.getTime()) ? optedIn : null, now)
+  return copyFactsFor(features, { segment, dedupeKey: segment.id })
+}
 
 export async function runLifecycleTick(now = new Date(), opts: { useGrok?: boolean } = {}): Promise<TickSummary> {
   const mode = effectiveMode()

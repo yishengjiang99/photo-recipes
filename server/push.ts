@@ -27,6 +27,7 @@ import { sendApns, isApnsEnvPresent, type ApnsPayload } from './apns.ts'
 import { pickRecipeChips } from './pushCatalog.ts'
 import {
   cohortPreview,
+  copyFactsForNudge,
   effectiveMode,
   isKillSwitchOn,
   lifecycleReport,
@@ -287,7 +288,9 @@ export function mountPushRoutes(app: Express) {
       // Primary: come-shoot / D1 (no shootWindow). Exp1 shoot briefs are retired
       // (0 sends — needed a shootWindow iOS never set); opt back in with
       // PUSH_EXP1_BRIEFS_ENABLED=true.
-      const comeShoot = await runComeShootNudgeTick(now)
+      const comeShoot = await runComeShootNudgeTick(now, {
+        copyFacts: (prefs, tier, segment, at) => copyFactsForNudge(prefs, tier, segment, at),
+      })
       const tick = isPushExp1BriefsEnabled()
         ? await runPushExp1Tick(now)
         : { retired: true }

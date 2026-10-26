@@ -68,6 +68,8 @@ export type PushPrefs = {
   optedInAt: string | null
   /** Last come-shoot / D1 nudge ISO (daily dedupe) */
   lastNudgeAt: string | null
+  /** Copy of the last come-shoot / D1 nudge actually sent (rotation: never repeat it back-to-back) */
+  lastNudgeCopy: { title: string; body: string } | null
   /**
    * Lifecycle: the app's anonymous telemetry install id (Analytics.anonId), sent with
    * /api/push/register so segments can read this install's first-party event counts.
@@ -128,6 +130,7 @@ function defaultPrefs(guestId: string): PushPrefs {
     lastBriefAt: null,
     optedInAt: null,
     lastNudgeAt: null,
+    lastNudgeCopy: null,
     telemetryAnonId: null,
     marketingOptIn: false,
     marketingOptInChangedAt: null,
@@ -397,8 +400,9 @@ export function recordBriefSent(guestId: string, at = new Date()): PushPrefs {
   return next
 }
 
-/** Record a come-shoot / D1 nudge (counts toward weekly cap + daily dedupe). */
-export function recordNudgeSent(guestId: string, at = new Date()): PushPrefs {
+/** Record a come-shoot / D1 nudge (counts toward weekly cap + daily dedupe). When the sent copy is
+ * passed, it is kept as lastNudgeCopy so the next nudge can rotate away from it. */
+export function recordNudgeSent(guestId: string, at = new Date(), copy?: { title: string; body: string }): PushPrefs {
   const store = readStore()
   const prev = store.prefs[guestId] ?? defaultPrefs(guestId)
   const iso = at.toISOString()
@@ -408,6 +412,7 @@ export function recordNudgeSent(guestId: string, at = new Date()): PushPrefs {
     guestId,
     sentThisWeek,
     lastNudgeAt: iso,
+    lastNudgeCopy: copy ? { title: copy.title, body: copy.body } : prev.lastNudgeCopy,
     lastBriefAt: prev.lastBriefAt,
     updatedAt: iso,
   }
