@@ -411,9 +411,10 @@ export function nudgeFallbackCopy(
 /**
  * Nudge copy comes from the same AI pipeline as the lifecycle pushes (Grok draft → guardrail
  * validation → cache → template), personalized with the user's facts and tonight's recipe chips.
- * Rotation guarantee: the exact text a user received last time is never sent again back-to-back —
- * a cache hit that repeats it triggers a fresh generation, and if that still repeats, the
- * pre-approved pool supplies a different variant naming the chips.
+ * Two guarantees on top of the pipeline: (1) the text names tonight's lead recipe chip — the goal
+ * steers the draft, and a draft that still omits it is regenerated; (2) rotation — the exact text
+ * a user received last time is never sent again back-to-back. If regeneration still fails either
+ * check, the pre-approved pool supplies a variant that satisfies both.
  */
 export async function buildNudgeCopy(
   kind: 'd1_return' | 'come_shoot_nudge',
@@ -433,15 +434,21 @@ export async function buildNudgeCopy(
     }
   }
   // The chips riding in this push's payload are the suggestion the text should name.
-  facts = { ...facts, favoriteLook: prettyLook(chips[0]?.id ?? null) ?? facts.favoriteLook }
+  const leadName = prettyLook(chips[0]?.id ?? null)
+  facts = { ...facts, favoriteLook: leadName ?? facts.favoriteLook }
+  const goal = `${segment.goal} Name tonight's recipe pick (given as the favorite look in the facts) in the title or body.`
   const last = prefs.lastNudgeCopy
   const sameAsLast = (c: { title: string; body: string }) =>
     !!last && c.title === last.title && c.body === last.body
-  let res = await generateCopy(segment.id, segment.goal, facts, { now })
-  if (sameAsLast(res)) {
-    res = await generateCopy(segment.id, segment.goal, facts, { now, bypassCache: true })
+  const namesLead = (c: { title: string; body: string }) =>
+    !leadName || `${c.title} ${c.body}`.toLowerCase().includes(leadName.toLowerCase())
+  const unusable = (c: { title: string; body: string }) => sameAsLast(c) || !namesLead(c)
+  let res = await generateCopy(segment.id, goal, facts, { now })
+  if (unusable(res)) {
+    // A repeat of last time, or a draft that never names the recipe pick: regenerate fresh.
+    res = await generateCopy(segment.id, goal, facts, { now, bypassCache: true })
   }
-  if (sameAsLast(res)) {
+  if (unusable(res)) {
     return { ...nudgeFallbackCopy(kind, chips, last), source: 'template' }
   }
   return res

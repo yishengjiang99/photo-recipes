@@ -12,10 +12,10 @@ import {
   updatePushPrefs,
   getPushPrefs,
 } from './pushPrefs.ts'
-import { runComeShootNudgeTick, nudgeFallbackCopy, nudgeFallbackPool } from './pushScheduler.ts'
+import { runComeShootNudgeTick, buildNudgeCopy, nudgeFallbackCopy, nudgeFallbackPool } from './pushScheduler.ts'
 import { BRIEF_RECIPE_CHIPS, pickRecipeChips } from './pushCatalog.ts'
 import { prettyLook } from './lifecycleSegments.ts'
-import { validateCopy } from './lifecycleCopy.ts'
+import { validateCopy, setCopyFetchForTests } from './lifecycleCopy.ts'
 
 const ENV_KEYS = ['PUSH_EXP1_ENABLED', 'PUSH_PREFS_PATH', 'APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID', 'APNS_P8_CONTENTS', 'APNS_P8_PATH', 'PUSH_COPY_GROK', 'PUSH_COPY_CACHE_PATH', 'XAI_API_KEY']
 
@@ -40,6 +40,7 @@ describe('runComeShootNudgeTick', () => {
   })
 
   afterEach(() => {
+    setCopyFetchForTests(null)
     clearPushPrefsStoreForTests()
     for (const k of ENV_KEYS) {
       if (prior[k] === undefined) delete process.env[k]
@@ -110,6 +111,13 @@ describe('runComeShootNudgeTick', () => {
     assert.ok(copy1, 'the sent copy is persisted for rotation')
     // Not the old hardcoded string.
     assert.notEqual(copy1.body, 'Light is soft right now — open the camera and Auto Optimize a frame.')
+    // With Grok off the segment template never names the chip, so even day 1 lands on a
+    // chip-naming pool variant (the production path enforces the naming, not just rotation).
+    const chipNames1 = pickRecipeChips(guestId, 3).map((c) => prettyLook(c.id))
+    assert.ok(
+      chipNames1.some((n) => n && `${copy1.title} ${copy1.body}`.includes(n)),
+      `day-1 copy should name one of the user's chips ${JSON.stringify(chipNames1)}: ${JSON.stringify(copy1)}`,
+    )
 
     // Day 2, 17:30 PT (past the daily dedupe: new UTC day and > 18 h later).
     const day2 = await runComeShootNudgeTick(new Date('2026-10-08T00:30:00.000Z'))
@@ -166,6 +174,54 @@ describe('runComeShootNudgeTick', () => {
         }
       }
     }
+  })
+
+  it('buildNudgeCopy: an AI draft naming the lead chip is used as drafted', async () => {
+    process.env.PUSH_COPY_GROK = 'true'
+    process.env.XAI_API_KEY = 'test-key'
+    const guestId = 'guest-copy-chip-ok'
+    updatePushPrefs(guestId, { pushOptIn: true, timezone: 'America/Los_Angeles' })
+    const prefs = getPushPrefs(guestId)
+    const chips = pickRecipeChips(guestId, 3)
+    const lead = prettyLook(chips[0]!.id)!
+    let calls = 0
+    setCopyFetchForTests((async () => {
+      calls++
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ title: 'Evening plans', body: `Try ${lead} in this light — tap Auto Optimize and take the shot.` }) } }],
+        }),
+      }
+    }) as typeof fetch)
+    const res = await buildNudgeCopy('come_shoot_nudge', prefs, 'pro', chips, new Date('2026-10-07T00:00:00.000Z'))
+    assert.equal(res.source, 'grok')
+    assert.ok(res.body.includes(lead))
+    assert.equal(calls, 1)
+  })
+
+  it('buildNudgeCopy: drafts that never name the lead chip fall back to the chip-naming pool', async () => {
+    process.env.PUSH_COPY_GROK = 'true'
+    process.env.XAI_API_KEY = 'test-key'
+    const guestId = 'guest-copy-chip-missing'
+    updatePushPrefs(guestId, { pushOptIn: true, timezone: 'America/Los_Angeles' })
+    const prefs = getPushPrefs(guestId)
+    const chips = pickRecipeChips(guestId, 3)
+    const lead = prettyLook(chips[0]!.id)!
+    let calls = 0
+    setCopyFetchForTests((async () => {
+      calls++
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ title: 'A calm evening frame', body: 'Point at the soft light and tap Auto Optimize for tuned settings.' }) } }],
+        }),
+      }
+    }) as typeof fetch)
+    const res = await buildNudgeCopy('come_shoot_nudge', prefs, 'pro', chips, new Date('2026-10-07T00:00:00.000Z'))
+    assert.equal(res.source, 'template')
+    assert.ok(`${res.title} ${res.body}`.includes(lead), `fallback must name the lead chip: ${JSON.stringify(res)}`)
+    assert.ok(calls >= 2, `expected a regeneration attempt before falling back, got ${calls} fetch call(s)`)
   })
 
   it('skips when no device token', async () => {
