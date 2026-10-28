@@ -21,10 +21,9 @@ final class FirstPhotoExperimentTests: XCTestCase {
     }
 
     private func experiment(installId: String = "test-install-1") -> FirstPhotoExperiment {
-        let now = clock
         return FirstPhotoExperiment(
             defaults: defaults,
-            now: { now },
+            now: { self.clock },
             sink: sink,
             assigner: ExperimentAssigner(
                 defaults: defaults,

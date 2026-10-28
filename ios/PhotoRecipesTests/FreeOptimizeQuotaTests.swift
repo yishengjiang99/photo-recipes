@@ -20,8 +20,7 @@ final class FreeOptimizeQuotaTests: XCTestCase {
     private func quota() -> FreeOptimizeQuota {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        let now = clock
-        return FreeOptimizeQuota(defaults: defaults, now: { now }, calendar: cal)
+        return FreeOptimizeQuota(defaults: defaults, now: { self.clock }, calendar: cal)
     }
 
     func testNewInstallGetsTenSuccessfulUsesInFirst24h() {
