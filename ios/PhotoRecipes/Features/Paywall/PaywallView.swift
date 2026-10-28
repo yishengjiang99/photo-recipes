@@ -8,6 +8,28 @@ struct PaywallView: View {
     @State private var shownAt = Date()
     @State private var selectedPlan: String?
     @State private var dismissTracked = false
+    @State private var didEmitProofShown = false
+
+    /// Stable id for this paywall presentation (contract: paywall_view /
+    /// paywall_plan_select / purchase_start carry `paywall_id`).
+    private var paywallId: String {
+        "\(entitlements.paywallMode.rawValue)_\(entitlements.paywallTrigger)"
+    }
+
+    private var paywallAssigner: ExperimentAssigner {
+        ExperimentAssigner(
+            defaults: .standard,
+            installIdProvider: { Analytics.shared.anonId },
+            sink: Analytics.shared
+        )
+    }
+
+    /// Treatment arm of the paywall value experiment (independent of the
+    /// first-photo experiment; assignment persists across flag flips).
+    private var isValueArm: Bool {
+        guard FeatureFlags().paywallExperimentActive else { return false }
+        return paywallAssigner.assignment(for: .paywall) == .treatment
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,6 +58,9 @@ struct PaywallView: View {
                             .foregroundStyle(AppTheme.inkSecondary)
                             .multilineTextAlignment(.center)
 
+                        valueProofSection
+
+                        // Annual first — primary
                         if let yearly = storeKit.yearlyProduct {
                             planCard(
                                 product: yearly,
@@ -90,8 +115,19 @@ struct PaywallView: View {
 
                         Button("Restore purchases") {
                             Task {
-                                Analytics.shared.track("purchase_restore", props: ["source": "ios_paywall"])
                                 await storeKit.restore()
+                                // Exactly one purchase_restore per tap: v2
+                                // (with result + entitlement count) when the
+                                // v2 flag is on, the legacy event otherwise.
+                                let v2Restore = PurchaseTelemetryV2.live()
+                                if v2Restore.isEnabled {
+                                    v2Restore.recordRestore(
+                                        result: entitlements.isPro ? "entitled" : "no_entitlement",
+                                        verifiedEntitlementCount: storeKit.purchasedProductIDs.count
+                                    )
+                                } else {
+                                    Analytics.shared.track("purchase_restore", props: ["source": "ios_paywall"])
+                                }
                             }
                         }
                         .font(AppTheme.bodySmMedium())
@@ -119,7 +155,12 @@ struct PaywallView: View {
                 shownAt = Date()
                 selectedPlan = nil
                 dismissTracked = false
-                Analytics.shared.track("paywall_view", props: entitlements.paywallViewProps)
+                var props = entitlements.paywallViewProps
+                if FeatureFlags().paywallExperimentActive {
+                    props["experiment_arm"] = paywallAssigner.assignment(for: .paywall).rawValue
+                    props["paywall_id"] = paywallId
+                }
+                Analytics.shared.track("paywall_view", props: props)
             }
             // Swipe-down / programmatic close: still emit paywall_dismiss once.
             .onDisappear { trackDismiss(action: "swipe") }
@@ -155,6 +196,43 @@ struct PaywallView: View {
             selectedPlan: selectedPlan,
             freeTriesLeft: triesLeft
         ))
+    }
+
+    /// Genuine value proof for the treatment arm: the user's real last saved
+    /// optimized result (recipe + settings actually applied). No fabricated
+    /// before/after — no baseline image was ever persisted. Falls back to the
+    /// control layout (renders nothing) when no proof exists.
+    @ViewBuilder
+    private var valueProofSection: some View {
+        if isValueArm, let proof = PaywallValueProof.load() {
+            VStack(alignment: .leading, spacing: AppTheme.space2) {
+                Text("Your optimized result")
+                    .font(AppTheme.bodySmMedium())
+                    .foregroundStyle(AppTheme.ink)
+                if let title = proof.recipeTitle {
+                    Text(title)
+                        .font(AppTheme.bodySm())
+                        .foregroundStyle(AppTheme.ink)
+                }
+                Text(proof.appliedSettingsSummary)
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.inkSecondary)
+                Text("Pro keeps Auto Optimize unlimited, so every shot can be set up like this.")
+                    .font(AppTheme.caption())
+                    .foregroundStyle(AppTheme.inkSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(AppTheme.space4)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.radiusMd, style: .continuous)
+                    .fill(AppTheme.surface2)
+            )
+            .onAppear {
+                guard !didEmitProofShown else { return }
+                didEmitProofShown = true
+                Analytics.shared.track("paywall_value_proof_shown", props: ["arm": "treatment"])
+            }
+        }
     }
 
     private func planCard(
@@ -205,15 +283,61 @@ struct PaywallView: View {
                 Task {
                     let plan = product.id.contains("yearly") ? "yearly" : "monthly"
                     selectedPlan = plan
-                    Analytics.shared.track("paywall_plan_select", props: ["plan": plan, "source": "ios_paywall"])
-                    Analytics.shared.track("purchase_start", props: ["plan": plan, "source": "storekit"])
+                    // cancelled / pending / failed are also tracked in
+                    // StoreKitManager.purchase (purchase_cancelled,
+                    // purchase_pending, purchase_failed) via PurchaseTelemetry.
+                    let v2 = PurchaseTelemetryV2.live()
+                    let attemptId = v2.beginAttempt()
+                    Analytics.shared.track("paywall_plan_select", props: [
+                        "plan": plan, "source": "ios_paywall",
+                        "product_id": product.id, "paywall_id": paywallId,
+                    ])
+                    Analytics.shared.track("purchase_start", props: [
+                        "plan": plan, "source": "storekit",
+                        "product_id": product.id, "paywall_id": paywallId,
+                        "purchase_attempt_id": attemptId,
+                    ])
                     let ok = await storeKit.purchase(product)
-                    // cancelled / pending / failed are tracked in StoreKitManager.purchase
-                    // (purchase_cancelled, purchase_pending, purchase_failed).
-                    if ok {
-                        Analytics.shared.track("purchase_success", props: ["plan": plan, "source": "storekit"])
-                        dismissTracked = true // converted, not a dismiss
-                        dismiss()
+                    switch storeKit.lastPurchaseOutcome {
+                    case .verified(let transactionId, let activated)?:
+                        if v2.isEnabled {
+                            // Canonical v2 success — emitted only here, only
+                            // after verification + entitlement activation.
+                            v2.recordVerifiedAndActivated(
+                                attemptId: attemptId,
+                                transactionId: transactionId,
+                                productId: product.id,
+                                environment: storeKit.lastVerifiedEnvironment ?? "unknown",
+                                entitlementType: "pro",
+                                activationSource: "purchase"
+                            )
+                            if activated { dismissTracked = true; dismiss() }
+                        } else if ok {
+                            Analytics.shared.track("purchase_success", props: ["plan": plan, "source": "storekit"])
+                            dismissTracked = true // converted, not a dismiss
+                            dismiss()
+                        }
+                    case .cancelled?, .pending?:
+                        // Tracked once, inside StoreKitManager.purchase via
+                        // PurchaseTelemetry (purchase_cancelled / purchase_pending).
+                        // The v2 emitter is NOT called here — on current main
+                        // that would double-emit the same event names.
+                        break
+                    case .unverified?:
+                        // purchase_failed (stage: verification) already tracked
+                        // in StoreKitManager; legacy purchase_fail kept.
+                        Analytics.shared.track("purchase_fail", props: ["plan": plan, "source": "storekit"])
+                    default:
+                        if ok {
+                            // Outcome surface unavailable — preserve legacy behavior.
+                            if !v2.isEnabled {
+                                Analytics.shared.track("purchase_success", props: ["plan": plan, "source": "storekit"])
+                            }
+                            dismissTracked = true // converted, not a dismiss
+                            dismiss()
+                        } else if storeKit.purchaseError != nil {
+                            Analytics.shared.track("purchase_fail", props: ["plan": plan, "source": "storekit"])
+                        }
                     }
                 }
             } label: {

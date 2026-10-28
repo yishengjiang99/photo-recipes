@@ -634,6 +634,16 @@ final class AutoOptimizeController: ObservableObject {
         // skipped (already running) and blocked (quota) attempts, so those
         // never count as starts. Pairs with `auto_optimize_success` by run_id.
         Analytics.shared.track("auto_optimize_start", props: Self.startProps(runId: runId, trigger: trigger, parentRunId: parentRunId))
+        // Workstream E stage timing (telemetry-only, gated, non-blocking).
+        let stageTimer = OptimizeStageTimer(
+            sink: Analytics.shared,
+            enabled: { FeatureFlags().optimizeStageTimingEnabled },
+            runId: runId,
+            trigger: trigger,
+            lens: session.isFront ? "front" : "back"
+        )
+        stageTimer.beginRun()
+        stageTimer.beginStage(.aeConvergence)
         let isFirstSuccessPending = !UserDefaults.standard.bool(
             forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey
         )
@@ -645,6 +655,7 @@ final class AutoOptimizeController: ObservableObject {
                 "stage": stage,
             ])
             AOPerf.end(perfId, outcome: "cancelled")
+            stageTimer.finish(outcome: "cancelled")
             return true
         }
 
@@ -668,10 +679,21 @@ final class AutoOptimizeController: ObservableObject {
             convergedAt = converge.convergedAt
             convergedEAuto = converge.eAuto
             if converge.timedOut {
-                Analytics.shared.track("ae_converge_timeout", props: [
+                var aeProps: [String: String] = [
                     "run_id": runId,
                     "trigger": trigger,
-                ])
+                ]
+                // wasLensSwitching: no reliable signal exists at this site
+                // today, so it is reported as "unknown", never fabricated.
+                aeProps.merge(AEDiagnostics.timeoutProps(
+                    lens: session.isFront ? "front" : "back",
+                    phaseAtTimeout: "sensing",
+                    wasLensSwitching: nil,
+                    wasCaptureInFlight: isUserCaptureInFlight,
+                    exposureLocked: session.exposureLocked
+                )) { _, new in new }
+                Analytics.shared.track("ae_converge_timeout", props: aeProps)
+                stageTimer.recordFallback(reason: "ae_converge_timeout")
             }
         } catch {
             if wasCancelled(stage: "converge") { return }
@@ -684,6 +706,7 @@ final class AutoOptimizeController: ObservableObject {
         // anything — the darkening guard compares against this.
         let lumaBefore = session.measuredPreviewLuma()
 
+        stageTimer.endStage(.aeConvergence, next: .inference)
         // --- 1. Features -----------------------------------------------------
         phase = .sensing("Reading scene…")
         let metering = session.meteringSample()
@@ -803,6 +826,7 @@ final class AutoOptimizeController: ObservableObject {
             aoTurnedFlashOn = false
         }
 
+        stageTimer.endStage(.inference, next: .apply)
         // --- 4. Apply ----------------------------------------------------------
         if wasCancelled(stage: "apply") { return }
         phase = .applying(selfieDecision.choice.map { "Applying \($0.look.displayName)…" }
@@ -862,6 +886,8 @@ final class AutoOptimizeController: ObservableObject {
                 lensDeviceType: session.readbackState().lensDeviceType
             )) { _, new in new }
             Analytics.shared.track("auto_optimize_success", props: successProps)
+            stageTimer.endStage(.apply)
+            stageTimer.finish(outcome: "ready_coach_only")
             AOPerf.end(perfId, outcome: "ready-coach-only")
             consumeSharedFreeIfNeeded(entitlements)
             scheduleCaptureWindowCheck(runId: runId, recipeId: recipe.id)
@@ -872,6 +898,7 @@ final class AutoOptimizeController: ObservableObject {
             return
         }
 
+        stageTimer.endStage(.apply, next: .verify)
         // --- 5. Verify: closed-loop settle + read-back + correct ---------------
         phase = .verifying("Checking exposure…")
         var verifyNotes: [String] = []
@@ -1017,6 +1044,8 @@ final class AutoOptimizeController: ObservableObject {
         // Part 0.3: verify-loop wall time ("" when no verify ran).
         successProps["t_verify_ms"] = verifyDurationMs.map { "\($0)" } ?? ""
         Analytics.shared.track("auto_optimize_success", props: successProps)
+        stageTimer.endStage(.verify)
+        stageTimer.finish(outcome: "ready")
         AOPerf.end(perfId, outcome: "ready")
         consumeSharedFreeIfNeeded(entitlements)
         PushNotificationManager.shared.noteFirstSuccessfulAutoOptimize()
