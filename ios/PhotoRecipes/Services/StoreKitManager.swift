@@ -24,6 +24,21 @@ final class StoreKitManager: ObservableObject {
     @Published var purchaseError: String?
     @Published private(set) var isPurchasing = false
 
+    /// Distinguishable outcome of the most recent `purchase(_:)` call
+    /// (Workstream D). The legacy Bool return cannot tell a user cancel from
+    /// an Ask-to-Buy pending or a verified-but-not-entitled result; this can.
+    enum PurchaseOutcome: Equatable {
+        case verified(transactionId: String, entitlementActivated: Bool)
+        case cancelled
+        case pending
+        case failed(category: String)
+        case unverified
+    }
+
+    @Published private(set) var lastPurchaseOutcome: PurchaseOutcome?
+    /// Transaction environment of the last verified purchase ("Sandbox"/"Production").
+    private(set) var lastVerifiedEnvironment: String?
+
     /// Result of the most recent /api/iap/verify round (server-side Pro, not just local StoreKit).
     private var serverConfirmedPro = false
     private var lastSyncError: String?
@@ -107,6 +122,7 @@ final class StoreKitManager: ObservableObject {
     func purchase(_ product: Product) async -> Bool {
         isPurchasing = true
         purchaseError = nil
+        lastPurchaseOutcome = nil
         defer { isPurchasing = false }
         let plan = PurchaseTelemetry.plan(for: product.id)
         do {
@@ -119,6 +135,7 @@ final class StoreKitManager: ObservableObject {
                 } catch {
                     Analytics.shared.track("purchase_failed", props: PurchaseTelemetry.failedProps(
                         error: error, productId: product.id, plan: plan, stage: "verification"))
+                    lastPurchaseOutcome = .unverified
                     throw PurchaseTelemetry.AlreadyTracked(underlying: error)
                 }
                 let jws = verification.jwsRepresentation
@@ -128,6 +145,11 @@ final class StoreKitManager: ObservableObject {
                     transaction: transaction
                 )
                 await transaction.finish()
+                lastVerifiedEnvironment = transaction.environment.rawValue
+                lastPurchaseOutcome = .verified(
+                    transactionId: String(transaction.id),
+                    entitlementActivated: entitlements.isPro
+                )
                 purchasedProductIDs.insert(product.id)
                 MetaEvents.logSubscriptionPurchase(
                     productId: product.id,
@@ -139,10 +161,12 @@ final class StoreKitManager: ObservableObject {
             case .userCancelled:
                 Analytics.shared.track("purchase_cancelled", props: PurchaseTelemetry.baseProps(
                     productId: product.id, plan: plan))
+                lastPurchaseOutcome = .cancelled
                 return false
             case .pending:
                 Analytics.shared.track("purchase_pending", props: PurchaseTelemetry.baseProps(
                     productId: product.id, plan: plan))
+                lastPurchaseOutcome = .pending
                 purchaseError = "Purchase is pending approval."
                 return false
             @unknown default:
@@ -154,6 +178,7 @@ final class StoreKitManager: ObservableObject {
         } catch {
             Analytics.shared.track("purchase_failed", props: PurchaseTelemetry.failedProps(
                 error: error, productId: product.id, plan: plan, stage: "purchase"))
+            if lastPurchaseOutcome == nil { lastPurchaseOutcome = .failed(category: "storekit_error") }
             purchaseError = error.localizedDescription
             return false
         }

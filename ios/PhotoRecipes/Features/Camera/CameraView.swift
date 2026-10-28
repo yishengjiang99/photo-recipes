@@ -94,6 +94,10 @@ struct CameraView: View {
     /// onAppear/onDisappear-tracked: the TabView keeps this view alive (and
     /// its scenePhase observer firing) while other tabs are on screen.
     @State private var isCameraOnScreen = false
+    /// Workstream A treatment: pre-capture guidance card visibility.
+    @State private var showFirstPhotoGuidance = false
+    /// Run id for which `capture_ready_view` was already emitted (dedupe).
+    @State private var captureReadyEmittedForRun: String?
 
     var body: some View {
         ZStack {
@@ -138,6 +142,7 @@ struct CameraView: View {
             if session.auth == .authorized,
                CameraLifecyclePolicy.Phase(scenePhase) != .background {
                 await startCameraPipeline()
+                await maybeOfferPreCaptureGuidance()
             }
             applyStagingIfNeeded()
             if CameraCoachMarksStore.shouldShow {
@@ -146,6 +151,13 @@ struct CameraView: View {
             }
         }
         .onChange(of: router.stagedRecipeId) { _, _ in applyStagingIfNeeded() }
+        .onChange(of: optimizer.phase) { _, phase in
+            if case .ready = phase, FeatureFlags().captureReadyUIEnabled,
+               let runId = optimizer.lastRunId, captureReadyEmittedForRun != runId {
+                captureReadyEmittedForRun = runId
+                Analytics.shared.track("capture_ready_view", props: ["run_id": runId])
+            }
+        }
         .onChange(of: router.pendingAutoOptimize) { _, pending in
             if pending { Task { await consumePendingAutoOptimizeIfNeeded() } }
         }
@@ -568,6 +580,35 @@ struct CameraView: View {
                     }
                     .transition(.opacity)
                     .zIndex(20)
+                }
+
+                if showFirstPhotoGuidance {
+                    VStack {
+                        Spacer()
+                        FirstPhotoGuidanceCard(
+                            onTry: { startGuidedPreoptimize() },
+                            onSkip: {
+                                FirstPhotoExperiment.live().markSkipped()
+                                showFirstPhotoGuidance = false
+                            }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 132)
+                    }
+                    .zIndex(90)
+                    .transition(.opacity)
+                }
+
+                if captureReadiness.isOptimizedCaptureReady,
+                   FeatureFlags().captureReadyUIEnabled {
+                    VStack {
+                        Spacer()
+                        CaptureReadyBanner()
+                            .padding(.bottom, 132)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(90)
+                    .transition(.opacity)
                 }
 
                 if let card = postSaveCard {
@@ -1578,6 +1619,72 @@ struct CameraView: View {
 
     /// Guided first win: the first capture in a new install auto-runs the local optimizer once
     /// (not on camera open). Skipped after a prior undo / opt-out or while anything is running.
+    /// Workstream B: readiness is DERIVED from session + optimizer state —
+    /// no separate mutable flags (see CaptureReadiness.swift).
+    private var captureReadiness: CaptureReadiness {
+        let optimizerReady: Bool = {
+            if case .ready = optimizer.phase { return true }
+            return false
+        }()
+        return CaptureReadinessDerivation.derive(CaptureReadinessInputs(
+            sessionRunning: session.isRunning,
+            optimizerRunning: optimizer.phase.isRunning,
+            optimizerReady: optimizerReady,
+            optimizerResultValid: optimizer.lastRunId != nil,
+            isCapturing: isCapturing
+        ))
+    }
+
+    /// Workstream A (treatment arm only): once the camera is running and all
+    /// safety gates pass, offer the dismissible pre-capture guidance. The
+    /// control arm never reaches the card — its post-capture flow below is
+    /// unchanged. Runs from the launch `.task`, never on every appearance.
+    private func maybeOfferPreCaptureGuidance() async {
+        let experiment = FirstPhotoExperiment.live()
+        experiment.recordFirstAppOpenIfNeeded()
+        let defaults = UserDefaults.standard
+        let hasPriorActivation =
+            defaults.bool(forKey: PushNotificationManager.hasCompletedFirstCaptureKey)
+            || defaults.bool(forKey: PushNotificationManager.hasCompletedFirstAutoOptimizeKey)
+        let gates = FirstPhotoExperiment.CameraGateInputs(
+            sessionRunning: session.isRunning,
+            isBackgrounded: false,
+            isLensTransitioning: false,
+            isCapturing: isCapturing,
+            optimizerRunning: optimizer.phase.isRunning
+        )
+        guard experiment.canStartPreoptimize(
+            gates: gates,
+            hasPriorActivation: hasPriorActivation,
+            userUndid: defaults.bool(forKey: AutoOptimizeController.userUndidKey)
+        ) else { return }
+        experiment.markGuidanceShown()
+        showFirstPhotoGuidance = true
+    }
+
+    /// Guidance "Optimize this shot": runs the existing pipeline with the
+    /// guided trigger. Never surfaces a hard paywall (runOptimize only gates
+    /// manual/voice/deep_link triggers) and never blocks the shutter; quota
+    /// is consumed only on success, by the controller, as before.
+    private func startGuidedPreoptimize() {
+        showFirstPhotoGuidance = false
+        // Prevent the post-capture control-path auto-run from double-firing.
+        FirstWinAutoRun.markAttempted()
+        Task {
+            await runOptimize(trigger: "pre_capture_guided")
+            let experiment = FirstPhotoExperiment.live()
+            let runId = optimizer.lastRunId ?? ""
+            // Emitted post-run so both events carry the real run_id; the pair
+            // is adjacent in the stream (see docs/activation-experiments.md).
+            experiment.markPreoptimizeStarted(runId: runId)
+            let success: Bool = {
+                if case .ready = optimizer.phase { return true }
+                return false
+            }()
+            experiment.markPreoptimizeCompleted(runId: runId, success: success)
+        }
+    }
+
     private func maybeAutoRunFirstOptimize(isFirstCapture: Bool) async {
         guard isFirstCapture, FirstWinAutoRun.isEligible else { return }
         guard !optimizer.phase.isRunning, !isRecommending, canOptimize, session.isRunning else { return }
@@ -1862,6 +1969,11 @@ struct CameraView: View {
 
     private func takePhoto() async {
         guard !isCapturing else { return }
+        if captureReadiness.isOptimizedCaptureReady {
+            Analytics.shared.track("capture_ready_shutter_tap", props: [
+                "run_id": optimizer.lastRunId ?? "",
+            ])
+        }
         isCapturing = true
         optimizer.isUserCaptureInFlight = true
         captureError = nil
@@ -1907,6 +2019,19 @@ struct CameraView: View {
                     "optimized": optimizedAtCapture ? "1" : "0",
                 ])
                 presentSavedChip()
+                if optimizedAtCapture {
+                    // At-most-once first-photo activation + the real result
+                    // summary the paywall value arm may later show.
+                    FirstPhotoExperiment.live().recordActivationIfNeeded()
+                    let settingsCount = optimizer.coreDiffs.count
+                    PaywallValueProof.record(
+                        recipeTitle: optimizer.chosenRecipeTitle ?? session.appliedRecipeTitle,
+                        appliedSettingsSummary: settingsCount > 0
+                            ? "\(settingsCount) setting\(settingsCount == 1 ? "" : "s") applied by Auto Optimize"
+                            : "Auto Optimize settings applied",
+                        settingsCount: settingsCount
+                    )
+                }
                 if optimizedAtCapture, PostSaveCelebration.shouldShow {
                     PostSaveCelebration.markShown()
                     let offer = !PushNotificationManager.shared.didAskPushPermission
@@ -1958,6 +2083,14 @@ struct CameraView: View {
             Analytics.shared.track("optimize_photo_captured", props: [
                 "recipe_id": optimizer.chosenRecipeId ?? session.appliedRecipeId ?? "",
                 "run_id": runId,
+                "seconds_after_ready": "\(secondsAfterReady)",
+            ])
+            // Workstream B classification: this block only runs when the run
+            // id was still consumable (not undone / flipped / reset — those
+            // paths clear it), so the only split left is manual override.
+            Analytics.shared.track("capture_after_optimize", props: [
+                "run_id": runId,
+                "classification": optimizer.isDirtyOverride ? "afterManualOverride" : "afterComplete",
                 "seconds_after_ready": "\(secondsAfterReady)",
             ])
         }

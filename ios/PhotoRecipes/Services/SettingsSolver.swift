@@ -238,7 +238,13 @@ enum SettingsSolver {
                 // solving from fixed 1/60 s × ISO 100 guesses.
                 messages.append("Couldn't read the light — left on auto")
                 Task { @MainActor in
-                    Analytics.shared.track("ao_metering_missing", props: ["recipe_id": recipeId])
+                    Analytics.shared.track("ao_metering_missing", props: [
+                        "recipe_id": recipeId,
+                        "reason": MeteringMissingReason.classify(
+                            hasExposureSeconds: features.meteredExposureSeconds != nil,
+                            hasISO: features.meteredISO != nil
+                        ).rawValue,
+                    ])
                 }
                 plan = ExposurePlanner.plan(
                     eAuto: 1, targetEV: 0, priority: .systemAuto,
