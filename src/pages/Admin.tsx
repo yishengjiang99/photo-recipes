@@ -994,6 +994,16 @@ export function Admin() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-8 px-4 py-6">
+        <a
+          href="/admin/analytics"
+          className="block rounded-[var(--radius-lg)] border border-[var(--color-tip)]/50 bg-[var(--color-tip)]/10 px-4 py-3 hover:bg-[var(--color-tip)]/20"
+        >
+          <span className="font-display text-lg text-[var(--color-tip)]">Analytics &amp; Experiments →</span>
+          <span className="block text-sm text-[var(--color-ink-secondary)]">
+            First-photo activation experiment, capture-ready funnel, paywall &amp; purchase reconciliation, and
+            Auto Optimize latency/reliability — with experiment status and alerts.
+          </span>
+        </a>
         {loadError ? (
           <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
             {loadError}
