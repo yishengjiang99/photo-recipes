@@ -46,7 +46,7 @@ final class PurchaseTelemetryV2 {
 
     var isEnabled: Bool { enabled() }
 
-    private func emit(_ event: String, _ props: [String: String]) {
+    private func emit(_ event: String, props: [String: String]) {
         guard enabled() else { return }
         sink?.track(event, props: props)
     }
