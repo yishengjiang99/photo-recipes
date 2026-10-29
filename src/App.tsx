@@ -10,6 +10,7 @@ import { Terms } from './pages/Terms'
 // the app shell, camera and admin load on demand so the landing page downloads less JavaScript.
 const Layout = lazy(() => import('./components/Layout').then((m) => ({ default: m.Layout })))
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
+const AdminAnalytics = lazy(() => import('./pages/AdminAnalytics').then((m) => ({ default: m.AdminAnalytics })))
 const CameraPage = lazy(() => import('./pages/Camera').then((m) => ({ default: m.CameraPage })))
 const Library = lazy(() => import('./pages/Library').then((m) => ({ default: m.Library })))
 const PresetDetail = lazy(() => import('./pages/PresetDetail').then((m) => ({ default: m.PresetDetail })))
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/terms" element={<Terms />} />
         <Route path="/support" element={<Support />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/analytics" element={<AdminAnalytics />} />
 
         <Route path="/app" element={<Layout />}>
           <Route index element={<CameraPage />} />

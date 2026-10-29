@@ -29,6 +29,28 @@ import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
 import { fetchFinalcapUsage, parseDaysParam } from './finalcapUsage.ts'
 import { fetchFinalcapFunnels } from './finalcapFunnels.ts'
 import { fetchGbkBilling } from './gbkBilling.ts'
+import {
+  applyFilters,
+  buildAggregateCsv,
+  byEvent,
+  computeActivation,
+  computeCapture,
+  computeExperiments,
+  computeOptimizePerformance,
+  computeOverview,
+  computePaywall,
+  computeReconciliation,
+  distinctAnons,
+  envelope,
+  fetchAnalyticsDataset,
+  inWindow,
+  parseAnalyticsQuery,
+  prevPeriod,
+  propStr,
+  warningsFor,
+  type AnalyticsFilters,
+  type Period,
+} from './adminAnalytics.ts'
 import { ALL_APPS, appAnd, iosOnlyScope, parseAppParam, type AppScope } from './appFilter.ts'
 
 const appKey = (app: AppScope): string => app ?? ALL_APPS
@@ -597,6 +619,159 @@ export function mountAdminRoutes(app: Express) {
       console.error('[admin] gbk-billing:', (err as Error).message)
       res.status(500).json({ error: (err as Error).message || 'gbk_billing_failed' })
     }
+  })
+
+  /**
+   * Admin analytics & experiment monitoring — see server/adminAnalytics.ts
+   * and docs/admin-analytics.md. All routes are requireAdmin, read-only,
+   * bounded (92-day max range, 200k row cap), and scoped to
+   * app='photo-recipes' telemetry only. Revenue figures attached to the
+   * overview/paywall responses come from the existing local entitlement +
+   * Stripe snapshots (estimates, NOT App Store Connect) — never from
+   * telemetry event counts.
+   */
+  async function loadAnalytics(q: {
+    startMs: number
+    endMs: number
+    rangeLabel: string
+    filters: AnalyticsFilters
+  }) {
+    const period: Period = { startMs: q.startMs, endMs: q.endMs }
+    const prev = prevPeriod(period)
+    const dataset = await fetchAnalyticsDataset(prev.startMs, period.endMs, q.filters)
+    const rowFilters: AnalyticsFilters = { ...q.filters, appVersion: null } // app_version already applied in SQL
+    const cur = applyFilters(inWindow(dataset.rows, period.startMs, period.endMs), rowFilters)
+    const prevRows = applyFilters(inWindow(dataset.rows, prev.startMs, prev.endMs), rowFilters)
+    const installsIn = (p: Period) =>
+      dataset.installs === null
+        ? null
+        : dataset.installs.filter((i) => i.first_seen_ms >= p.startMs && i.first_seen_ms < p.endMs)
+    const installsCur = installsIn(period)
+    const installsPrev = installsIn(prev)
+    const overview = computeOverview(cur, prevRows, installsCur, installsPrev, dataset.installs, period)
+    const prevOverview = computeOverview(prevRows, [], installsPrev, null, dataset.installs, prev)
+    const activation = computeActivation(cur, period)
+    const capture = computeCapture(cur)
+    const paywall = computePaywall(cur)
+    const reconciliation = computeReconciliation(cur)
+    const perf = computeOptimizePerformance(cur, prevRows, period)
+    const prevPerf = computeOptimizePerformance(prevRows, [], prev)
+    const prevVerificationFailures = byEvent(prevRows, 'purchase_failed').filter(
+      (r) => propStr(r, 'stage') === 'verification' || propStr(r, 'error_category') === 'verification',
+    ).length
+    const experiments = computeExperiments(
+      cur,
+      activation,
+      overview,
+      perf,
+      prevPerf,
+      reconciliation,
+      prevOverview,
+      prevVerificationFailures,
+      dataset.dataFreshness ? Date.parse(dataset.dataFreshness) : null,
+      period,
+    )
+    const sampleSizes = {
+      rows: cur.length,
+      previousRows: prevRows.length,
+      distinctUsers: distinctAnons(cur).size,
+      distinctUsersPrevious: distinctAnons(prevRows).size,
+    }
+    const env = (metrics: Record<string, unknown>, extraWarnings: string[] = []) =>
+      envelope({
+        period,
+        rangeLabel: q.rangeLabel,
+        filters: q.filters,
+        dataset,
+        metrics,
+        sampleSizes,
+        extraWarnings: [...warningsFor(cur), ...extraWarnings],
+      })
+    return { period, prev, dataset, cur, prevRows, overview, prevOverview, activation, capture, paywall, reconciliation, perf, prevPerf, experiments, env }
+  }
+
+  const analyticsRoute =
+    (view: string, pick: (ctx: Awaited<ReturnType<typeof loadAnalytics>>) => Record<string, unknown>) =>
+    (req: Request, res: Response) => {
+      const parsed = parseAnalyticsQuery(req.query as Record<string, unknown>)
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, hint: parsed.hint })
+        return
+      }
+      void (async () => {
+        const ctx = await loadAnalytics(parsed.value)
+        const revenue = {
+          entitlements: getEntitlementIncomeSnapshot(),
+          stripe: await stripeIncomeSnapshot(),
+          note: 'Authoritative ledgers are App Store Connect (IAP) and Stripe (web). The figures here are the existing LOCAL snapshots: IAP = estimated MRR from local StoreKit-verified entitlements (gross, before Apple cut); Stripe = approx MRR from active/trialing subscriptions. Neither is derived from telemetry purchase events.',
+        }
+        const metrics = pick(ctx)
+        if (view === 'overview' || view === 'paywall') metrics.revenue = revenue
+        res.json(ctx.env(metrics))
+      })().catch((err: Error) => {
+        console.error(`[admin] analytics/${view}:`, err.message)
+        res.status(500).json({ error: err.message || 'analytics_failed' })
+      })
+    }
+
+  app.get('/api/admin/analytics/overview', requireAdmin, analyticsRoute('overview', (ctx) => ({ overview: ctx.overview, experiments: ctx.experiments.experiments, alerts: ctx.experiments.alerts, alertingNote: ctx.experiments.alertingNote })))
+  app.get('/api/admin/analytics/activation', requireAdmin, analyticsRoute('activation', (ctx) => ({ activation: ctx.activation })))
+  app.get('/api/admin/analytics/capture', requireAdmin, analyticsRoute('capture', (ctx) => ({ capture: ctx.capture })))
+  app.get('/api/admin/analytics/paywall', requireAdmin, analyticsRoute('paywall', (ctx) => ({ paywall: ctx.paywall })))
+  app.get('/api/admin/analytics/purchases', requireAdmin, analyticsRoute('purchases', (ctx) => ({ reconciliation: ctx.reconciliation })))
+  app.get('/api/admin/analytics/reconciliation', requireAdmin, analyticsRoute('reconciliation', (ctx) => ({ reconciliation: ctx.reconciliation })))
+  app.get('/api/admin/analytics/optimize-performance', requireAdmin, analyticsRoute('optimize-performance', (ctx) => ({ optimizePerformance: ctx.perf })))
+  app.get('/api/admin/analytics/experiments', requireAdmin, analyticsRoute('experiments', (ctx) => ({ experiments: ctx.experiments.experiments, alerts: ctx.experiments.alerts, alertingNote: ctx.experiments.alertingNote })))
+
+  /**
+   * GET /api/admin/analytics/export?view=<view>&format=csv[&range&filters]
+   * Aggregate-only CSV. Transaction-level reconciliation rows are never
+   * exported. Every export is audit-logged (view + period + row count).
+   */
+  app.get('/api/admin/analytics/export', requireAdmin, (req, res) => {
+    const view = typeof req.query.view === 'string' ? req.query.view : ''
+    const format = typeof req.query.format === 'string' ? req.query.format : 'csv'
+    const views = ['overview', 'activation', 'capture', 'paywall', 'purchases', 'reconciliation', 'optimize-performance']
+    if (!views.includes(view)) {
+      res.status(400).json({ error: 'invalid_view', hint: `view must be one of ${views.join(', ')}` })
+      return
+    }
+    if (format !== 'csv') {
+      res.status(400).json({ error: 'invalid_format', hint: 'only format=csv is supported' })
+      return
+    }
+    const parsed = parseAnalyticsQuery(req.query as Record<string, unknown>)
+    if (!parsed.ok) {
+      res.status(400).json({ error: parsed.error, hint: parsed.hint })
+      return
+    }
+    void (async () => {
+      const ctx = await loadAnalytics(parsed.value)
+      const metrics: Record<string, unknown> =
+        view === 'overview'
+          ? { overview: ctx.overview }
+          : view === 'activation'
+            ? { activation: ctx.activation }
+            : view === 'capture'
+              ? { capture: ctx.capture }
+              : view === 'paywall'
+                ? { paywall: ctx.paywall }
+                : view === 'optimize-performance'
+                  ? { optimizePerformance: ctx.perf }
+                  : { reconciliation: ctx.reconciliation }
+      const env = ctx.env(metrics)
+      const csv = buildAggregateCsv(view, env)
+      console.info(
+        '[admin-analytics] export',
+        JSON.stringify({ view, period: env.period, rows: ctx.cur.length, at: new Date().toISOString() }),
+      )
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="admin-analytics-${view}.csv"`)
+      res.send(csv)
+    })().catch((err: Error) => {
+      console.error('[admin] analytics/export:', err.message)
+      res.status(500).json({ error: err.message || 'analytics_export_failed' })
+    })
   })
 
   /**
