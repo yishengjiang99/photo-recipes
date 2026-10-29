@@ -994,16 +994,33 @@ export function Admin() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-8 px-4 py-6">
-        <a
-          href="/admin/analytics"
-          className="block rounded-[var(--radius-lg)] border border-[var(--color-tip)]/50 bg-[var(--color-tip)]/10 px-4 py-3 hover:bg-[var(--color-tip)]/20"
-        >
-          <span className="font-display text-lg text-[var(--color-tip)]">Analytics &amp; Experiments →</span>
-          <span className="block text-sm text-[var(--color-ink-secondary)]">
-            First-photo activation experiment, capture-ready funnel, paywall &amp; purchase reconciliation, and
-            Auto Optimize latency/reliability — with experiment status and alerts.
-          </span>
-        </a>
+        <div className="rounded-[var(--radius-lg)] border border-[var(--color-tip)]/50 bg-[var(--color-tip)]/10 px-4 py-3">
+          <a href="/admin/analytics" className="block hover:opacity-80">
+            <span className="font-display text-lg text-[var(--color-tip)]">Analytics &amp; Experiments →</span>
+            <span className="block text-sm text-[var(--color-ink-secondary)]">
+              First-photo activation experiment, capture-ready funnel, paywall &amp; purchase reconciliation, and
+              Auto Optimize latency/reliability — with experiment status and alerts.
+            </span>
+          </a>
+          <nav className="mt-3 flex flex-wrap gap-2" aria-label="Analytics sections">
+            {[
+              { hash: 'overview', label: 'Overview' },
+              { hash: 'activation', label: 'Activation experiment' },
+              { hash: 'capture', label: 'Capture-ready' },
+              { hash: 'paywall', label: 'Paywall & revenue' },
+              { hash: 'reconciliation', label: 'Purchase reconciliation' },
+              { hash: 'optimize', label: 'Optimize performance' },
+            ].map((s) => (
+              <a
+                key={s.hash}
+                href={`/admin/analytics#${s.hash}`}
+                className="rounded-[var(--radius-pill)] border border-[var(--color-border)] px-3 py-1 text-sm text-[var(--color-ink-secondary)] hover:border-[var(--color-tip)] hover:text-[var(--color-tip)]"
+              >
+                {s.label}
+              </a>
+            ))}
+          </nav>
+        </div>
         {loadError ? (
           <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
             {loadError}

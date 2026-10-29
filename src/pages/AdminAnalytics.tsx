@@ -46,6 +46,14 @@ const TABS: Array<{ id: TabId; label: string; endpoint: string; exportView: stri
   { id: 'optimize', label: 'Optimize performance', endpoint: 'optimize-performance', exportView: 'optimize-performance' },
 ]
 
+// Each view is addressable by a hash anchor (e.g. /admin/analytics#paywall),
+// so the main /admin page can link straight to a section and links are shareable.
+function tabFromHash(): TabId | null {
+  if (typeof window === 'undefined') return null
+  const id = window.location.hash.replace(/^#/, '')
+  return TABS.some((t) => t.id === id) ? (id as TabId) : null
+}
+
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : `${(v * 100).toFixed(1)}%`
 const fmtNum = (v: number | null | undefined): string =>
@@ -225,7 +233,25 @@ function BreakdownTable({ title, rows }: { title: string; rows: Array<Record<str
 export function AdminAnalytics() {
   const [checking, setChecking] = useState(true)
   const [authed, setAuthed] = useState(false)
-  const [tab, setTab] = useState<TabId>('overview')
+  const [tab, setTab] = useState<TabId>(() => tabFromHash() ?? 'overview')
+
+  const selectTab = useCallback((id: TabId) => {
+    setTab(id)
+    if (typeof window !== 'undefined' && window.location.hash !== `#${id}`) {
+      window.history.pushState(null, '', `#${id}`)
+    }
+  }, [])
+
+  // Keep the visible view in sync when the hash changes outside a tab click
+  // (back/forward, or arriving via a section link from the /admin page).
+  useEffect(() => {
+    const onHashChange = () => {
+      const id = tabFromHash()
+      if (id) setTab(id)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
   const [range, setRange] = useState<'24h' | '7d' | '30d' | 'custom'>('7d')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
@@ -402,18 +428,21 @@ export function AdminAnalytics() {
           </label>
         </form>
 
-        {/* Tabs */}
+        {/* Tabs — real anchor links: each view has a shareable #hash URL */}
         <nav className="mt-4 flex flex-wrap gap-2" aria-label="Analytics views">
           {TABS.map((t) => (
-            <button
+            <a
               key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
+              href={`#${t.id}`}
+              onClick={(e) => {
+                e.preventDefault()
+                selectTab(t.id)
+              }}
               aria-current={tab === t.id ? 'page' : undefined}
               className={`rounded-[var(--radius-pill)] px-3.5 py-1.5 text-sm font-medium ${tab === t.id ? 'bg-[var(--color-tip)] text-black' : 'border border-[var(--color-border)] text-[var(--color-ink-secondary)]'}`}
             >
               {t.label}
-            </button>
+            </a>
           ))}
         </nav>
 
@@ -450,7 +479,7 @@ export function AdminAnalytics() {
         {/* Views */}
         {data && !loading ? (
           <main className="mt-5">
-            {tab === 'overview' && m.overview ? <OverviewView m={m} go={setTab} compare={compare} /> : null}
+            {tab === 'overview' && m.overview ? <OverviewView m={m} go={selectTab} compare={compare} /> : null}
             {tab === 'activation' && m.activation ? <ActivationView a={m.activation} /> : null}
             {tab === 'capture' && m.capture ? <CaptureView c={m.capture} /> : null}
             {tab === 'paywall' && m.paywall ? <PaywallView p={m.paywall} revenue={m.revenue} /> : null}

@@ -2,6 +2,10 @@
 
 **Route:** `/admin/analytics` (linked prominently from `/admin`; requires the
 same admin session as the existing panel — server-side `requireAdmin`).
+Each of the six views is also a hash anchor — `/admin/analytics#overview`,
+`#activation`, `#capture`, `#paywall`, `#reconciliation`, `#optimize` — and
+the `/admin` card links to each section directly; tab clicks update the hash
+so any view's URL is shareable.
 **Stack:** Express 5 + TypeScript server, React 19 + Vite + Tailwind frontend,
 existing MySQL `telemetry_events` — no new infrastructure, no new
 dependencies, no chart library (charts are inline SVG).
