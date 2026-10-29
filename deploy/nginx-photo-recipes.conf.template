@@ -103,7 +103,7 @@ server {
         try_files /$1.html /index.html;
     }
     # Client-side routes of the SPA (src/App.tsx): app shell, admin UI, checkout return, legacy paths.
-    location ~ ^/(app(/.*)?|admin|success|preset/[^/]+)/?$ {
+    location ~ ^/(app(/.*)?|admin(/.*)?|success|preset/[^/]+)/?$ {
         include DEPLOY_PATH_PLACEHOLDER/deploy/nginx-photo-headers.conf;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Pragma "no-cache";
