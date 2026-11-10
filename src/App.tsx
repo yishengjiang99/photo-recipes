@@ -11,6 +11,7 @@ import { Terms } from './pages/Terms'
 const Layout = lazy(() => import('./components/Layout').then((m) => ({ default: m.Layout })))
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
 const AdminAnalytics = lazy(() => import('./pages/AdminAnalytics').then((m) => ({ default: m.AdminAnalytics })))
+const AdminTemple = lazy(() => import('./pages/AdminTemple').then((m) => ({ default: m.AdminTemple })))
 const CameraPage = lazy(() => import('./pages/Camera').then((m) => ({ default: m.CameraPage })))
 const Library = lazy(() => import('./pages/Library').then((m) => ({ default: m.Library })))
 const PresetDetail = lazy(() => import('./pages/PresetDetail').then((m) => ({ default: m.PresetDetail })))
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/support" element={<Support />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/analytics" element={<AdminAnalytics />} />
+        <Route path="/admin/temple" element={<AdminTemple />} />
 
         <Route path="/app" element={<Layout />}>
           <Route index element={<CameraPage />} />

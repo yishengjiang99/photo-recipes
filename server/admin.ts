@@ -27,6 +27,7 @@ import {
 } from './telemetry.ts'
 import { fetchDevicesSummary, fetchKnownApps } from './installDevices.ts'
 import { fetchFinalcapUsage, parseDaysParam } from './finalcapUsage.ts'
+import { fetchTempleTelemetry } from './templeUsage.ts'
 import { fetchFinalcapFunnels } from './finalcapFunnels.ts'
 import { fetchGbkBilling } from './gbkBilling.ts'
 import {
@@ -603,6 +604,27 @@ export function mountAdminRoutes(app: Express) {
    * telemetry and from the FinalCap sections — never merged. Soft-zero
    * (`available: false`) when the GBK files are absent on the host.
    */
+  // Temple of the High Priestess telemetry (the Temple game's own database).
+  // Query-param validation mirrors finalcap-usage: `days` must be a valid
+  // integer; unknown values get a 400 before any DB touch.
+  app.get('/api/admin/temple', requireAdmin, (req, res) => {
+    const parsed = parseDaysParam(req.query.days)
+    if (!parsed.ok) {
+      res.status(400).json({
+        error: 'invalid_days',
+        hint: 'days must be an integer between 1 and 90 (default 30).',
+      })
+      return
+    }
+    void (async () => {
+      const temple = await fetchTempleTelemetry(parsed.days)
+      res.json({ ok: true, temple })
+    })().catch((err: Error) => {
+      console.error('[admin] temple:', err.message)
+      res.status(500).json({ error: err.message || 'temple_failed' })
+    })
+  })
+
   app.get('/api/admin/gbk-billing', requireAdmin, (req, res) => {
     const parsed = parseDaysParam(req.query.days)
     if (!parsed.ok) {

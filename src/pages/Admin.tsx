@@ -1021,6 +1021,15 @@ export function Admin() {
             ))}
           </nav>
         </div>
+        <div className="rounded-[var(--radius-lg)] border border-[var(--color-tip)]/50 bg-[var(--color-tip)]/10 px-4 py-3">
+          <a href="/admin/temple" className="block hover:opacity-80">
+            <span className="font-display text-lg text-[var(--color-tip)]">Temple telemetry →</span>
+            <span className="block text-sm text-[var(--color-ink-secondary)]">
+              Temple of the High Priestess installs, sessions, paywall funnel, verified purchases (Production vs
+              Sandbox), performance samples, and diagnostics — from the game&apos;s own database.
+            </span>
+          </a>
+        </div>
         {loadError ? (
           <p className="rounded-[var(--radius-sm)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
             {loadError}
