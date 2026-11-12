@@ -643,25 +643,3 @@ Supporting (distinct sessions / events): paywall_trigger 21 / 30, paywall_plan_s
 
 ### Verdict
 Silent run. sessions→camera 45.5% vs last reported 61.6% (Nov 1–7) is −16.1pp — under the 20pp threshold; vs the operational baseline 40.1% it is +5.4pp — also under the threshold, and that comparison remains not like-for-like after the 2026-10-20 app-filter correction (the speaking rule requires ≥20pp vs BOTH the baseline and the last reported figures). camera→optimize-start (40.0%) reflects the known, already-reported instrumentation break and its continuing v1.6 recovery — starts and successes are now at parity (26 vs 26), so the stage is effectively recovered, but it is not a new genuine stage movement and no like-for-like baseline exists for it. Revenue: paywall_view→purchase_success +8.6pp vs baseline, +7.2pp vs last reported — under threshold. Neither one-time exception fires anew (trial_start 2 sessions are the same two already reported 2026-11-08; trailing-7 purchase_success sessions 3 < 5). Figures recorded only; last reported figures unchanged.
-## Daily run 2026-11-11
-
-Method: all counts filtered app='photo-recipes' (SELECT only, SSH CONNECT-proxy route). Validation: this run's queries reproduced the prior window exactly — Nov 3–9 PT distinct sessions 170 with stages 89 camera / 38 starts / 38 successes, and that window's success latency n=97, median 681 ms / p95 8,001 ms, exactly as reported on 2026-11-10. Note: DST ended 2026-11-01 (PDT→PST); window boundaries used true PT midnights (Nov 4 00:00 PST → Nov 11 00:00 PST), with DST-aware PT dates for daily grouping.
-
-### Trailing 7 complete days — window 2026-11-04 → 2026-11-10 PT
-Primary definition: 143 sessions → 65 camera opens → 26 optimize starts → 26 successes.
-Conversions: sessions→camera 45.5% (65/143), camera→optimize-start 40.0% (26/65), start→success n/a (26 successes vs 26 starts — independent stage counts, not a same-session chain; starts by version = v1.6 23 sessions / 85 events, v1.7 1 session / 4 events, NULL 2 sessions / 3 events; older versions still emit success without start, but the under-count has essentially closed — starts and successes are now at parity). ao_tap: 23 sessions / 81 events.
-Daily distinct sessions (PT): Nov 4: 15, 5: 10, 6: 16, 7: 27, 8: 38, 9: 18, 10: 20. (Daily counts sum to 144 vs 143 distinct sessions — one session spans a PT midnight.)
-Success latency (auto_optimize_success latency_ms, trailing 7 days): n=86 latency-bearing events (of 89 success events), median 697.5 ms, p95 5,843 ms (nearest-rank).
-
-### Revenue — same window, independent stage counts
-- auto_optimize_success: 26 sessions (89 events)
-- paywall_view: 26 sessions (39 events) — success→paywall 100.0%
-- trial_start: 2 sessions (5 events) — same two Nov 7 PT yearly/stripe/web sessions already reported 2026-11-08 (ea3d9a58-683b-470d-9b4d-aaf156bc600d, d4d41030-b213-4a0e-9971-234021209903); no new trial sessions since. One-time exception (a) already fired and was reported 2026-11-08 — do NOT re-announce.
-- purchase_success: 3 sessions (6 events; Nov 7 PT ×2 yearly/stripe/web — the same two trial sessions, duplicate success-page emissions — plus Nov 8 PT monthly/storekit v1.6 iOS) — paywall_view→purchase_success 11.5% (3/26) vs revenue baseline 2.9% (2/69), +8.6pp. Not exception (b) (3 < 5). All-time ProTune purchase_success = 12 events / 9 sessions; all-time trial_start = 5 events / 2 sessions (unchanged since the 2026-11-08 run).
-Supporting (distinct sessions / events): paywall_trigger 21 / 30, paywall_plan_select 4 / 10, purchase_start 4 / 7, checkout_redirect 2 / 3, paywall_dismiss 14 / 20, purchase_restore 1 / 1, purchase_cancelled 0 / 0, purchase_pending 0, purchase_failed 0, purchase_fail 0.
-
-### Today PT so far — 2026-11-11 (through ~17:22 PST)
-10 sessions → 3 camera opens → 2 optimize starts → 1 success. Conversions: sessions→camera 30.0% (3/10, partial day, small n). Revenue today: paywall_view 1 session, paywall_trigger 1, paywall_plan_select 0, purchase_start 0, paywall_dismiss 0, checkout_redirect 0, trial_start 0, purchase_success 0. ao_tap 1 session / 3 events.
-
-### Verdict
-Silent run. sessions→camera 45.5% vs last reported 61.6% (Nov 1–7) is −16.1pp — under the 20pp threshold; vs the operational baseline 40.1% it is +5.4pp — also under the threshold, and that comparison remains not like-for-like after the 2026-10-20 app-filter correction (the speaking rule requires ≥20pp vs BOTH the baseline and the last reported figures). camera→optimize-start (40.0%) reflects the known, already-reported instrumentation break and its continuing v1.6 recovery — starts and successes are now at parity (26 vs 26), so the stage is effectively recovered, but it is not a new genuine stage movement and no like-for-like baseline exists for it. Revenue: paywall_view→purchase_success +8.6pp vs baseline, +7.2pp vs last reported — under threshold. Neither one-time exception fires anew (trial_start 2 sessions are the same two already reported 2026-11-08; trailing-7 purchase_success sessions 3 < 5). Figures recorded only; last reported figures unchanged.
