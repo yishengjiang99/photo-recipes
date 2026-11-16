@@ -1,5 +1,6 @@
 import { Loader2, Lock, LogOut, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { AdminGbkSection } from './AdminGbk'
 
 type SessionResp = {
   ok?: boolean
@@ -1997,6 +1998,8 @@ export function Admin() {
             ) : null}
           </section>
         ) : null}
+
+        <AdminGbkSection />
 
         {finalcapFunnels || loadingFinalcapFunnels || finalcapFunnelsError ? (
           <section>

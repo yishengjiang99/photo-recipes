@@ -30,6 +30,7 @@ import { fetchFinalcapUsage, parseDaysParam } from './finalcapUsage.ts'
 import { fetchTempleTelemetry } from './templeUsage.ts'
 import { fetchFinalcapFunnels } from './finalcapFunnels.ts'
 import { fetchGbkBilling } from './gbkBilling.ts'
+import { fetchGbkTelemetry } from './gbkTelemetry.ts'
 import {
   applyFilters,
   buildAggregateCsv,
@@ -641,6 +642,21 @@ export function mountAdminRoutes(app: Express) {
       console.error('[admin] gbk-billing:', (err as Error).message)
       res.status(500).json({ error: (err as Error).message || 'gbk_billing_failed' })
     }
+  })
+
+  // GBK Composer live telemetry (feed metrics, funnel, billing, billing log,
+  // client errors, open reports) proxied read-only from compose.grepawk.com —
+  // see server/gbkTelemetry.ts. Always 200 with { ok:false, error } on upstream failure.
+  app.get('/api/admin/gbk', requireAdmin, (req, res) => {
+    const parsed = parseDaysParam(req.query.days)
+    if (!parsed.ok) {
+      res.status(400).json({ error: 'invalid_days', hint: 'days must be an integer between 1 and 90 (default 30).' })
+      return
+    }
+    void fetchGbkTelemetry(parsed.days).then((r) => {
+      res.setHeader('Cache-Control', 'no-store')
+      res.json(r)
+    })
   })
 
   /**
