@@ -58,7 +58,12 @@ final class CameraSession: NSObject, ObservableObject {
     /// every access is serialized on `videoQueue` (delegate runs on `videoQueue`,
     /// readers go through `videoQueue.sync`).
     private nonisolated(unsafe) var latestProbeFrame: (buffer: CVPixelBuffer, timestamp: CMTime)?
-    private var input: AVCaptureDeviceInput?
+    private var input: AVCaptureDeviceInput? {
+        // Gravity-based (works with the portrait-locked UI and with Rotation
+        // Lock on): tells each capture which way the phone is physically held.
+        didSet { rotationCoordinator = input.map { AVCaptureDevice.RotationCoordinator(device: $0.device, previewLayer: nil) } }
+    }
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var photoCont: CheckedContinuation<Data, Error>?
 
     /// Live-frame consumer (SceneSensor). Invoked from a Task hop off the video
@@ -432,6 +437,29 @@ final class CameraSession: NSObject, ObservableObject {
         case .landscapeRight: return 0
         @unknown default: return 90
         }
+    }
+
+    /// Rotation for the next still: the coordinator's horizon-level capture angle
+    /// snapped to a quarter turn, or portrait (90) before a coordinator exists.
+    /// The UI is portrait-only, so a phone held sideways must still produce a
+    /// landscape photo — this is what does it.
+    static func captureRotationAngle(horizonLevel: CGFloat?) -> CGFloat {
+        guard let a = horizonLevel, a.isFinite else { return 90 }
+        let snapped = (a / 90).rounded() * 90
+        let wrapped = snapped.truncatingRemainder(dividingBy: 360)
+        return wrapped < 0 ? wrapped + 360 : wrapped
+    }
+
+    /// Current still-capture rotation. Main actor (reads the coordinator).
+    private func currentCaptureRotationAngle() -> CGFloat {
+        Self.captureRotationAngle(horizonLevel: rotationCoordinator?.videoRotationAngleForHorizonLevelCapture)
+    }
+
+    /// Sets the photo connection's rotation. Session-queue safe.
+    nonisolated private static func setRotation(_ angle: CGFloat, on output: AVCaptureOutput) {
+        guard let connection = output.connection(with: .video),
+              connection.isVideoRotationAngleSupported(angle) else { return }
+        connection.videoRotationAngle = angle
     }
 
     private static func videoOrientation(for orientation: UIInterfaceOrientation) -> AVCaptureVideoOrientation {
@@ -1501,6 +1529,7 @@ final class CameraSession: NSObject, ObservableObject {
         let caps = capabilities
         let maxQuality = photoOutput.maxPhotoQualityPrioritization
         let mirror = isFront && mirrorFrontPhotos
+        let rotation = currentCaptureRotationAngle()
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AOBracketFrames, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
@@ -1534,6 +1563,7 @@ final class CameraSession: NSObject, ObservableObject {
                     }
                 }
                 self.activeBracketDelegates.append(delegate)
+                Self.setRotation(rotation, on: self.photoOutput)
                 Self.setMirroring(mirror, on: self.photoOutput)
                 self.photoOutput.capturePhoto(with: settings, delegate: delegate)
             }
@@ -1629,6 +1659,7 @@ final class CameraSession: NSObject, ObservableObject {
     func capturePhoto(bakeLook: Bool = true) async throws -> Data {
         bakeLookOnNextCapture = bakeLook
         let mirror = isFront && mirrorFrontPhotos
+        let rotation = currentCaptureRotationAngle()
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(throwing: CamError.noDevice); return }
@@ -1653,6 +1684,7 @@ final class CameraSession: NSObject, ObservableObject {
                 if self.photoOutput.supportedFlashModes.contains(self.flash.av) {
                     settings.flashMode = self.flash.av
                 }
+                Self.setRotation(rotation, on: self.photoOutput)
                 Self.setMirroring(mirror, on: self.photoOutput)
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
