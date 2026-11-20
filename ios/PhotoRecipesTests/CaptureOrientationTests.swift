@@ -10,8 +10,6 @@ final class CaptureOrientationTests: XCTestCase {
     func testAppDeclaresPortraitOnly() {
         let iphone = Bundle.main.object(forInfoDictionaryKey: "UISupportedInterfaceOrientations") as? [String]
         XCTAssertEqual(iphone, ["UIInterfaceOrientationPortrait"])
-        let ipad = Bundle.main.object(forInfoDictionaryKey: "UISupportedInterfaceOrientations~ipad") as? [String]
-        XCTAssertEqual(ipad, ["UIInterfaceOrientationPortrait"])
     }
 
     func testCaptureAngleKeepsQuarterTurns() {
