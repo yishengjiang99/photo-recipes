@@ -1,0 +1,1 @@
+Fixed the camera in landscape: the preview stays upright, all controls stay on screen, and landscape photos save the right way up.
